@@ -1,0 +1,8 @@
+# Secretos y datos: nunca subir a un repositorio
+.env
+*.db
+server.log
+archivo/
+config_copias/
+pausa.json
+nube.json

@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Banca Perú</title>
+<style>
+:root{
+  --c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;
+  --bg:#f4f4f2;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#7a7974;--line:#e3e2de;--chip:#efeeea;
+  --acc:#2a78d6;--pos:#2a78d6;--neu:#a8a7a1;--neg:#d6453a;--warn:#fab219;--good:#0ca30c;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121211;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#8f8e88;--line:#2e2e2b;--chip:#262624;
+  --acc:#3987e5;--pos:#3987e5;--neu:#9a9993;--neg:#e5584c;--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;color-scheme:dark}}
+:root[data-theme="dark"]{--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--bg:#121211;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#8f8e88;--line:#2e2e2b;--chip:#262624;--acc:#3987e5;--pos:#3987e5;--neu:#9a9993;--neg:#e5584c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+h1{font-size:17px;margin:0}.sub{color:var(--muted);font-size:12px}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink2)}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--muted)}.live.on i{background:var(--good);animation:p 1.6s infinite}
+.live.pausa i{background:var(--warn);animation:none}
+#pausa-global.pausado{background:var(--warn);border-color:var(--warn);color:#1a1a19;font-weight:600}
+.banner-pausa{border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 14%,var(--surface));border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+@keyframes p{50%{opacity:.3}}
+.wrap{max-width:1400px;margin:0 auto;padding:14px 20px 40px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 10px;font-weight:600}
+button,select,input{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.filters{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.frow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.frow .lbl{font-size:11px;color:var(--muted);width:78px;flex:none;text-transform:uppercase;letter-spacing:.04em}
+.tg{border-radius:999px;padding:3px 11px;font-size:13px;background:var(--surface)}
+.tg.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.tg .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi .n{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}.kpi .l{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.legend i{font-style:normal}.legend .lin::before{content:"";display:inline-block;width:18px;border-top:2px dashed var(--ink2);margin-right:5px;vertical-align:3px}
+.legend .lin.umb::before{border-top:2px dotted var(--ink)}.legend .noche::before{content:"";display:inline-block;width:12px;height:10px;background:var(--chip);border:1px solid var(--line);margin-right:5px;vertical-align:-1px}.legend .mk::before{content:"▲";font-size:9px;margin-right:4px;color:var(--ink)}
+#serie-nota{font-size:12px;color:var(--ink2);margin-top:4px}
+.legend{flex-wrap:wrap;display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-bottom:6px}.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--c)}
+.ent{display:grid;grid-template-columns:130px 1fr 54px;gap:8px;align-items:center;padding:5px 4px;border-radius:6px;cursor:pointer}
+.ent:hover{background:var(--chip)}.ent.sel{outline:2px solid var(--acc)}
+.ent .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ent .nm small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.stk{display:flex;gap:2px;height:14px}.stk div{height:100%;border-radius:2px;min-width:0}
+.ent .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2);font-size:12px}
+.bar{display:grid;grid-template-columns:150px 1fr 36px;gap:8px;align-items:center;margin:5px 0;cursor:pointer;font-size:13px}
+.bar .tr{height:8px;background:var(--chip);border-radius:4px;overflow:hidden}.bar .fl{height:100%;background:var(--acc);border-radius:0 4px 4px 0}
+.bar .v{text-align:right;color:var(--ink2);font-variant-numeric:tabular-nums}.bar.sel{font-weight:650}
+.item{padding:11px 2px;border-bottom:1px solid var(--line)}.item:last-child{border:0}
+.item.nuevo{animation:fl 3s}@keyframes fl{0%{background:color-mix(in srgb,var(--acc) 18%,transparent)}100%{background:transparent}}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:3px}
+.chip{background:var(--chip);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--ink2)}
+.sent{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;color:#fff}
+.s-positivo{background:var(--pos)}.s-neutro{background:var(--neu);color:#1a1a19}.s-negativo{background:var(--neg)}
+.sev{font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--ink2)}
+.sev3{border-color:var(--neg);color:var(--neg)}
+.txt{white-space:pre-wrap;word-break:break-word}.txt a{color:var(--acc);text-decoration:none}
+mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
+.alerta{border:1px solid var(--neg);background:color-mix(in srgb,var(--neg) 10%,var(--surface));border-radius:10px;padding:10px 14px;margin-bottom:10px}
+.nuevas{display:none;width:100%;margin-bottom:8px}
+.src{display:grid;gap:8px;font-size:13px}.src .d{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.src button{padding:0 6px;font-size:11px;margin-left:6px}
+.rutas{margin:3px 0 0 14px;display:grid;gap:2px}.rutas div{font-size:11px;color:var(--muted)}.rutas .d{width:6px;height:6px;margin-right:5px}
+#chart{position:relative}#chart svg{display:block;width:100%;height:auto}
+#chart text{fill:var(--muted);font-size:10px}
+#tr-chart svg{display:block;width:100%;height:auto}#tr-chart text{fill:var(--muted);font-size:10px}
+#nube{position:relative;min-height:120px}
+#nube svg{display:block;width:100%;height:auto}
+#nube text{cursor:pointer;transition:opacity .15s}
+#nube svg:hover text{opacity:.35}#nube svg text:hover{opacity:1}
+@keyframes aparecer{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+#nube g.pal{animation:aparecer .45s ease-out both;transform-box:fill-box;transform-origin:center}
+#calor{overflow-x:auto}#calor table{border-collapse:separate;border-spacing:2px;font-size:10px;color:var(--muted);width:100%}
+#calor td{height:18px;border-radius:3px;min-width:14px;text-align:center}#calor th{font-weight:400;padding:0 3px;text-align:right}
+.hint{font-size:11px;color:var(--muted);margin-top:4px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap;z-index:5}
+.tip b{display:block;margin-bottom:3px}.tip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
+.hist{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.hist label{font-size:12px;color:var(--ink2)}
+#cfg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
+#cfg.on{display:flex}
+#cfg .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#cfg header{position:static;border-radius:12px 12px 0 0}
+#cfg .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line)}
+#cfg .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
+#cfg .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+#cfg label.campo{display:grid;gap:4px;font-size:12px;color:var(--ink2);margin-bottom:10px}
+#cfg textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-height:38px;resize:vertical}
+#cfg input[type=text],#cfg input[type=number],#cfg select{width:100%}
+#cfg .bloque{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+#cfg .rej{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+#cfg .ayuda{font-size:12px;color:var(--muted);margin:0 0 12px}
+#cfg-msg{font-size:13px;margin-right:auto}
+.exp{display:grid;gap:8px}.exp .fila{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.exp label{font-size:12px;color:var(--ink2)}
+.empty{color:var(--muted);padding:30px;text-align:center}
+.keys a{color:var(--acc)}
+@media(max-width:600px){header,.wrap{padding-left:16px;padding-right:16px}.frow .lbl{width:100%}.ent{grid-template-columns:96px 1fr 44px}.bar{grid-template-columns:110px 1fr 30px}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Monitor de banca · Perú</h1>
+    <div class="sub" id="estado">Cargando…</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="live" id="live"><i></i>EN VIVO</span>
+    <label class="sub"><input type="checkbox" id="notif"> Avisos de quejas graves</label>
+    <a id="csv" href="#"><button>Exportar CSV</button></a>
+    <button id="pausa-global" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
+    <button id="cfg-abrir" title="Configuración">⚙ Configuración</button>
+    <button class="pri" id="refresh">Consultar ahora</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="aviso-pausa"></div>
+  <div id="picos"></div>
+
+  <div class="card filters">
+    <div class="frow"><span class="lbl">Periodo</span><span id="f-periodo"></span>
+      <span id="f-custom" style="display:none;gap:6px;align-items:center"><input type="datetime-local" id="f-desde"> → <input type="datetime-local" id="f-hasta"></span></div>
+    <div class="frow"><span class="lbl">Detalle</span><span id="f-gran" class="frow"></span><button id="zoom-back" style="display:none">← Deshacer zoom</button></div>
+    <div class="frow"><span class="lbl">Entidad</span><span id="f-banco" class="frow"></span></div>
+    <div class="frow"><span class="lbl">Red</span><span id="f-fuente" class="frow"></span></div>
+    <div class="frow"><span class="lbl">Sentimiento</span><span id="f-sent" class="frow"></span></div>
+    <div class="frow"><span class="lbl">Más</span>
+      <select id="f-tipo"><option value="">Todo tipo de contenido</option><option value="comentario">Comentarios a cuentas oficiales</option><option value="publicacion">Publicaciones de usuarios</option><option value="noticia">Noticias</option><option value="post_oficial">Publicaciones de cuentas oficiales</option><option value="oficial">Respuestas de cuentas oficiales</option><option value="tendencia">Tendencias de Google</option></select>
+      <select id="f-cat"><option value="">Todas las categorías</option></select>
+      <select id="f-sev"><option value="">Toda gravedad</option><option value="1">Solo quejas</option><option value="2">Quejas media o grave</option><option value="3">Solo quejas graves</option></select>
+      <select id="f-orden"><option value="">Más recientes</option><option value="gravedad">Más graves primero</option></select>
+      <input id="f-q" placeholder="Buscar texto o autor…" style="flex:1;min-width:160px">
+      <button id="f-reset">Limpiar filtros</button>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="card kpi"><div class="n" id="k-total">–</div><div class="l">Menciones</div></div>
+    <div class="card kpi"><div class="n" id="k-neg" style="color:var(--neg)">–</div><div class="l">Negativas</div></div>
+    <div class="card kpi"><div class="n" id="k-neu">–</div><div class="l">Neutras</div></div>
+    <div class="card kpi"><div class="n" id="k-pos" style="color:var(--pos)">–</div><div class="l">Positivas</div></div>
+    <div class="card kpi"><div class="n" id="k-net">–</div><div class="l">Sentimiento neto (pos − neg)</div></div>
+    <div class="card kpi"><div class="n" id="k-quejas">–</div><div class="l">Quejas · <b id="k-graves" style="color:var(--neg)">–</b> graves</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="card">
+        <h2 id="t-serie">Evolución del sentimiento</h2>
+        <div class="legend"><span style="--c:var(--neg)">Negativo</span><span style="--c:var(--neu)">Neutro</span><span style="--c:var(--pos)">Positivo</span><i class="lin">Promedio</i><i class="lin umb">Umbral de alerta (prom. + 2σ)</i><i class="noche">Noche (22:00–6:00)</i><i class="mk">Por encima del umbral</i></div>
+        <div id="chart"><div class="tip" id="tip"></div></div>
+        <div id="serie-nota"></div><div class="hint">Clic en una barra para ver ese intervalo en detalle.</div>
+      </div>
+      <div class="card">
+        <h2>Nube de palabras <span class="sub" id="nb-info" style="text-transform:none;letter-spacing:0"></span></h2>
+        <div class="frow" style="margin-bottom:8px">
+          <select id="nb-max" aria-label="Cantidad de palabras"><option value="30">30 palabras</option><option value="60" selected>60 palabras</option><option value="100">100 palabras</option></select>
+          <label class="sub"><input type="checkbox" id="nb-bi"> Frases de 2 palabras</label>
+          <label class="sub"><input type="checkbox" id="nb-ent"> Incluir nombres de entidades</label>
+          <input id="nb-excluir" placeholder="Excluir palabra y Enter…" style="min-width:170px">
+        </div>
+        <div id="nb-excl" class="frow" style="margin-bottom:6px"></div>
+        <div class="legend"><span style="--c:var(--neg)">Más negativa</span><span style="--c:var(--ink2)">Neutra o mixta</span><span style="--c:var(--pos)">Más positiva</span><span class="sub">· el tono indica qué tan marcada es</span></div>
+        <div id="nube" aria-live="polite"></div>
+        <div class="hint">Tamaño = en cuántas publicaciones aparece. Clic en una palabra para ver esas publicaciones; ⌥+clic (Alt+clic) para excluirla de forma permanente. Respeta todos los filtros.</div>
+      </div>
+      <div class="card">
+        <h2>Búsquedas en Google · Perú <span class="sub" id="tr-act" style="text-transform:none;letter-spacing:0"></span></h2>
+        <div id="tr-alertas"></div>
+        <div class="frow" id="tr-grupos" style="margin-bottom:6px"></div>
+        <div class="legend" id="tr-leyenda"></div>
+        <div id="tr-chart" style="position:relative"><div class="tip" id="tr-tip"></div></div>
+        <div id="tr-rel" style="margin-top:10px"></div>
+        <div class="hint">Interés relativo de búsqueda (100 = el momento de mayor interés entre los términos del grupo, últimos 7 días, por hora). Fuente: Google Trends.</div>
+      </div>
+      <div class="card">
+        <h2>Menciones negativas por día y hora (hora de Lima)</h2>
+        <div id="calor"></div>
+      </div>
+      <div class="card">
+        <h2>Publicaciones <span id="n-items" class="sub" style="text-transform:none;letter-spacing:0"></span></h2>
+        <div id="lista"></div>
+        <div id="centinela" class="sub" style="text-align:center;padding:12px"></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h2>Sentimiento por entidad</h2>
+        <div class="legend"><span style="--c:var(--neg)">Neg.</span><span style="--c:var(--neu)">Neutro</span><span style="--c:var(--pos)">Pos.</span></div>
+        <div id="entidades"></div>
+        <div class="sub" style="margin-top:6px">Clic para filtrar. Mayús+clic para seleccionar varias.</div>
+      </div>
+      <div class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
+      <div class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
+      <div class="card">
+        <h2>Carga histórica</h2>
+        <div class="hist">
+          <input type="date" id="h-desde"> → <input type="date" id="h-hasta">
+          <button class="pri" id="h-go">Cargar</button>
+        </div>
+        <div class="hist" id="h-fuentes" style="margin-top:8px"></div>
+        <div class="sub" id="h-msg" style="margin-top:8px"></div>
+        <div class="sub" id="h-base" style="margin-top:4px"></div>
+      </div>
+      <div class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="cfg" role="dialog" aria-modal="true" aria-label="Configuración">
+  <div class="caja">
+    <header><h1>⚙ Configuración del monitor</h1><button id="cfg-cerrar" aria-label="Cerrar">✕</button></header>
+    <div class="tabs" id="cfg-tabs"></div>
+    <div class="cuerpo" id="cfg-cuerpo"></div>
+    <div class="pie"><span id="cfg-msg"></span><button id="cfg-cancelar">Cancelar</button><button class="pri" id="cfg-guardar">Guardar y aplicar</button></div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const segura=u=>/^https?:\/\//i.test(u||'')?u:'';
+const post=u=>fetch(u,{method:'POST',headers:{'X-Monitor':'1'}});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n).toLocaleString('es-PE');
+const SENT=[['negativo','Negativo','var(--neg)'],['neutro','Neutro','var(--neu)'],['positivo','Positivo','var(--pos)']];
+const PERIODOS=[['1','1 h'],['24','24 h'],['168','7 días'],['720','30 días'],['2160','90 días'],['todo','Todo (incl. restaurado)'],['custom','Personalizado']];
+let F={gran:'auto',periodo:'168',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};
+let zoomPila=[],ESTADO=null,offset=0,pendientes=[],vistosGraves=new Set();
+
+// ---------- estado de filtros (persistido en la URL) ----------
+// Los filtros se guardan en este navegador (no en la URL) y se validan al leerlos: solo claves y valores conocidos
+const F0=JSON.parse(JSON.stringify(F));
+function validarF(o){
+  const v={...F0}; if(!o||typeof o!=='object')return v;
+  const str=(x,max=80)=>typeof x==='string'?x.slice(0,max):'';
+  const lista=(x,ok)=>Array.isArray(x)?x.filter(e=>typeof e==='string'&&(!ok||ok.includes(e))).slice(0,20):[];
+  const fecha=x=>/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(x||'')?x:'';
+  if(['auto','5min','15min','hora','dia','semana'].includes(o.gran))v.gran=o.gran;
+  if(PERIODOS.some(([p])=>p===o.periodo))v.periodo=o.periodo;
+  v.banco=lista(o.banco,ESTADO?.bancos);v.fuente=lista(o.fuente,ESTADO?.fuentes_lista);
+  v.sentimiento=lista(o.sentimiento,['negativo','neutro','positivo']);
+  if(['','comentario','publicacion','noticia','oficial','post_oficial','tendencia'].includes(o.tipo))v.tipo=o.tipo;
+  v.categoria=str(o.categoria);if(['','1','2','3'].includes(o.sev))v.sev=o.sev;
+  if(['','gravedad'].includes(o.orden))v.orden=o.orden;
+  v.q=str(o.q,120);v.desde=fecha(o.desde);v.hasta=fecha(o.hasta);
+  return v}
+function guardarF(){try{localStorage.setItem('monitor.filtros',JSON.stringify(F))}catch(e){}}
+function leerF(){try{F=validarF(JSON.parse(localStorage.getItem('monitor.filtros')||'null'))}catch(e){F=validarF(null)}}
+if(location.hash)history.replaceState(null,'',location.pathname); // limpia enlaces antiguos con filtros en la URL
+function params(extra={}){
+  const p=new URLSearchParams();
+  if(F.periodo==='custom'){if(F.desde)p.set('desde',F.desde);if(F.hasta)p.set('hasta',F.hasta)}
+  else if(F.periodo==='todo')p.set('desde','2000-01-01');else p.set('horas',F.periodo);
+  if(F.banco.length)p.set('banco',F.banco.join(','));if(F.fuente.length)p.set('fuente',F.fuente.join(','));
+  if(F.sentimiento.length)p.set('sentimiento',F.sentimiento.join(','));
+  if(F.tipo)p.set('tipo',F.tipo);if(F.categoria)p.set('categoria',F.categoria);
+  if(F.sev)p.set('severidad',F.sev);if(F.sev)p.set('solo_quejas','1');if(F.orden)p.set('orden',F.orden);if(F.q)p.set('q',F.q);
+  p.set('gran',F.gran||'auto');for(const k in extra)p.set(k,extra[k]);return p}
+function coincide(r){ // ¿una publicación en vivo pasa los filtros actuales?
+  if(F.banco.length&&!r.bancos.some(b=>F.banco.includes(b)))return false;
+  if(F.fuente.length&&!F.fuente.includes(r.fuente))return false;
+  if(F.sentimiento.length&&!F.sentimiento.includes(r.sentimiento))return false;
+  if(F.tipo&&(F.tipo==='publicacion'?r.tipo:r.tipo!==F.tipo))return false;
+  if(F.periodo==='custom'&&F.hasta&&new Date(r.fecha)>new Date(F.hasta+'-05:00'))return false;
+  if(F.categoria&&!r.categorias.includes(F.categoria))return false;
+  if(F.sev&&(!r.es_queja||r.severidad<+F.sev))return false;
+  if(F.q&&!F.q.toLowerCase().split(/\s+/).every(w=>(r.texto+' '+r.autor).toLowerCase().includes(w)))return false;
+  return true}
+
+function toggles(el,opts,key,multi=true){
+  el.innerHTML=opts.map(([v,l,c])=>`<button class="tg ${(multi?F[key].includes(v):F[key]===v)?'on':''}" data-v="${esc(v)}">${c?`<span class="sw" style="background:${c}"></span>`:''}${esc(l)}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{const v=b.dataset.v;
+    if(multi)F[key]=F[key].includes(v)?F[key].filter(x=>x!==v):[...F[key],v];else F[key]=v;
+    pintarFiltros();recargar()})}
+function pintarFiltros(){
+  toggles($('#f-periodo'),PERIODOS.map(([v,l])=>[v,l]),'periodo',false);
+  $('#f-custom').style.display=F.periodo==='custom'?'inline-flex':'none';
+  if(ESTADO){toggles($('#f-banco'),ESTADO.bancos.map(b=>[b,b]),'banco');toggles($('#f-fuente'),ESTADO.fuentes_lista.map(f=>[f,f]),'fuente')}
+  toggles($('#f-gran'),[['auto','Automático'],['5min','5 min'],['15min','15 min'],['hora','Hora'],['dia','Día'],['semana','Semana']],'gran',false);
+  $('#zoom-back').style.display=zoomPila.length?'inline-block':'none';
+  toggles($('#f-sent'),SENT.map(([v,l,c])=>[v,l,c]),'sentimiento');
+  $('#f-tipo').value=F.tipo;$('#f-cat').value=F.categoria;$('#f-sev').value=F.sev;$('#f-orden').value=F.orden;$('#f-q').value=F.q;$('#f-desde').value=F.desde;$('#f-hasta').value=F.hasta;
+  guardarF()}
+
+// ---------- gráfico de evolución (barras apiladas, una sola escala) ----------
+const GRAN_TXT={'5min':'5 minutos','15min':'15 minutos','hora':'hora','dia':'día','semana':'semana'};
+const MESES=['ene','feb','mar','abr','may','jun','jul','ago','set','oct','nov','dic'],DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
+function etiqueta(t,gran,largo){ // t = 'AAAA-MM-DDTHH:MM' en hora de Lima
+  const [d,h]=t.split('T'),[a,m,dd]=d.split('-').map(Number),dow=DIAS[new Date(Date.UTC(a,m-1,dd)).getUTCDay()];
+  if(gran==='dia'||gran==='semana')return (largo?dow+' ':'')+dd+' '+MESES[m-1]+(largo?' '+a:'');
+  return (largo?dow+' '+dd+' '+MESES[m-1]+' ':'')+h}
+// ---------- referencias por franja horaria (día 6:00–22:00 / noche 22:00–6:00, hora de Lima) ----------
+const DIA_INI=6, DIA_FIN=22;
+const esDia=h=>h>=DIA_INI&&h<DIA_FIN;
+function referencias(vals,horas,porFranja){
+  // horas: hora de Lima de cada punto; porFranja=false → un solo promedio para todo el periodo
+  const grupo=i=>porFranja?(esDia(horas[i])?'dia':'noche'):'todo';
+  const st={};
+  vals.forEach((v,i)=>{const g=grupo(i);(st[g]=st[g]||[]).push(v)});
+  for(const g in st){const a=st[g],p=a.reduce((x,y)=>x+y,0)/a.length,sd=Math.sqrt(a.reduce((x,y)=>x+(y-p)**2,0)/a.length);
+    st[g]={prom:p,umbral:p+2*sd,valido:a.length>=6&&sd>0,n:a.length}}
+  const promAt=vals.map((_,i)=>st[grupo(i)].prom), umbAt=vals.map((_,i)=>st[grupo(i)].umbral), valAt=vals.map((_,i)=>st[grupo(i)].valido);
+  const altos=vals.map((v,i)=>valAt[i]&&v>umbAt[i]);
+  return {st,promAt,umbAt,valAt,altos,grupo,porFranja}}
+function escalon(arr,xIni,xFin,yv,mostrar=arr.map(()=>true)){
+  // línea escalonada: cada punto ocupa [xIni(i), xFin(i)]; se corta donde no se muestra
+  let d='',abierto=false;
+  arr.forEach((v,i)=>{if(!mostrar[i]){abierto=false;return}const y=yv(v).toFixed(1);
+    d+=(abierto?` L${xIni(i).toFixed(1)},${y}`:` M${xIni(i).toFixed(1)},${y}`)+` L${xFin(i).toFixed(1)},${y}`;abierto=true});
+  return d}
+function notaRefs(R,unidad){
+  const f=(g,nom)=>{const s=R.st[g];return s?`${nom}: promedio <b>${fmt(Math.round(s.prom*10)/10)}</b>${s.valido?`, alerta <b>${fmt(Math.round(s.umbral*10)/10)}</b>`:' (pocos datos para umbral)'}`:''};
+  const partes=R.porFranja?[f('dia',`Día ${DIA_INI}:00–${DIA_FIN}:00`),f('noche',`Noche ${DIA_FIN}:00–${DIA_INI}:00`)].filter(Boolean):[f('todo','Periodo')];
+  const n=R.altos.filter(Boolean).length;
+  return partes.join(' · ')+` ${unidad}. `+(n?`<b>${n}</b> ${n===1?'intervalo supera':'intervalos superan'} su umbral (▲).`:'Ningún intervalo supera su umbral.')}
+
+function serie(st){
+  const gran=st.granularidad,pts=st.serie;
+  $('#t-serie').textContent=`Evolución del sentimiento · cada ${GRAN_TXT[gran]} · hora de Lima`;
+  const W=900,H=230,L=36,R=92,B=24,T=12,iw=W-L-R,ih=H-B-T;
+  $('#serie-nota').textContent='';
+  if(!pts.length||!pts.some(p=>p.negativo+p.neutro+p.positivo)){$('#chart').innerHTML='<div class="empty">Sin datos en este periodo</div><div class="tip" id="tip"></div>';return}
+  const tots=pts.map(v=>v.negativo+v.neutro+v.positivo);
+  // Promedio y umbral de alerta (promedio + 2σ). En granularidad intradía, uno para el día y otro para la noche
+  const intradia=!['dia','semana'].includes(gran);
+  const Rs=referencias(tots,pts.map(p=>+p.t.slice(11,13)),intradia);
+  const max=Math.max(1,...tots,...Rs.umbAt.filter((_,i)=>Rs.valAt[i]));
+  const nice=Math.ceil(max/4)*4||4, bw=iw/pts.length, gap=bw>6?2:bw>3?1:0;
+  const yv=v=>T+ih-v/nice*ih;
+  let g='';
+  for(let i=0;i<=4;i++){const y=T+ih-ih*i/4;g+=`<line x1="${L}" x2="${L+iw}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${y+3}" text-anchor="end">${fmt(nice*i/4)}</text>`}
+  pts.forEach((v,i)=>{let y=T+ih;const x=L+i*bw+gap/2,w=Math.max(1,bw-gap);
+    const capas=SENT.filter(([s])=>v[s]>0);
+    capas.forEach(([s,,c],j)=>{const h=v[s]/nice*ih;y-=h;
+      g+=`<rect x="${x}" y="${y+(j?1:0)}" width="${w}" height="${Math.max(0,h-(j?1:0))}" fill="${c}" ${j===capas.length-1&&w>4?'rx="2"':''}/>`});
+    if(Rs.altos[i])g+=`<text x="${x+w/2}" y="${yv(tots[i])-3}" text-anchor="middle" style="fill:var(--ink);font-size:${bw>8?9:7}px">▲</text>`;
+    g+=`<rect class="hit" data-i="${i}" x="${L+i*bw}" y="${T}" width="${bw}" height="${ih}" fill="transparent" style="cursor:zoom-in"/>`});
+  // líneas de referencia escalonadas (cambian de nivel entre día y noche) + franjas nocturnas sombreadas
+  const xi=i=>L+i*bw, xf=i=>L+(i+1)*bw;
+  if(Rs.porFranja){let k=0;while(k<pts.length){if(Rs.grupo(k)==='noche'){let j=k;while(j<pts.length&&Rs.grupo(j)==='noche')j++;
+      g=`<rect x="${xi(k)}" y="${T}" width="${xf(j-1)-xi(k)}" height="${ih}" fill="var(--chip)" opacity=".55" pointer-events="none"/>`+g;k=j}else k++}}
+  g+=`<path d="${escalon(Rs.promAt,xi,xf,yv)}" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-dasharray="6 4" pointer-events="none"/>`;
+  g+=`<path d="${escalon(Rs.umbAt,xi,xf,yv,Rs.valAt)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-dasharray="2 3" pointer-events="none"/>`;
+  const ult=pts.length-1,yp=yv(Rs.promAt[ult]),yu=yv(Rs.umbAt[ult]);
+  g+=`<text x="${L+iw+6}" y="${yp+3}" style="fill:var(--ink2);font-size:10px">Prom. ${fmt(Math.round(Rs.promAt[ult]*10)/10)}</text>`;
+  if(Rs.valAt[ult])g+=`<text x="${L+iw+6}" y="${Math.abs(yu-yp)<12?yu-4:yu+3}" style="fill:var(--ink2);font-size:10px">Alerta ${fmt(Math.round(Rs.umbAt[ult]*10)/10)}</text>`;
+  $('#serie-nota').innerHTML=notaRefs(Rs,'menciones por '+GRAN_TXT[gran])+(Rs.porFranja?' Las franjas sombreadas son la noche.':'');
+  // etiquetas del eje: ~8, marcando el cambio de día cuando la granularidad es intradía
+  const nl=Math.min(8,pts.length),pasoL=Math.max(1,Math.round(pts.length/nl));let diaPrev='';
+  for(let i=0;i<pts.length;i+=pasoL){const t=pts[i].t,dia=t.slice(0,10),intradia=!['dia','semana'].includes(gran);
+    const lab=intradia&&dia!==diaPrev?etiqueta(t,'dia')+' '+t.slice(11):etiqueta(t,gran);diaPrev=dia;
+    g+=`<text x="${L+i*bw+bw/2}" y="${H-7}" text-anchor="middle">${esc(lab)}</text>`}
+  $('#chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Menciones por sentimiento en el tiempo">${g}</svg><div class="tip" id="tip"></div>`;
+  const tip=$('#tip');
+  $('#chart svg').querySelectorAll('.hit').forEach(r=>{const v=pts[+r.dataset.i];
+    r.onmousemove=e=>{const tot=v.negativo+v.neutro+v.positivo;
+      const rango=['dia','semana'].includes(gran)?etiqueta(v.t,gran,true)+(gran==='semana'?' (semana)':''):etiqueta(v.t,gran,true)+' – '+v.fin.slice(11);
+      tip.innerHTML=`<b>${esc(rango)}</b>${SENT.map(([s,l,c])=>`<span style="--c:${c}">${l}: ${fmt(v[s])}</span>`).join('<br>')}<br><span style="--c:transparent">Total ${fmt(tot)} · quejas ${fmt(v.quejas)}</span><br><span style="--c:transparent">${(()=>{const i=+r.dataset.i,p=Rs.promAt[i],fr=Rs.porFranja?(Rs.grupo(i)==='dia'?' de día':' de noche'):'';return p?`${tot>=p?'+':''}${fmt(Math.round((tot-p)/p*100))}% vs. promedio${fr}${Rs.altos[i]?' · <b>por encima del umbral</b>':''}`:''})()}</span><div class="hint">Clic para ampliar</div>`;
+      const box=$('#chart').getBoundingClientRect();tip.style.display='block';let x=e.clientX-box.left+12;if(x+tip.offsetWidth>box.width)x-=tip.offsetWidth+24;tip.style.left=x+'px';tip.style.top=Math.max(0,e.clientY-box.top-50)+'px';r.setAttribute('fill','color-mix(in srgb,var(--ink) 6%,transparent)')};
+    r.onmouseleave=()=>{tip.style.display='none';r.setAttribute('fill','transparent')};
+    r.onclick=()=>{ // zoom: el intervalo pasa a ser el periodo y el detalle se afina solo
+      zoomPila.push({periodo:F.periodo,desde:F.desde,hasta:F.hasta,gran:F.gran});
+      F.periodo='custom';F.desde=v.t;F.hasta=v.fin;F.gran='auto';tip.style.display='none';pintarFiltros();recargar()}})}
+
+function calor(st){
+  const m=st.calor,max=Math.max(1,...m.flat()),orden=[0,1,2,3,4,5,6],nom=['lun','mar','mié','jue','vie','sáb','dom'];
+  if(!m.flat().some(Boolean)){$('#calor').innerHTML='<div class="sub">Sin menciones negativas en este periodo</div>';return}
+  let h='<table><tr><th></th>'+Array.from({length:24},(_,i)=>`<th style="text-align:center">${i%3?'':i}</th>`).join('')+'</tr>';
+  orden.forEach(d=>{h+=`<tr><th>${nom[d]}</th>`+m[d].map((n,hr)=>`<td title="${nom[d]} ${hr}:00–${hr+1}:00 · ${n} negativas" style="background:${n?`color-mix(in srgb,var(--neg) ${Math.round(15+85*n/max)}%,var(--surface))`:'var(--chip)'}"></td>`).join('')+'</tr>'});
+  $('#calor').innerHTML=h+'</table><div class="hint">Más intenso = más menciones negativas. Útil para ver a qué horas se concentran las caídas y quejas.</div>'}
+
+function entidades(st){
+  const rows=Object.entries(st.por_banco).sort((a,b)=>b[1].menciones-a[1].menciones);
+  $('#entidades').innerHTML=rows.map(([b,d])=>{const t=d.positivo+d.neutro+d.negativo||1;const pn=Math.round(d.negativo/t*100),pp=Math.round(d.positivo/t*100);
+    return `<div class="ent ${F.banco.includes(b)?'sel':''}" data-b="${esc(b)}" title="${d.negativo} negativas · ${d.neutro} neutras · ${d.positivo} positivas · ${d.quejas} quejas (${d.graves} graves)">
+      <span class="nm">${esc(b)}<small>${d.menciones?`${pn}% neg · ${pp}% pos`:'sin menciones'}</small></span>
+      <span class="stk">${SENT.map(([s,,c])=>d[s]?`<div style="flex:${d[s]};background:${c}"></div>`:'').join('')||'<div style="flex:1;background:var(--chip)"></div>'}</span>
+      <span class="v">${fmt(d.menciones)}</span></div>`}).join('');
+  $('#entidades').querySelectorAll('.ent').forEach(e=>e.onclick=ev=>{const b=e.dataset.b;
+    F.banco=ev.shiftKey?(F.banco.includes(b)?F.banco.filter(x=>x!==b):[...F.banco,b]):(F.banco.length===1&&F.banco[0]===b?[]:[b]);pintarFiltros();recargar()})}
+
+function barras(el,datos,sel,onclick){const max=Math.max(1,...datos.map(d=>d[1]));
+  el.innerHTML=datos.length?datos.map(([n,v])=>`<div class="bar ${n===sel?'sel':''}" data-n="${esc(n)}"><span>${esc(n)}</span><span class="tr"><span class="fl" style="display:block;width:${v/max*100}%"></span></span><span class="v">${fmt(v)}</span></div>`).join(''):'<div class="sub">Sin datos</div>';
+  if(onclick)el.querySelectorAll('.bar').forEach(b=>b.onclick=()=>onclick(b.dataset.n))}
+
+// ---------- lista ----------
+function hace(f){const m=(Date.now()-new Date(f))/6e4;if(m<1)return 'ahora';if(m<60)return Math.round(m)+' min';if(m<1440)return Math.round(m/60)+' h';if(m<43200)return Math.round(m/1440)+' d';return new Date(f).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'})}
+function itemHTML(r,nuevo){
+  const q=F.q.trim();let t=esc(r.texto);if(q)q.split(/\s+/).forEach(w=>{t=t.replace(new RegExp('('+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>')});
+  return `<div class="item ${nuevo?'nuevo':''}"><div class="meta">${r.tipo==='post_oficial'?'':`<span class="sent s-${r.sentimiento}">${esc(r.sentimiento)}</span>`}${r.por_ia?`<span class="chip" title="Clasificado por IA: ${esc(r.ia_motivo||'')}" style="cursor:help">IA ⓘ</span>`:''}${r.es_queja?`<span class="sev ${r.severidad>=3?'sev3':''}">Queja ${['','leve','media','grave'][r.severidad]}</span>`:''}<b style="color:var(--ink2)">${esc(r.fuente)}</b>${r.tipo==='comentario'?`<span class="chip">comentario a ${esc(r.cuenta||'cuenta oficial')}</span>`:r.tipo==='noticia'?'<span class="chip">noticia</span>':r.tipo==='tendencia'?'<span class="chip">tendencia de búsqueda</span>':r.tipo==='oficial'?`<span class="chip">respuesta oficial de ${esc(r.cuenta)}</span>`:r.tipo==='post_oficial'?`<span class="chip" style="font-weight:600">publicación oficial de ${esc(r.cuenta)}</span>${r.metricas?`<span class="chip">💬 ${fmt(r.metricas.comentarios||0)} · 👍 ${fmt(r.metricas.reacciones||0)}${r.metricas.compartidos?` · ↗ ${fmt(r.metricas.compartidos)}`:''}</span>`:''}`:''}<span>${esc(r.autor)}</span><span>· ${esc(new Date(r.fecha).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))} (hace ${hace(r.fecha)})</span>${r.bancos.map(b=>`<span class="chip" style="font-weight:600">${esc(b)}</span>`).join('')}${r.categorias.map(c=>`<span class="chip" style="background:transparent;border:1px solid var(--line)">${esc(c)}</span>`).join('')}</div><div class="txt">${t} ${segura(r.url)?`<a href="${esc(segura(r.url))}" target="_blank" rel="noopener noreferrer">ver ↗</a>`:''}</div></div>`}
+
+let hayMas=false,cargando=false;
+async function cargarItems(append){
+  if(cargando&&append)return;cargando=true;
+  try{
+    if(!append)offset=0;
+    const items=await fetch('/api/items?'+params({limit:50,offset})).then(r=>r.json());
+    const html=items.map(r=>itemHTML(r)).join('');
+    if(append)$('#lista').insertAdjacentHTML('beforeend',html);else $('#lista').innerHTML=html||'<div class="empty">No hay publicaciones con estos filtros.</div>';
+    offset+=items.length;hayMas=items.length===50;
+    $('#centinela').textContent=hayMas?'Cargando más…':(offset?'— fin de las publicaciones —':'');
+    $('#n-items').textContent=offset?`· mostrando ${fmt(offset)}`:'';
+  }finally{cargando=false}}
+// carga automática al acercarse al final de la lista
+new IntersectionObserver(es=>{if(es[0].isIntersecting&&hayMas)cargarItems(true)},{rootMargin:'600px'}).observe($('#centinela'));
+
+async function cargarStats(){
+  const st=await fetch('/api/stats?'+params()).then(r=>r.json());
+  const pct=n=>st.total?Math.round(n/st.total*100)+'%':'–';
+  $('#k-total').textContent=fmt(st.total);$('#k-neg').textContent=pct(st.negativo);$('#k-neu').textContent=pct(st.neutro);$('#k-pos').textContent=pct(st.positivo);
+  const net=st.total?Math.round((st.positivo-st.negativo)/st.total*100):0;$('#k-net').textContent=st.total?(net>0?'+':'')+net:'–';$('#k-net').style.color=net<0?'var(--neg)':net>0?'var(--pos)':'';
+  $('#k-quejas').textContent=fmt(st.quejas);$('#k-graves').textContent=fmt(st.graves);
+  $('#picos').innerHTML=st.picos.map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en la última hora (promedio ${p.promedio}/h). Posible incidente o caída.</div>`).join('');
+  serie(st);calor(st);entidades(st);
+  barras($('#cats'),Object.entries(st.por_categoria).sort((a,b)=>b[1]-a[1]),F.categoria,n=>{F.categoria=F.categoria===n?'':n;pintarFiltros();recargar()});
+  barras($('#redes'),Object.entries(st.por_fuente).sort((a,b)=>b[1]-a[1]),F.fuente.length===1?F.fuente[0]:'',n=>{F.fuente=F.fuente.length===1&&F.fuente[0]===n?[]:[n];pintarFiltros();recargar()});
+  $('#csv').href='/api/export.csv?'+params()}
+
+function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponibilidad)
+  if(!rs||!Object.keys(rs).length)return '';
+  return '<div class="rutas">'+Object.entries(rs).map(([n,r])=>{const pausa=r.pausa_hasta*1000>Date.now();
+    return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?'OK':r.ok===false?'falló':'inactiva')}</div>`}).join('')+'</div>'}
+async function cargarEstado(){
+  const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;ESTADO=es;
+  if(primera){es.categorias.forEach(c=>$('#f-cat').add(new Option(c,c)));leerF();if(!es.categorias.includes(F.categoria))F.categoria='';pintarFiltros();
+    $('#h-fuentes').innerHTML=es.fuentes_lista.filter(f=>f!=='Google Trends').map(f=>`<label><input type="checkbox" value="${esc(f)}" checked> ${esc(f)}</label>`).join('');
+    const hoy=new Date(),min=new Date(hoy-89*864e5).toISOString().slice(0,10);$('#h-hasta').value=hoy.toISOString().slice(0,10);$('#h-desde').value=new Date(hoy-30*864e5).toISOString().slice(0,10);$('#h-desde').min=min;$('#h-hasta').min=min;$('#h-hasta').max=$('#h-hasta').value}
+  const fs=Object.entries(es.fuentes);const ult=fs.map(([,f])=>f.ultima).filter(Boolean).sort().pop();
+  $('#estado').textContent=`${fs.filter(([,f])=>f.ok).length}/${fs.length} fuentes activas · `+(ult?'último dato hace '+hace(ult):'primer escaneo en curso…')+` · ${fmt(es.base.total)} publicaciones guardadas`;
+  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br><span class="sub">${esc(f.ejecutando?'Consultando…':f.msg)}</span>${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
+  $('#fuentes').querySelectorAll('button[data-f]').forEach(b=>b.onclick=async()=>{await post('/api/refresh?fuente='+encodeURIComponent(b.dataset.f));setTimeout(cargarEstado,800)});
+  const ia=es.ia_estado||{};
+  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('IA')?'var(--warn)':ia.activo?(ia.pendientes?'var(--warn)':'var(--good)'):'var(--neg)'}"></span><b>Clasificación IA</b>${es.pausa.todo?'':`<button data-p="IA">${pausada('IA')?'▶':'⏸'}</button>`}<br><span class="sub">${esc(pausada('IA')?'⏸ En pausa':ia.msg||'')}</span>${rutasHTML(es.rutas.IA)}</div>`);
+  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('Google Trends')?'var(--warn)':'var(--good)'}"></span><b>Google Trends</b>${es.pausa.todo?'':`<button data-p="Google Trends">${pausada('Google Trends')?'▶':'⏸'}</button>`}<br><span class="sub">${pausada('Google Trends')?'⏸ En pausa':'cada '+(TR?'hora':'hora')}</span>${rutasHTML(es.rutas['Google Trends'])}</div>`);
+  $('#fuentes').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
+  pintarPausa();
+  const faltan=Object.entries(es.claves).filter(([,v])=>!v).map(([k])=>k);
+  $('#claves').innerHTML=faltan.length?`Claves sin configurar: <b>${faltan.join(', ')}</b>. Ver <code>LEEME.md</code> para obtenerlas.`:'Todas las claves configuradas ✓';
+  const h=es.historico;$('#h-msg').textContent=h.activo?'⏳ '+h.msg:(h.msg||'');if(h.progreso&&!h.activo)$('#h-msg').textContent+=h.progreso.length?' · '+h.progreso.join(' · '):'';
+  $('#h-go').disabled=h.activo;
+  $('#h-base').textContent=es.base.primera?`Base histórica: ${new Date(es.base.primera).toLocaleDateString('es-PE')} → ${new Date(es.base.ultima).toLocaleDateString('es-PE')}`:''}
+
+// ---------- pausa ----------
+async function pausa(fuente,pausar){
+  const r=await post(`/api/pausa?fuente=${encodeURIComponent(fuente)}&accion=${pausar?'pausar':'reanudar'}`).then(r=>r.json());
+  if(r.error){alert(r.error);return}
+  ESTADO.pausa=r.pausa;pintarPausa();cargarEstado();if(document.querySelector('#cfg.on')&&cfgTab==='general')pintarConfig()}
+const pausada=f=>ESTADO?.pausa&&(ESTADO.pausa.todo||ESTADO.pausa.fuentes.includes(f));
+function pintarPausa(){
+  const p=ESTADO?.pausa;if(!p)return;
+  const b=$('#pausa-global');b.textContent=p.todo?'▶ Reanudar monitoreo':'⏸ Pausar';b.classList.toggle('pausado',p.todo);
+  $('#refresh').disabled=p.todo;
+  $('#live').classList.toggle('pausa',p.todo);$('#live').lastChild.textContent=p.todo?'EN PAUSA':'EN VIVO';
+  $('#aviso-pausa').innerHTML=p.todo?`<div class="banner-pausa">⏸ <span><b>El monitoreo está en pausa.</b> No se consultan fuentes ni se clasifica con IA; los datos guardados siguen disponibles.</span><button class="pri" id="banner-reanudar">▶ Reanudar monitoreo</button></div>`:
+    (p.fuentes.length?`<div class="banner-pausa">⏸ En pausa: <b>${p.fuentes.map(esc).join(', ')}</b>. El resto sigue monitoreándose.</div>`:'');
+  $('#banner-reanudar')?.addEventListener('click',()=>pausa('todo',false))}
+$('#pausa-global').onclick=()=>pausa('todo',!ESTADO?.pausa?.todo);
+
+let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube()},120)}
+
+// ---------- Nube de palabras ----------
+let NB={excluir:[]}; // ya no se usa: las exclusiones viven en el servidor (⚙ Configuración → Nube de palabras)
+function guardarNB(){}
+async function excluirPalabras(lista){
+  const r=await fetch('/api/nube/agregar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({palabras:lista})}).then(r=>r.json());
+  if(r.error)alert(r.error);cargarNube()}
+async function cargarNube(){
+  const p=params({max:$('#nb-max').value,bigramas:$('#nb-bi').checked?'1':'0',entidades:$('#nb-ent').checked?'1':'0',excluir:NB.excluir.join(',')});
+  let d;try{d=await fetch('/api/palabras?'+p).then(r=>r.json())}catch(e){return}
+  $('#nb-excl').innerHTML='<span class="sub">Las palabras sin valor se filtran según la lista de <a href="#" id="nb-config">⚙ Configuración → Nube de palabras</a>.</span>';
+  $('#nb-config').onclick=e=>{e.preventDefault();cfgTab='nube';abrirConfig()};
+  $('#nb-info').textContent=`· ${fmt(d.publicaciones)} publicaciones analizadas`;
+  const ws=d.palabras;
+  if(!ws.length){$('#nube').innerHTML='<div class="empty">No hay suficientes publicaciones con estos filtros.</div>';return}
+  dibujarNube(ws)}
+function dibujarNube(ws){
+  // Distribución en espiral (tipo Wordle): la más frecuente al centro, el resto alrededor sin solaparse
+  const W=900,H=Math.max(280,Math.min(460,180+ws.length*3)),cx=W/2,cy=H/2;
+  const ctx=document.createElement('canvas').getContext('2d'),fam=getComputedStyle(document.body).fontFamily;
+  const max=ws[0].total,min=ws.at(-1).total,cajas=[],out=[];
+  const choca=b=>cajas.some(c=>b.x<c.x+c.w&&b.x+b.w>c.x&&b.y<c.y+c.h&&b.y+b.h>c.y);
+  ws.forEach((w,i)=>{
+    const t=Math.sqrt((w.total-min)/Math.max(1,max-min)),fs=Math.round(13+t*(ws.length>80?44:54)),peso=fs>30?800:fs>20?700:600;
+    ctx.font=`${peso} ${fs}px ${fam}`;
+    const ancho=ctx.measureText(w.palabra).width,alto=fs*0.82,vert=i>2&&i%4===1&&fs<36&&!w.palabra.includes(' ');
+    const bw=(vert?alto:ancho)+6,bh=(vert?ancho:alto)+4;
+    for(let k=0;k<6000;k++){const a=k*0.13,r=1.6*a;   // espiral de Arquímedes, achatada al formato del lienzo
+      const x=cx+r*Math.cos(a)*(W/H)*0.9,y=cy+r*Math.sin(a);
+      const b={x:x-bw/2,y:y-bh/2,w:bw,h:bh};
+      if(b.x<4||b.y<4||b.x+b.w>W-4||b.y+b.h>H-4)continue;
+      if(!choca(b)){cajas.push(b);out.push({w,x,y,fs,peso,vert,i});break}}});
+  const color=w=>{const s=(w.negativo-w.positivo)/w.total; // -1 positivo … +1 negativo
+    if(s>0.15)return `color-mix(in srgb,var(--neg) ${Math.round(45+55*Math.min(1,s))}%,var(--ink2))`;
+    if(s<-0.15)return `color-mix(in srgb,var(--pos) ${Math.round(45+55*Math.min(1,-s))}%,var(--ink2))`;
+    return 'var(--ink2)'};
+  $('#nube').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Nube de palabras">${out.map(p=>`<g class="pal" style="animation-delay:${Math.min(p.i*12,600)}ms"><text data-p="${esc(p.w.palabra)}" x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-size="${p.fs}" font-weight="${p.peso}" fill="${color(p.w)}" ${p.vert?`transform="rotate(-90 ${p.x.toFixed(1)} ${p.y.toFixed(1)})"`:''}>${esc(p.w.palabra)}</text></g>`).join('')}</svg><div class="tip" id="nb-tip"></div>`;
+  const tip=$('#nb-tip'),box=()=>$('#nube').getBoundingClientRect();
+  $('#nube').querySelectorAll('text').forEach(el=>{const w=ws.find(x=>x.palabra===el.dataset.p);
+    el.onmousemove=e=>{const b=box();tip.innerHTML=`<b>${esc(w.palabra)}</b>${fmt(w.total)} publicaciones<br><span style="--c:var(--neg)">Negativas: ${fmt(w.negativo)}</span><br><span style="--c:var(--neu)">Neutras: ${fmt(w.neutro)}</span><br><span style="--c:var(--pos)">Positivas: ${fmt(w.positivo)}</span><div class="hint">Clic: ver publicaciones · ⌥+clic: excluir</div>`;
+      tip.style.display='block';let x=e.clientX-b.left+14;if(x+tip.offsetWidth>b.width)x-=tip.offsetWidth+28;tip.style.left=x+'px';tip.style.top=Math.max(0,e.clientY-b.top-20)+'px'};
+    el.onmouseleave=()=>tip.style.display='none';
+    el.onclick=e=>{tip.style.display='none';
+      if(e.altKey){excluirPalabras([w.palabra]);return}
+      F.q=w.palabra;pintarFiltros();recargar();document.querySelector('#lista').scrollIntoView({behavior:'smooth',block:'start'})}})}
+$('#nb-max').onchange=$('#nb-bi').onchange=$('#nb-ent').onchange=cargarNube;
+$('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim().toLowerCase().slice(0,40);if(w)excluirPalabras([w]);e.target.value=''}};
+
+// ---------- Panel de configuración ----------
+let CFG=null,cfgTab='general';
+const lista=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
+const TABS=[['general','General'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas']];
+async function abrirConfig(){
+  CFG=await fetch('/api/config').then(r=>r.json());
+  // estructura de trabajo editable (las entidades llevan un id estable para enlazar sus cuentas aunque se renombren)
+  CFG._ents=Object.entries(CFG.bancos).map(([n,b],i)=>({id:i,nombre:n,buscar:b.buscar.join(', '),alias:b.alias.join(', '),ambiguos:(b.ambiguos||[]).join(', '),cuentas:{...(CFG.cuentas_oficiales[n]||{})}}));
+  CFG._grupos=Object.entries(CFG.trends.grupos).map(([g,t])=>({nombre:g,terminos:t.join(', ')}));
+  $('#cfg-msg').textContent='';$('#cfg').classList.add('on');pintarConfig()}
+$('#cfg-abrir').addEventListener('click',()=>{cfgTab='general'},true);
+function pintarConfig(){
+  $('#cfg-tabs').innerHTML=TABS.map(([k,l])=>`<button class="tg ${k===cfgTab?'on':''}" data-k="${k}">${l}</button>`).join('');
+  $('#cfg-tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{cfgTab=b.dataset.k;pintarConfig()});
+  const c=$('#cfg-cuerpo');
+  if(cfgTab==='general'){
+    c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
+    <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
+      <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      <label class="sub" style="display:block;margin-top:8px"><input type="checkbox" id="cfg-ini-pausa" ${CFG.iniciar_en_pausa?'checked':''}> Iniciar el monitor en pausa (se guarda con "Guardar y aplicar")</label></div>
+    <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
+    <div class="bloque"><b>Frecuencia de consulta (minutos)</b><div class="rej" style="margin-top:8px">${CFG.fuentes.map(f=>`<label class="campo">${esc(f)}<input type="number" min="1" max="1440" data-int="${esc(f)}" value="${CFG.intervalos_minutos[f]??30}"></label>`).join('')}</div></div>`;
+    c.querySelector('[data-k=retencion_dias]').oninput=e=>CFG.retencion_dias=e.target.value;
+    $('#cfg-pausa-todo').onclick=()=>pausa('todo',!ESTADO.pausa.todo);
+    c.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>pausa(b.dataset.pf,!pausada(b.dataset.pf)));
+    $('#cfg-ini-pausa').onchange=e=>CFG.iniciar_en_pausa=e.target.checked;
+    c.querySelectorAll('[data-int]').forEach(i=>i.oninput=()=>CFG.intervalos_minutos[i.dataset.int]=i.value)}
+  if(cfgTab==='entidades'){
+    c.innerHTML=`<p class="ayuda"><b>Términos de búsqueda</b>: lo que se busca en X, noticias, YouTube y Bluesky. <b>Alias</b>: formas en que la gente nombra a la entidad (separados por comas). <b>Ambiguos</b>: alias que solo cuentan si el texto habla de Perú (p. ej. "BBVA" a secas).</p>`+
+    CFG._ents.map((e,i)=>`<div class="bloque" data-i="${i}"><div class="rej"><label class="campo">Entidad<input type="text" data-f="nombre" value="${esc(e.nombre)}"></label></div>
+      <label class="campo">Términos de búsqueda<textarea data-f="buscar">${esc(e.buscar)}</textarea></label>
+      <label class="campo">Alias<textarea data-f="alias">${esc(e.alias)}</textarea></label>
+      <label class="campo">Alias ambiguos<textarea data-f="ambiguos">${esc(e.ambiguos)}</textarea></label>
+      <button data-borrar="${i}">Eliminar entidad</button></div>`).join('')+`<button id="cfg-add-ent">+ Añadir entidad</button>`;
+    c.querySelectorAll('.bloque').forEach(b=>{const e=CFG._ents[+b.dataset.i];b.querySelectorAll('[data-f]').forEach(x=>x.oninput=()=>e[x.dataset.f]=x.value)});
+    c.querySelectorAll('[data-borrar]').forEach(b=>b.onclick=()=>{if(confirm('¿Eliminar «'+CFG._ents[+b.dataset.borrar].nombre+'» del monitoreo?')){CFG._ents.splice(+b.dataset.borrar,1);pintarConfig()}});
+    $('#cfg-add-ent').onclick=()=>{CFG._ents.push({id:Date.now(),nombre:'Nueva entidad',buscar:'',alias:'',ambiguos:'',cuentas:{}});pintarConfig()}}
+  if(cfgTab==='cuentas'){
+    c.innerHTML=`<p class="ayuda">Cuentas oficiales de cada entidad: se leen los comentarios de sus publicaciones (Facebook, Instagram y TikTok vía Apify) y las menciones y respuestas en X. Verifica que tengan la insignia de verificación.</p>`+
+    CFG._ents.map((e,i)=>`<div class="bloque" data-i="${i}"><b>${esc(e.nombre)}</b><div class="rej" style="margin-top:8px">
+      <label class="campo">X (usuario, sin @)<input type="text" data-r="x" value="${esc(e.cuentas.x||'')}" placeholder="usuario (vacío si no tiene)"></label>
+      <label class="campo">Facebook<input type="text" data-r="facebook" value="${esc(e.cuentas.facebook||'')}" placeholder="https://www.facebook.com/…"></label>
+      <label class="campo">Instagram<input type="text" data-r="instagram" value="${esc(e.cuentas.instagram||'')}" placeholder="https://www.instagram.com/…"></label>
+      <label class="campo">TikTok<input type="text" data-r="tiktok" value="${esc(e.cuentas.tiktok||'')}" placeholder="https://www.tiktok.com/@…"></label></div></div>`).join('');
+    c.querySelectorAll('.bloque').forEach(b=>{const e=CFG._ents[+b.dataset.i];b.querySelectorAll('[data-r]').forEach(x=>x.oninput=()=>e.cuentas[x.dataset.r]=x.value)})}
+  if(cfgTab==='trends'){
+    c.innerHTML=`<p class="ayuda">Cada grupo admite hasta 5 términos, que se comparan en la misma escala (0–100). Los grupos cuyo nombre contiene "fallas" generan alertas cuando suben. Máximo 6 grupos: Google limita las consultas.</p>
+    <div class="rej"><label class="campo">Frecuencia de actualización (minutos)<input type="number" min="30" max="1440" id="cfg-tr-int" value="${CFG.trends.intervalo_minutos}"></label></div>`+
+    CFG._grupos.map((g,i)=>`<div class="bloque" data-i="${i}"><div class="rej"><label class="campo">Grupo<input type="text" data-f="nombre" value="${esc(g.nombre)}"></label></div>
+      <label class="campo">Términos (máx. 5, separados por comas)<textarea data-f="terminos">${esc(g.terminos)}</textarea></label><button data-borrar="${i}">Eliminar grupo</button></div>`).join('')+`<button id="cfg-add-gr">+ Añadir grupo</button>`;
+    $('#cfg-tr-int').oninput=e=>CFG.trends.intervalo_minutos=e.target.value;
+    c.querySelectorAll('.bloque').forEach(b=>{const g=CFG._grupos[+b.dataset.i];b.querySelectorAll('[data-f]').forEach(x=>x.oninput=()=>g[x.dataset.f]=x.value)});
+    c.querySelectorAll('[data-borrar]').forEach(b=>b.onclick=()=>{CFG._grupos.splice(+b.dataset.borrar,1);pintarConfig()});
+    $('#cfg-add-gr').onclick=()=>{CFG._grupos.push({nombre:'Nuevo grupo',terminos:''});pintarConfig()}}
+  if(cfgTab==='costos'){
+    c.innerHTML=`<div class="bloque"><b>Apify</b> (Facebook, Instagram, TikTok)<div class="rej" style="margin-top:8px">
+      <label class="campo">Presupuesto mensual (US$) — se detiene al alcanzarlo<input type="number" step="0.5" min="0" max="1000" data-a="presupuesto_usd_mes" value="${CFG.apify.presupuesto_usd_mes}"></label>
+      <label class="campo">Publicaciones revisadas por cuenta<input type="number" min="1" max="20" data-a="posts_por_cuenta" value="${CFG.apify.posts_por_cuenta}"></label>
+      <label class="campo">Máx. comentarios nuevos por publicación<input type="number" min="10" max="1000" data-a="comentarios_max_por_post" value="${CFG.apify.comentarios_max_por_post}"></label></div></div>
+    <div class="bloque"><b>ScrapeCreators</b> (Facebook, Instagram, TikTok · se reparte las cuentas con Apify)<div class="rej" style="margin-top:8px">
+      <label class="campo">Tope de créditos al mes (1 crédito ≈ 1 consulta)<input type="number" min="0" max="1000000" data-s="max_creditos_mes" value="${CFG.scrapecreators.max_creditos_mes??3000}"></label>
+      <label class="campo">Máx. páginas de comentarios por publicación (~12 comentarios c/u)<input type="number" min="1" max="50" data-s="paginas_max_por_post" value="${CFG.scrapecreators.paginas_max_por_post??5}"></label></div></div>
+    <div class="bloque"><b>API oficial de X</b> (pago por uso)<div class="rej" style="margin-top:8px">
+      <label class="campo">Modo<select data-x="modo"><option value="respaldo" ${CFG.x_api.modo==='respaldo'?'selected':''}>Respaldo (solo si Nitter falla)</option><option value="activo" ${CFG.x_api.modo==='activo'?'selected':''}>Activo (siempre, más gasto)</option></select></label>
+      <label class="campo">Tope diario de tweets leídos<input type="number" min="0" max="100000" data-x="max_lecturas_dia" value="${CFG.x_api.max_lecturas_dia}"></label></div></div>
+    <div class="bloque"><b>Proveedores de IA</b> (clasificación en paralelo)${CFG.ia.map((p,i)=>`<div class="rej" style="margin-top:8px" data-i="${i}">
+      <label class="campo">${esc(p.nombre)}<span><input type="checkbox" data-p="activo" ${p.activo?'checked':''}> activo</span></label>
+      <label class="campo">Modelo<input type="text" data-p="modelo" value="${esc(p.modelo)}"></label></div>`).join('')}</div>
+    <div class="bloque"><b>Claves</b> <span class="sub">(por seguridad se editan solo en el archivo <code>.env</code>)</span><div style="margin-top:6px">${Object.entries(CFG.claves).map(([k,v])=>`<div class="sub">${v?'✅':'⚪'} ${esc(k)} ${v?'configurada':'sin configurar'}</div>`).join('')}</div></div>`;
+    c.querySelectorAll('[data-a]').forEach(x=>x.oninput=()=>CFG.apify[x.dataset.a]=x.value);
+    c.querySelectorAll('[data-x]').forEach(x=>x.oninput=x.onchange=()=>CFG.x_api[x.dataset.x]=x.value);
+    c.querySelectorAll('[data-s]').forEach(x=>x.oninput=()=>CFG.scrapecreators[x.dataset.s]=x.value);
+    c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value})}
+  if(cfgTab==='nube'){
+    c.innerHTML=`<p class="ayuda">Palabras que <b>no se muestran</b> en la nube porque no aportan valor (medios, fechas, verbos genéricos…). Escribe una por línea. Se aplica al instante, sin reiniciar. Los nombres de las entidades se controlan con la casilla "Incluir nombres de entidades" de la nube.</p>
+    <div class="bloque"><div class="frow" style="margin-bottom:8px"><input type="text" id="nb-cfg-nueva" placeholder="Añadir palabra y Enter…" style="flex:1"><span class="sub" id="nb-cfg-n"></span></div>
+      <textarea id="nb-cfg-lista" style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12px" spellcheck="false"></textarea>
+      <div class="frow" style="margin-top:8px"><button class="pri" id="nb-cfg-guardar">Guardar lista</button><button id="nb-cfg-inicial">Restaurar lista inicial</button><span class="sub" id="nb-cfg-msg"></span></div></div>`;
+    const area=$('#nb-cfg-lista'),cuenta=()=>$('#nb-cfg-n').textContent=area.value.split('\n').filter(x=>x.trim()).length+' palabras';
+    fetch('/api/nube').then(r=>r.json()).then(d=>{area.value=d.excluidas.join('\n');area.dataset.ini=d.iniciales.join('\n');cuenta()});
+    area.oninput=cuenta;
+    $('#nb-cfg-nueva').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim().toLowerCase();if(w){area.value=(area.value.trim()+'\n'+w).trim();cuenta()}e.target.value=''}};
+    $('#nb-cfg-inicial').onclick=()=>{if(confirm('¿Reemplazar la lista por la inicial?')){area.value=area.dataset.ini;cuenta()}};
+    $('#nb-cfg-guardar').onclick=async()=>{
+      const r=await fetch('/api/nube',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({excluidas:area.value.split('\n')})}).then(r=>r.json());
+      if(r.error){$('#nb-cfg-msg').innerHTML='<span style="color:var(--neg)">⚠ '+esc(r.error)+'</span>';return}
+      area.value=r.excluidas.join('\n');cuenta();$('#nb-cfg-msg').textContent='✓ Guardado y aplicado';cargarNube()}}
+  if(cfgTab==='archivo'){
+    c.innerHTML=`<p class="ayuda" id="ar-info"></p>
+    <div class="bloque" id="ar-export"></div>
+    <div class="bloque"><b style="font-size:13px">Meses archivados</b>
+      <p class="ayuda" style="margin-top:4px">Restaurar trae ese mes de vuelta al análisis (verás sus datos en el panel con el periodo "Todo"); quitarlo lo devuelve al archivo sin perder nada.</p>
+      <div id="ar-lista" class="src"><span class="sub">Cargando…</span></div>
+      <div style="margin-top:8px"><button id="ar-quitar" style="display:none">Quitar todo lo restaurado del análisis</button></div></div>`;
+        cargarArchivo()}
+}
+async function guardarConfig(){
+  const bancos={},cuentas={};
+  for(const e of CFG._ents){const n=e.nombre.trim();if(!n)continue;
+    bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
+  const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
+  const cuerpo={iniciar_en_pausa:CFG.iniciar_en_pausa,retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,x_api:CFG.x_api,ia:CFG.ia};
+  $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
+  try{
+    const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});
+    const d=await r.json();
+    if(!r.ok){$('#cfg-msg').innerHTML='<span style="color:var(--neg)">⚠ '+esc(d.error||'Error')+'</span>';$('#cfg-guardar').disabled=false;return}
+    $('#cfg-msg').textContent='Guardado. Aplicando cambios (el monitor se reinicia unos segundos)…';
+    await new Promise(r=>setTimeout(r,2500));
+    for(let i=0;i<40;i++){try{const r=await fetch('/api/estado');if(r.ok){location.reload();return}}catch(e){}await new Promise(r=>setTimeout(r,1000))}
+    $('#cfg-msg').textContent='El monitor tarda en volver; recarga la página en unos segundos.'
+  }catch(e){$('#cfg-msg').textContent='Error de conexión: '+e;$('#cfg-guardar').disabled=false}}
+$('#cfg-abrir').onclick=abrirConfig;
+$('#cfg-cerrar').onclick=$('#cfg-cancelar').onclick=()=>$('#cfg').classList.remove('on');
+$('#cfg').onclick=e=>{if(e.target.id==='cfg')$('#cfg').classList.remove('on')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#cfg').classList.remove('on')});
+$('#cfg-guardar').onclick=guardarConfig;
+
+// ---------- Exportación por mes, rango o año ----------
+function formularioExport(cont,info){
+  const meses=info.disponibles||[];
+  if(!meses.length){cont.innerHTML='<div class="sub">Aún no hay datos para exportar.</div>';return}
+  const anios=[...new Set(meses.map(m=>m.slice(0,4)))].reverse();
+  const opMes=sel=>meses.slice().reverse().map(m=>`<option value="${esc(m)}" ${m===sel?'selected':''}>${esc(etiquetaMes(m))}</option>`).join('');
+  const ultimo=meses.at(-1);
+  cont.innerHTML=`<div class="exp"><b style="font-size:13px">⬇ Descargar datos</b>
+    <div class="fila"><label>Periodo</label>
+      <select data-e="modo"><option value="mes">Un mes</option><option value="rango">Rango de meses</option><option value="anio">Año completo</option></select>
+      <span data-v="mes"><select data-e="mes">${opMes(ultimo)}</select></span>
+      <span data-v="rango" style="display:none">de <select data-e="desde">${opMes(meses[Math.max(0,meses.length-3)])}</select> a <select data-e="hasta">${opMes(ultimo)}</select></span>
+      <span data-v="anio" style="display:none"><select data-e="anio">${anios.map(a=>`<option>${esc(a)}</option>`).join('')}</select></span></div>
+    <div class="fila"><label>Entidad</label><select data-e="banco"><option value="">Todas</option>${(info.entidades||[]).map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('')}</select>
+      <label><input type="checkbox" data-e="quejas"> Solo quejas</label>
+      <label>Formato</label><select data-e="formato"><option value="csv">CSV (Excel)</option><option value="json">JSON</option></select>
+      <button class="pri" data-e="ir">Descargar</button></div>
+    <div class="sub" data-e="nota">Incluye lo archivado y lo que está en análisis, sin duplicados.</div></div>`;
+  const q=k=>cont.querySelector(`[data-e="${k}"]`);
+  q('modo').onchange=()=>cont.querySelectorAll('[data-v]').forEach(s=>s.style.display=s.dataset.v===q('modo').value?'':'none');
+  q('ir').onclick=()=>{let d,h;const m=q('modo').value;
+    if(m==='mes')d=h=q('mes').value;else if(m==='rango'){d=q('desde').value;h=q('hasta').value;if(d>h)[d,h]=[h,d]}else{d=q('anio').value+'-01';h=q('anio').value+'-12'}
+    const p=new URLSearchParams({desde:d,hasta:h,formato:q('formato').value});
+    if(q('banco').value)p.set('banco',q('banco').value);if(q('quejas').checked)p.set('solo_quejas','1');
+    const a=document.createElement('a');a.href='/api/exportar?'+p;a.download='';document.body.appendChild(a);a.click();a.remove();
+    q('nota').textContent=`Descargando ${m==='anio'?'el año '+q('anio').value:etiquetaMes(d)+(d!==h?' a '+etiquetaMes(h):'')}…`}}
+
+// ---------- Archivo histórico ----------
+async function cargarArchivo(){
+  if(!$('#ar-lista'))return; // solo existe con la pestaña de archivo abierta
+  let a;try{a=await fetch('/api/archivo').then(r=>r.json())}catch(e){return}
+  $('#ar-info').textContent=`El análisis cubre los últimos ${a.retencion_dias} días. Lo anterior se guarda aquí por mes y puedes volver a cargarlo cuando lo necesites.`;
+  $('#ar-lista').innerHTML=a.meses.length?a.meses.map(m=>`<div><b>${esc(etiquetaMes(m.mes))}</b> <span class="sub">${fmt(m.menciones)} menciones · ${fmt(m.quejas)} quejas · ${fmt(m.kb)} KB</span>
+      <a href="/api/archivo/exportar?mes=${esc(m.mes)}&formato=csv" title="Descargar CSV"><button>⬇</button></a>
+      ${m.restauradas?`<button data-q="${esc(m.mes)}">Quitar del análisis</button><br><span class="sub">✓ restaurado (${fmt(m.restauradas)})</span>`:`<button data-r="${esc(m.mes)}">Restaurar</button>`}</div>`).join(''):'<div class="sub">Todavía no hay meses archivados.</div>';
+  $('#ar-quitar').style.display=a.meses.some(m=>m.restauradas)?'inline-block':'none';
+  formularioExport($('#ar-export'),a);
+  $('#ar-lista').querySelectorAll('button[data-r]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Restaurando…';
+    const r=await post('/api/archivo/restaurar?mes='+encodeURIComponent(b.dataset.r)).then(r=>r.json());
+    if(r.error)alert(r.error);else{F.periodo='todo';guardarF();recargar()}cargarArchivo()});
+  $('#ar-lista').querySelectorAll('button[data-q]').forEach(b=>b.onclick=async()=>{await post('/api/archivo/quitar?mes='+encodeURIComponent(b.dataset.q));recargar();cargarArchivo()})}
+function etiquetaMes(m){const [a,n]=m.split('-');return ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][+n-1]+' '+a}
+
+// ---------- Google Trends ----------
+let TR=null,trGrupo=null;
+const TRC=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)'];
+async function cargarTrends(){
+  try{TR=await fetch('/api/trends').then(r=>r.json())}catch(e){return}
+  const gs=Object.keys(TR.grupos);
+  $('#tr-act').textContent=TR.actualizado?'· actualizado hace '+hace(TR.actualizado):'· obteniendo datos…';
+  $('#tr-alertas').innerHTML=TR.alertas.map(a=>`<div class="alerta">🔎 <b>Aumentan las búsquedas «${esc(a.termino)}»</b> en Google en las últimas horas (interés ${a.max}/100). Puede anticipar una caída.</div>`).join('');
+  if(!gs.length){$('#tr-chart').innerHTML='<div class="empty">Esperando la primera consulta a Google Trends…</div><div class="tip" id="tr-tip"></div>';return}
+  if(!gs.includes(trGrupo))trGrupo=gs[0];
+  $('#tr-grupos').innerHTML=gs.map(g=>`<button class="tg ${g===trGrupo?'on':''}" data-g="${esc(g)}">${esc(g)}</button>`).join('');
+  $('#tr-grupos').querySelectorAll('button').forEach(b=>b.onclick=()=>{trGrupo=b.dataset.g;cargarTrends()});
+  dibujarTrends(TR.grupos[trGrupo]);
+  // búsquedas relacionadas: lo que más sube revela problemas o fraudes nuevos (p. ej. "yape casino")
+  const rel=TR.relacionadas||{};
+  $('#tr-rel').innerHTML=Object.keys(rel).length?'<b style="font-size:12px">Búsquedas relacionadas en aumento (últimos 3 meses)</b>'+Object.entries(rel).map(([t,r])=>`<div class="frow" style="margin-top:5px"><span class="chip" style="font-weight:700">${esc(t)}</span>${r.aumento.length?r.aumento.map(q=>`<span class="chip" title="${esc(q.valor)}">↑ ${esc(q.consulta)} <span class="sub">${esc(q.valor)}</span></span>`).join(''):'<span class="sub">sin búsquedas en aumento</span>'}</div>`).join(''):''}
+function dibujarTrends(series){
+  $('#tr-leyenda').innerHTML=series.map((s,i)=>`<span style="--c:${TRC[i]}">${esc(s.termino)}</span>`).join('');
+  const W=900,H=200,L=30,R=110,T=10,B=22,iw=W-L-R,ih=H-T-B,n=series[0].puntos.length;
+  if(!n){$('#tr-chart').innerHTML='<div class="empty">Sin datos</div>';return}
+  const x=i=>L+i*iw/Math.max(1,n-1),y=v=>T+ih-v/100*ih;
+  let g='';
+  [0,50,100].forEach(v=>g+=`<line x1="${L}" x2="${L+iw}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-5}" y="${y(v)+3}" text-anchor="end">${v}</text>`);
+  for(let i=0;i<n;i+=Math.ceil(n/7)){const d=new Date(series[0].puntos[i][0]);g+=`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${esc(d.toLocaleDateString('es-PE',{timeZone:'America/Lima',weekday:'short',day:'2-digit'}))}</text>`}
+  // etiquetas directas al final de cada línea, separadas para que no se encimen
+  const fin=series.map((s,i)=>({i,y:y(s.puntos.at(-1)[1]),t:s.termino})).sort((a,b)=>a.y-b.y);
+  for(let k=1;k<fin.length;k++)if(fin[k].y-fin[k-1].y<11)fin[k].y=fin[k-1].y+11;
+  series.forEach((s,i)=>{g+=`<polyline fill="none" stroke="${TRC[i]}" stroke-width="2" stroke-linejoin="round" points="${s.puntos.map((p,j)=>x(j).toFixed(1)+','+y(p[1]).toFixed(1)).join(' ')}"/>`});
+  fin.forEach(f=>g+=`<text x="${L+iw+6}" y="${f.y+3}" style="fill:var(--ink2)">${esc(f.t)}</text>`);
+  g+=`<line id="tr-cruz" x1="0" x2="0" y1="${T}" y2="${T+ih}" stroke="var(--ink2)" stroke-dasharray="3 3" style="display:none"/>`;
+  g+=`<rect id="tr-hit" x="${L}" y="${T}" width="${iw}" height="${ih}" fill="transparent"/>`;
+  $('#tr-chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Interés de búsqueda en Google">${g}</svg><div class="tip" id="tr-tip"></div>`;
+  const svg=$('#tr-chart svg'),tip=$('#tr-tip'),cruz=$('#tr-cruz');
+  $('#tr-hit').onmousemove=e=>{const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)*W/r.width,j=Math.max(0,Math.min(n-1,Math.round((px-L)/iw*(n-1))));
+    cruz.setAttribute('x1',x(j));cruz.setAttribute('x2',x(j));cruz.style.display='';
+    const d=new Date(series[0].puntos[j][0]);
+    tip.innerHTML=`<b>${esc(d.toLocaleString('es-PE',{timeZone:'America/Lima',weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</b>`+series.map((s,i)=>({s,i})).sort((a,b)=>b.s.puntos[j][1]-a.s.puntos[j][1]).map(({s,i})=>`<span style="--c:${TRC[i]}">${esc(s.termino)}: ${s.puntos[j][1]}</span>`).join('<br>');
+    const box=$('#tr-chart').getBoundingClientRect();tip.style.display='block';let tx=e.clientX-box.left+12;if(tx+tip.offsetWidth>box.width)tx-=tip.offsetWidth+24;tip.style.left=tx+'px';tip.style.top='4px'};
+  $('#tr-hit').onmouseleave=()=>{tip.style.display='none';cruz.style.display='none'}}
+
+// ---------- tiempo real (Server-Sent Events) ----------
+function conectarVivo(){
+  const ev=new EventSource('/api/stream');
+  ev.onopen=()=>$('#live').classList.add('on');
+  ev.onerror=()=>$('#live').classList.remove('on');
+  ev.addEventListener('nuevo',e=>{const r=JSON.parse(e.data);
+    if(r.severidad>=3&&$('#notif').checked&&'Notification'in window&&Notification.permission==='granted'&&!vistosGraves.has(r.id)){vistosGraves.add(r.id);new Notification(`Queja grave · ${r.bancos.join(', ')} · ${r.fuente}`,{body:r.texto.slice(0,160)})}
+    if(!coincide(r))return;
+    if(!F.orden){const lista=$('#lista'),y=window.scrollY,alto=document.documentElement.scrollHeight;
+      lista.querySelector('.empty')?.remove();lista.insertAdjacentHTML('afterbegin',itemHTML(r,true));offset++;
+      $('#n-items').textContent=`· mostrando ${fmt(offset)}`;
+      if(y>lista.getBoundingClientRect().top+y-80)window.scrollTo(0,y+document.documentElement.scrollHeight-alto)} // no salta lo que estás leyendo
+    refrescarGraficos()})}
+let tGraf;function refrescarGraficos(){clearTimeout(tGraf);tGraf=setTimeout(()=>{cargarStats();cargarNube()},2000)}
+$('#zoom-back').onclick=()=>{const z=zoomPila.pop();if(z){Object.assign(F,z);pintarFiltros();recargar()}};
+
+// ---------- controles ----------
+$('#f-tipo').onchange=e=>{F.tipo=e.target.value;guardarF();recargar()};
+$('#f-cat').onchange=e=>{F.categoria=e.target.value;guardarF();recargar()};
+$('#f-sev').onchange=e=>{F.sev=e.target.value;guardarF();recargar()};
+$('#f-orden').onchange=e=>{F.orden=e.target.value;guardarF();cargarItems()};
+$('#f-desde').onchange=e=>{F.desde=e.target.value;guardarF();recargar()};
+$('#f-hasta').onchange=e=>{F.hasta=e.target.value;guardarF();recargar()};
+let tq;$('#f-q').oninput=e=>{clearTimeout(tq);tq=setTimeout(()=>{F.q=e.target.value.trim();guardarF();recargar()},300)};
+$('#f-reset').onclick=()=>{zoomPila=[];F={gran:'auto',periodo:'168',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};pintarFiltros();recargar()};
+$('#notif').onchange=e=>{if(e.target.checked&&'Notification'in window)Notification.requestPermission()};
+$('#refresh').onclick=async()=>{await post('/api/refresh');setTimeout(cargarEstado,800)};
+$('#h-go').onclick=async()=>{const fuentes=[...$('#h-fuentes').querySelectorAll('input:checked')].map(i=>i.value).join(',');
+  const r=await post(`/api/historico?desde=${$('#h-desde').value}&hasta=${$('#h-hasta').value}&fuentes=${encodeURIComponent(fuentes)}`).then(r=>r.json());
+  if(r.error)alert(r.error);cargarEstado()};
+
+(async()=>{await cargarEstado();pintarFiltros();recargar();conectarVivo();cargarTrends();setInterval(cargarTrends,300000);
+  setInterval(cargarEstado,10000);
+  setInterval(()=>{if(document.visibilityState==='visible')refrescarGraficos()},30000);
+  // las clasificaciones de la IA llegan después: si estás al inicio de la lista, se refresca para mostrarlas
+  setInterval(()=>{if(document.visibilityState==='visible'&&window.scrollY<300&&!window.getSelection().toString()&&!$('#cfg').classList.contains('on'))cargarItems()},60000);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){refrescarGraficos();cargarTrends()}})})();
+</script>
+</body>
+</html>

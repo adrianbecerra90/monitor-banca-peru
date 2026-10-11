@@ -1,0 +1,462 @@
+{
+  "_nota": "Edita entidades, cuentas oficiales y frecuencias aquí. Reinicia el servidor tras cambiar este archivo.",
+  "idioma": "es",
+  "bancos": {
+    "Yape": {
+      "buscar": [
+        "Yape"
+      ],
+      "alias": [
+        "Yape",
+        "yapear",
+        "yapeo",
+        "yapeame",
+        "yapearon",
+        "@yapeoficial",
+        "yapeoficial",
+        "#Yape"
+      ],
+      "ambiguos": []
+    },
+    "Plin": {
+      "buscar": [
+        "Plin"
+      ],
+      "alias": [
+        "Plin",
+        "plinear",
+        "plineo",
+        "plineame",
+        "plinearon",
+        "@plin.peru",
+        "plin.peru",
+        "#Plin"
+      ],
+      "ambiguos": []
+    },
+    "BCP": {
+      "buscar": [
+        "BCP",
+        "ViaBCP",
+        "Banco de Crédito"
+      ],
+      "alias": [
+        "BCP",
+        "ViaBCP",
+        "Via BCP",
+        "Banco de Crédito",
+        "Banco de Credito del Peru",
+        "@BCPComunica",
+        "#BCP",
+        "bancodecreditobcp",
+        "@bcpbancodecredito"
+      ],
+      "ambiguos": [
+        "BCP"
+      ]
+    },
+    "Interbank": {
+      "buscar": [
+        "Interbank"
+      ],
+      "alias": [
+        "Interbank",
+        "Inter bank",
+        "@Interbank",
+        "#Interbank",
+        "Banco Internacional del Perú",
+        "@interbankpe",
+        "InterbankPeru"
+      ],
+      "ambiguos": []
+    },
+    "BBVA Perú": {
+      "buscar": [
+        "BBVA Perú",
+        "BBVA Peru",
+        "BBVA Continental"
+      ],
+      "alias": [
+        "BBVA Perú",
+        "BBVA Peru",
+        "BBVA Continental",
+        "Banco Continental",
+        "BBVA",
+        "@bbva_peru",
+        "bbvaenperu"
+      ],
+      "ambiguos": [
+        "BBVA"
+      ]
+    },
+    "Scotiabank Perú": {
+      "buscar": [
+        "Scotiabank Perú",
+        "Scotiabank Peru",
+        "ScotiabankPE"
+      ],
+      "alias": [
+        "Scotiabank Perú",
+        "Scotiabank Peru",
+        "@ScotiabankPE",
+        "ScotiabankPE",
+        "Scotiabank",
+        "Scotia"
+      ],
+      "ambiguos": [
+        "Scotiabank",
+        "Scotia"
+      ]
+    },
+    "Banco de la Nación": {
+      "buscar": [
+        "Banco de la Nación",
+        "Banco de la Nacion",
+        "Multired"
+      ],
+      "alias": [
+        "Banco de la Nación",
+        "Banco de la Nacion",
+        "Bco de la Nación",
+        "BN Perú",
+        "Multired",
+        "Págalo.pe",
+        "pagalo.pe",
+        "@BancodelaNacion"
+      ],
+      "ambiguos": []
+    },
+    "SBS": {
+      "buscar": [
+        "SBS Perú",
+        "Superintendencia de Banca",
+        "SBSPeru"
+      ],
+      "alias": [
+        "SBS Perú",
+        "SBS Peru",
+        "@SBSPeru",
+        "SBSPeru",
+        "Superintendencia de Banca",
+        "Seguros y AFP",
+        "SBS"
+      ],
+      "ambiguos": [
+        "SBS"
+      ]
+    }
+  },
+  "contexto_peru": [
+    "peru",
+    "perú",
+    "peruano",
+    "peruana",
+    "lima",
+    "arequipa",
+    "trujillo",
+    "cusco",
+    "piura",
+    "chiclayo",
+    "soles",
+    "s/.",
+    "s/ ",
+    "yape",
+    "plin",
+    "sbs",
+    "indecopi",
+    "reniec",
+    "sunat",
+    "cts",
+    "afp",
+    "onp",
+    "agente bcp",
+    "agente kasnet",
+    "multired",
+    "interbank",
+    "banco de la nacion"
+  ],
+  "contexto_excluir": [
+    "paraguay",
+    "paraguayo",
+    "asuncion",
+    "ueno",
+    "guarani",
+    "bolivia",
+    "boliviano",
+    "santa cruz de la sierra",
+    "ñanduti",
+    "nanduti",
+    "abc color",
+    "sbs news",
+    "australia",
+    "corea",
+    "korea",
+    "kpop",
+    "k-pop",
+    "drama"
+  ],
+  "intervalos_minutos": {
+    "X": 3,
+    "Facebook": 720,
+    "Instagram": 720,
+    "TikTok": 1440,
+    "YouTube": 30,
+    "Noticias": 5,
+    "Bluesky": 5
+  },
+  "noticias_rss": [
+    "https://rpp.pe/feed",
+    "https://larepublica.pe/rss/economia.xml",
+    "https://larepublica.pe/rss/sociedad.xml",
+    "https://gestion.pe/arc/outboundfeeds/rss/?outputType=xml",
+    "https://elcomercio.pe/arc/outboundfeeds/rss/?outputType=xml",
+    "https://diariocorreo.pe/arc/outboundfeeds/rss/?outputType=xml",
+    "https://www.infobae.com/arc/outboundfeeds/rss/category/peru/"
+  ],
+  "cuentas_oficiales": {
+    "_nota": "Verificadas contra la web oficial de cada entidad (incl. yape.com.pe y plin.pe). Yape y Plin no tienen cuenta en X; Plin no tiene TikTok.",
+    "Yape": {
+      "facebook": "https://www.facebook.com/yapeoficial",
+      "instagram": "https://www.instagram.com/yapeoficial/",
+      "tiktok": "https://www.tiktok.com/@yapeoficial"
+    },
+    "Plin": {
+      "facebook": "https://www.facebook.com/plin.peru",
+      "instagram": "https://www.instagram.com/plin.peru/"
+    },
+    "BCP": {
+      "x": "BCPComunica",
+      "facebook": "https://www.facebook.com/bancodecreditobcp",
+      "instagram": "https://www.instagram.com/bcpbancodecredito/"
+    },
+    "Interbank": {
+      "x": "interbank",
+      "facebook": "https://www.facebook.com/InterbankPeru",
+      "instagram": "https://www.instagram.com/interbank/",
+      "tiktok": "https://www.tiktok.com/@interbankpe"
+    },
+    "BBVA Perú": {
+      "x": "bbva_peru",
+      "facebook": "https://www.facebook.com/BBVAenPeru",
+      "instagram": "https://www.instagram.com/bbva_peru/",
+      "tiktok": "https://www.tiktok.com/@bbvaenperu"
+    },
+    "Scotiabank Perú": {
+      "x": "scotiabankpe",
+      "facebook": "https://www.facebook.com/ScotiabankPE",
+      "instagram": "https://www.instagram.com/scotiabankpe/",
+      "tiktok": "https://www.tiktok.com/@scotiabankpe"
+    },
+    "Banco de la Nación": {
+      "x": "BancodelaNacion",
+      "facebook": "https://www.facebook.com/BancoDeLaNacion",
+      "instagram": "https://www.instagram.com/bancodelanacionperu/",
+      "tiktok": "https://www.tiktok.com/@bancodelanacionperu"
+    },
+    "SBS": {
+      "x": "SBSPERU",
+      "facebook": "https://www.facebook.com/sbsperu",
+      "instagram": "https://www.instagram.com/sbsperu/",
+      "tiktok": "https://www.tiktok.com/@sbsperu"
+    }
+  },
+  "apify": {
+    "_nota": "Actores de Apify. Requiere APIFY_TOKEN. Si un actor cambia su esquema, ajusta la plantilla. Variables: {q_lista} términos, {urls}/{urls_obj} URLs, {desde}/{hasta} fechas AAAA-MM-DD, {n_posts}, {n_coment}, {perfiles_tiktok}. Lectura incremental: solo se piden comentarios de publicaciones con comentarios nuevos desde la última revisión.",
+    "posts_por_cuenta": 5,
+    "posts_por_cuenta_historico": 20,
+    "x_busqueda": {
+      "actor": "apidojo/tweet-scraper",
+      "input": {
+        "searchTerms": "{q_lista}",
+        "sort": "Latest",
+        "maxItems": "{n_max}"
+      }
+    },
+    "facebook_posts": {
+      "actor": "apify/facebook-posts-scraper",
+      "input": {
+        "startUrls": "{urls_obj}",
+        "resultsLimit": "{n_posts}",
+        "onlyPostsNewerThan": "{desde}",
+        "onlyPostsOlderThan": "{hasta}"
+      }
+    },
+    "facebook_comentarios": {
+      "actor": "apify/facebook-comments-scraper",
+      "input": {
+        "startUrls": "{urls_obj}",
+        "resultsLimit": "{n_coment}",
+        "viewOption": "RECENT_ACTIVITY"
+      }
+    },
+    "instagram_posts": {
+      "actor": "apify/instagram-scraper",
+      "input": {
+        "directUrls": "{urls}",
+        "resultsType": "posts",
+        "resultsLimit": "{n_posts}",
+        "onlyPostsNewerThan": "{desde}"
+      }
+    },
+    "instagram_comentarios": {
+      "actor": "apify/instagram-comment-scraper",
+      "input": {
+        "directUrls": "{urls}",
+        "resultsLimit": "{n_coment}"
+      }
+    },
+    "tiktok_busqueda": {
+      "actor": "clockworks/tiktok-scraper",
+      "input": {
+        "profiles": "{perfiles_tiktok}",
+        "resultsPerPage": 3,
+        "profileScrapeSections": [
+          "videos"
+        ],
+        "profileSorting": "latest",
+        "oldestPostDateUnified": "{desde}",
+        "newestPostDate": "{hasta}"
+      }
+    },
+    "tiktok_comentarios": {
+      "actor": "clockworks/tiktok-comments-scraper",
+      "input": {
+        "postURLs": "{urls}",
+        "commentsPerPost": "{n_coment}"
+      }
+    },
+    "presupuesto_usd_mes": 4.5,
+    "x_via_apify": false,
+    "comentarios_max_por_post": 200
+  },
+  "nitter": {
+    "_nota": "X sin clave vía Nitter. Las consultas se reparten entre las instancias sanas (activo-activo) y saltan a otra si una falla. Lista actualizada de instancias: https://status.d420.de",
+    "instancias": [
+      "https://nitter.kareem.one",
+      "https://nitter.meowing.monster",
+      "https://nitter.jaydenha.uk",
+      "https://nitter.netbub.com",
+      "https://shitter.thepixora.com",
+      "https://nitter.pp.ua",
+      "https://nitter.tiekoetter.com"
+    ],
+    "paginas_tiempo_real": 1,
+    "paginas_historico": 40,
+    "pausa_seg": 3,
+    "consultas_en_paralelo": 3
+  },
+  "ia": {
+    "_nota": "Proveedores de IA en activo-activo (NVIDIA y OpenRouter directos): se reparten el trabajo y si uno cae el otro lo asume. Funciona igual en local y en un servidor.",
+    "proveedores": [
+      {
+        "nombre": "NVIDIA directo",
+        "activo": true,
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "variable_clave": "NVIDIA_API_KEY",
+        "modelo": "moonshotai/kimi-k3",
+        "modelos_alternativos": [
+          "moonshotai/kimi-k3",
+          "openai/gpt-oss-20b",
+          "meta/llama-3.3-70b-instruct"
+        ],
+        "lote": 10,
+        "pausa_seg": 1
+      },
+      {
+        "nombre": "OpenRouter directo",
+        "activo": true,
+        "base_url": "https://openrouter.ai/api/v1",
+        "variable_clave": "OPENROUTER_API_KEY",
+        "modelo": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "modelos_alternativos": [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "google/gemma-4-31b-it:free",
+          "meta-llama/llama-3.3-70b-instruct"
+        ],
+        "lote": 10,
+        "pausa_seg": 1,
+        "_nota": "Modelos gratuitos (:free; límite diario de peticiones de OpenRouter). El último alternativo es de pago y solo se usa si hay crédito."
+      }
+    ]
+  },
+  "x_api": {
+    "_nota": "API oficial de X con pago por uso (US$0,005 por tweet leído). 'respaldo' = solo si Nitter falla; 'activo' = siempre en paralelo con Nitter. Solo pide tweets nuevos y respeta el tope diario.",
+    "modo": "respaldo",
+    "max_lecturas_dia": 300,
+    "max_por_consulta": 50
+  },
+  "trends": {
+    "_nota": "Google Trends Perú. Sin API oficial abierta (la oficial está en alfa cerrada). Interés relativo 0–100 por hora; cada grupo (máx. 5 términos) comparte escala.",
+    "intervalo_minutos": 60,
+    "rss_minutos": 15,
+    "periodo": "now 7-d",
+    "grupos": {
+      "Bancos": [
+        "BCP",
+        "Interbank",
+        "BBVA",
+        "Scotiabank",
+        "Banco de la Nación"
+      ],
+      "Billeteras y SBS": [
+        "Yape",
+        "Plin",
+        "SBS"
+      ],
+      "Yape": [
+        "yape bcp",
+        "numero de yape",
+        "prestamo yape",
+        "yape esta fallando",
+        "yape casino"
+      ],
+      "Plin": [
+        "yape plin",
+        "interbank plin",
+        "plin bbva",
+        "plin scotiabank",
+        "promociones plin"
+      ],
+      "SBS": [
+        "tipo de cambio sbs",
+        "sbs deudas",
+        "reporte sbs",
+        "afp sbs",
+        "sbs seguro vida ley"
+      ],
+      "Búsquedas de fallas": [
+        "yape caido",
+        "plin caido",
+        "bcp caido",
+        "interbank caido",
+        "bbva caido"
+      ],
+      "Búsquedas de fallas (2)": [
+        "yape esta fallando",
+        "plin no funciona",
+        "scotiabank caido",
+        "banco de la nacion caido"
+      ]
+    },
+    "grupo_alertas": [
+      "Búsquedas de fallas",
+      "Búsquedas de fallas (2)"
+    ],
+    "horas_alerta": 3,
+    "relacionadas": [
+      "yape",
+      "plin",
+      "sbs",
+      "bcp",
+      "interbank"
+    ],
+    "relacionadas_horas": 6
+  },
+  "retencion_dias": 90,
+  "scrapecreators": {
+    "_nota": "Segunda ruta para Facebook, Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify; si uno cae, el otro asume todas.",
+    "max_creditos_mes": 90,
+    "paginas_max_por_post": 2
+  },
+  "iniciar_en_pausa": true
+}
