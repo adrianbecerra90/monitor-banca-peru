@@ -1765,6 +1765,75 @@ def agotar(prov, motivo):
     raise RutaInactiva(f"{motivo}. Apagado hasta el {fecha_renovacion(prov):%d/%m/%Y} (renovación de créditos)")
 
 
+def _tope_alcanzado(prov):
+    """Si el tope mensual local ya se alcanzó (sin consultar al proveedor). Texto del aviso o None."""
+    clave = _CFG_PROV[prov]
+    if prov == "Apify":
+        e = ESTADO.get("apify", {})
+        if e.get("usado") is not None and e["usado"] >= CONFIG.get("apify", {}).get("presupuesto_usd_mes", 4.5):
+            return f"el presupuesto del mes ya se alcanzó (US${e['usado']:.2f})"
+        return None
+    campo = "max_llamadas_mes" if prov == "RapidAPI" else "max_creditos_mes"
+    tope = CONFIG.get(clave, {}).get(campo)
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor=?",
+                        (ahora().strftime("%Y-%m"), prov)).fetchone()
+    usados = r[0] if r else 0
+    if tope is not None and usados >= tope:
+        return f"el tope del mes ya se alcanzó ({usados} de {tope})"
+    return None
+
+
+def lista_apagados():
+    """Todo lo que está apagado y se puede encender desde Configuración: servicios sin créditos y rutas apartadas por fallos."""
+    out = []
+    for prov in list(AGOTADOS):
+        hasta = agotado(prov)
+        if hasta:
+            out.append({"tipo": "proveedor", "nombre": prov, "hasta": hasta.isoformat(),
+                        "motivo": AGOTADOS.get(prov, {}).get("motivo", ""), "aviso": _tope_alcanzado(prov)})
+    for fuente, rutas_ in SALUD.items():
+        for ruta, s_ in rutas_.items():
+            if s_.get("pausa_hasta", 0) > time.time():
+                out.append({"tipo": "ruta", "fuente": fuente, "nombre": ruta,
+                            "hasta": iso(datetime.fromtimestamp(s_["pausa_hasta"], timezone.utc)), "motivo": s_.get("msg", "")})
+    return out
+
+
+def encender(tipo, nombre="", fuente=""):
+    """Enciende a mano algo apagado. Devuelve un aviso si se volverá a apagar en la próxima consulta."""
+    avisos = []
+    if tipo == "todo":
+        for a in lista_apagados():
+            avisos += encender(a["tipo"], a["nombre"], a.get("fuente", ""))
+        return avisos
+    if tipo == "proveedor":
+        if nombre not in _CFG_PROV:
+            raise ValueError("Servicio desconocido")
+        with _agot_lock:
+            AGOTADOS.pop(nombre, None)
+            _guardar_agotados()
+        for rutas_ in SALUD.values():
+            for n, s_ in rutas_.items():
+                if n.startswith(nombre):
+                    s_.update(inactiva=False, fallos=0, pausa_hasta=0, ok=None, msg="Encendido a mano")
+        print(f"[{datetime.now():%H:%M:%S}] {nombre} encendido a mano desde Configuración", flush=True)
+        aviso = _tope_alcanzado(nombre)
+        if aviso:
+            avisos.append(f"{nombre}: {aviso}; súbelo en Presupuestos e IA o se volverá a apagar en la próxima consulta")
+    elif tipo == "ruta":
+        s_ = SALUD.get(fuente, {}).get(nombre)
+        if s_ is None:
+            raise ValueError("Ruta desconocida")
+        s_.update(fallos=0, pausa_hasta=0, ok=None, msg="Encendida a mano; se probará en la próxima consulta")
+    else:
+        raise ValueError("Tipo desconocido")
+    for f in FUENTES:  # que se pruebe pronto
+        _proxima[f] = min(_proxima.get(f, 0), time.time() + 5)
+    return avisos
+
+
 def en_pausa(nombre=None):
     return PAUSA["todo"] or (nombre in PAUSA["fuentes"])
 
@@ -3430,7 +3499,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
-                               "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(),
+                               "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(),
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
@@ -3521,6 +3590,14 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._send({"error": str(e)}, code=400)
             return self._send({"ok": True, "pausa": PAUSA})
+        if u.path == "/api/encender":
+            try:
+                avisos = encender(qs.get("tipo", [""])[0], qs.get("nombre", [""])[0][:60], qs.get("fuente", [""])[0][:60])
+            except ValueError as e:
+                return self._send({"error": str(e)}, code=400)
+            registrar(self.yo["usuario"], f"encendió {qs.get('tipo', [''])[0]} {qs.get('nombre', [''])[0]}"[:120],
+                      self.client_address[0])
+            return self._send({"ok": True, "avisos": avisos, "apagados": lista_apagados()})
         if u.path == "/api/refresh":
             nombre = qs.get("fuente", [""])[0]
             if en_pausa(nombre or None):
