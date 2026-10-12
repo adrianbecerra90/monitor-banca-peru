@@ -3146,7 +3146,9 @@ def datos_trends():
         for t, tipo, q, v in con.execute("SELECT termino, tipo, consulta, valor FROM trends_rel"):
             rel.setdefault(t, {"principal": [], "aumento": []})[tipo].append({"consulta": q, "valor": v})
     return {"relacionadas": rel,
-            "grupos": {g: [{"termino": k, "puntos": grupos[g][k]} for k in orden[g]] for g in grupos},
+            # en el orden de la configuración (no en el de llegada de los datos)
+            "grupos": {g: [{"termino": k, "puntos": grupos[g][k]} for k in orden[g]]
+                       for g in cfg.get("grupos", {}) if g in grupos},
             "alertas": alertas, "actualizado": ESTADO["trends"].get("actualizado"), "grupo_alertas": fallas}
 
 
