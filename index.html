@@ -62,6 +62,9 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .sev3{border-color:var(--neg);color:var(--neg)}
 .txt{white-space:pre-wrap;word-break:break-word}.txt a{color:var(--acc);text-decoration:none}
 mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
+.alerta{position:relative;padding-right:40px!important;}
+.alerta .cerrar{position:absolute;top:6px;right:8px;border:0;background:none;font-size:16px;line-height:1;padding:4px 6px;cursor:pointer;color:var(--ink2);border-radius:6px}
+.alerta .cerrar:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
 .alerta{border:1px solid var(--neg);background:color-mix(in srgb,var(--neg) 10%,var(--surface));border-radius:10px;padding:10px 14px;margin-bottom:10px}
 .nuevas{display:none;width:100%;margin-bottom:8px}
 .src{display:grid;gap:8px;font-size:13px}.src .d{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
@@ -433,7 +436,7 @@ async function cargarStats(){
   $('#k-total').textContent=fmt(st.total);$('#k-neg').textContent=pct(st.negativo);$('#k-neu').textContent=pct(st.neutro);$('#k-pos').textContent=pct(st.positivo);
   const net=st.total?Math.round((st.positivo-st.negativo)/st.total*100):0;$('#k-net').textContent=st.total?(net>0?'+':'')+net:'–';$('#k-net').style.color=net<0?'var(--neg)':net>0?'var(--pos)':'';
   $('#k-quejas').textContent=fmt(st.quejas);$('#k-graves').textContent=fmt(st.graves);
-  $('#picos').innerHTML=st.picos.map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en la última hora (promedio ${p.promedio}/h). Posible incidente o caída.</div>`).join('');
+  $('#picos').innerHTML=st.picos.filter(p=>!alertaCerrada('pico:'+p.banco,p.ultima_hora,3)).map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en la última hora (promedio ${p.promedio}/h). Posible incidente o caída.<button class="cerrar" data-k="${esc('pico:'+p.banco)}" data-n="${p.ultima_hora}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
   serie(st);calor(st);entidades(st);
   barras($('#cats'),Object.entries(st.por_categoria).sort((a,b)=>b[1]-a[1]),F.categoria,n=>{F.categoria=F.categoria===n?'':n;pintarFiltros();recargar()});
   barras($('#redes'),Object.entries(st.por_fuente).sort((a,b)=>b[1]-a[1]),F.fuente.length===1?F.fuente[0]:'',n=>{F.fuente=F.fuente.length===1&&F.fuente[0]===n?[]:[n];pintarFiltros();recargar()});
@@ -476,6 +479,18 @@ async function cargarEstado(){
   const h=es.historico;$('#h-msg').textContent=h.activo?'⏳ '+h.msg:(h.msg||'');if(h.progreso&&!h.activo)$('#h-msg').textContent+=h.progreso.length?' · '+h.progreso.join(' · '):'';
   $('#h-go').disabled=h.activo;
   $('#h-base').textContent=es.base.primera?`Base histórica: ${new Date(es.base.primera).toLocaleDateString('es-PE')} → ${new Date(es.base.ultima).toLocaleDateString('es-PE')}`:''}
+
+// ---------- alertas que se pueden cerrar ----------
+function alertasCerradas(){try{return JSON.parse(localStorage.getItem('monitor.alertas.cerradas')||'{}')}catch(e){return {}}}
+function alertaCerrada(clave,valor,horas){
+  const c=alertasCerradas()[clave];if(!c)return false;
+  // vuelve a mostrarse si el problema empeora un 50 % o si pasaron las horas indicadas
+  return valor<c.n*1.5&&Date.now()-c.t<horas*3600e3}
+document.addEventListener('click',e=>{const b=e.target.closest('.alerta .cerrar');if(!b)return;
+  const c=alertasCerradas();c[b.dataset.k]={n:+b.dataset.n,t:Date.now()};
+  for(const k in c)if(Date.now()-c[k].t>2*864e5)delete c[k]; // limpieza de cierres antiguos
+  try{localStorage.setItem('monitor.alertas.cerradas',JSON.stringify(c))}catch(err){}
+  b.closest('.alerta').remove()});
 
 // ---------- pausa ----------
 async function pausa(fuente,pausar){
@@ -755,7 +770,7 @@ async function cargarTrends(){
   try{TR=await fetch('/api/trends').then(r=>r.json())}catch(e){return}
   const gs=Object.keys(TR.grupos);
   $('#tr-act').textContent=TR.actualizado?'· actualizado hace '+hace(TR.actualizado):'· obteniendo datos…';
-  $('#tr-alertas').innerHTML=TR.alertas.map(a=>`<div class="alerta">🔎 <b>Aumentan las búsquedas «${esc(a.termino)}»</b> en Google en las últimas horas (interés ${a.max}/100). Puede anticipar una caída.</div>`).join('');
+  $('#tr-alertas').innerHTML=TR.alertas.filter(a=>!alertaCerrada('trends:'+a.termino,a.max,6)).map(a=>`<div class="alerta">🔎 <b>Aumentan las búsquedas «${esc(a.termino)}»</b> en Google en las últimas horas (interés ${a.max}/100). Puede anticipar una caída.<button class="cerrar" data-k="${esc('trends:'+a.termino)}" data-n="${a.max}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
   if(!gs.length){$('#tr-chart').innerHTML='<div class="empty">Esperando la primera consulta a Google Trends…</div><div class="tip" id="tr-tip"></div>';return}
   if(!gs.includes(trGrupo))trGrupo=gs[0];
   $('#tr-grupos').innerHTML=gs.map(g=>`<button class="tg ${g===trGrupo?'on':''}" data-g="${esc(g)}">${esc(g)}</button>`).join('');
