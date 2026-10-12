@@ -27,6 +27,7 @@ import glob
 import http.cookiejar
 import hashlib
 import hmac
+import itertools
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 import html
@@ -57,6 +58,10 @@ try:
     from curl_cffi import requests as cffi_requests
 except ImportError:
     cffi_requests = None
+try:
+    import instaloader
+except ImportError:
+    instaloader = None
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 # Datos (base, archivo, configuración editable, pausas…): en local, junto al código; en un servidor, en un disco
@@ -1750,12 +1755,93 @@ def fuente_facebook(rango=None):
 
 
 def fuente_instagram(rango=None):
+    # Con sesión de Instaloader, los servicios de pago solo entran si esa ruta falla
+    pago = "respaldo" if _ig_archivo_sesion() else "activo"
     return ejecutar_rutas("Instagram", [
+        ("Instaloader (sesión)", instagram_instaloader, "activo"),
         ("Apify", lambda r: _comentarios_de_cuentas("instagram", "Instagram", "instagram_posts", "instagram_comentarios",
                                                     ("url", "postUrl"), r)
-         if os.environ.get("APIFY_TOKEN") else None, "activo"),
-        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), "activo"),
-        ("CreatorCrawl", lambda r: _cc_red("instagram", "Instagram", r), "activo")], rango)
+         if os.environ.get("APIFY_TOKEN") else None, pago),
+        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), pago),
+        ("CreatorCrawl", lambda r: _cc_red("instagram", "Instagram", r), pago)], rango)
+
+
+# ---------------- Instaloader: Instagram con la sesión de una cuenta secundaria del usuario ----------------
+# La sesión la crea el propio usuario en su Terminal (`instaloader --login CUENTA`); el monitor nunca ve la contraseña.
+_IG = {"L": None, "ultima": 0.0}
+
+
+def _ig_archivo_sesion():
+    if instaloader is None:
+        return None
+    from instaloader.instaloader import get_default_session_filename
+    usuario = CONFIG.get("instaloader", {}).get("usuario")
+    if usuario:
+        ruta = get_default_session_filename(usuario)
+        return (usuario, ruta) if os.path.exists(ruta) else None
+    archivos = sorted(glob.glob(os.path.join(os.path.dirname(get_default_session_filename("x")), "session-*")))
+    return (os.path.basename(archivos[0])[len("session-"):], archivos[0]) if archivos else None
+
+
+def _ig_cargador():
+    if instaloader is None:
+        raise RutaInactiva("Inactiva: falta instalar instaloader (ver LEEME)")
+    if _IG["L"] is None:
+        sesion = _ig_archivo_sesion()
+        if not sesion:
+            raise RutaInactiva("Inactiva: falta iniciar sesión con una cuenta secundaria (ver LEEME)")
+        L = instaloader.Instaloader(quiet=True, download_pictures=False, download_videos=False,
+                                    download_video_thumbnails=False, download_comments=False, save_metadata=False,
+                                    compress_json=False, max_connection_attempts=1, request_timeout=30)
+        L.load_session_from_file(sesion[0], sesion[1])
+        _IG["L"] = L
+    return _IG["L"]
+
+
+def instagram_instaloader(rango=None):
+    """Últimas publicaciones de cada cuenta oficial y solo sus comentarios nuevos. Va despacio a propósito: una cuenta
+    que lee mucho y rápido es bloqueada por Instagram."""
+    cfg = CONFIG.get("instaloader", {})
+    L = _ig_cargador()
+    if not rango and time.time() - _IG["ultima"] < cfg.get("intervalo_minutos", 180) * 60:
+        return []  # entre lecturas: cuenta como ruta sana para que no entren los servicios de pago
+    _IG["ultima"] = time.time()
+    pausa = cfg.get("pausa_seg", 8)
+    n_posts = cfg.get("posts_por_cuenta", 3)
+    out, post_banco, conteo, objetos = [], {}, {}, {}
+    try:
+        for url_cuenta, banco in cuentas("instagram").items():
+            usuario = url_cuenta.rstrip("/").rsplit("/", 1)[-1]
+            perfil = instaloader.Profile.from_username(L.context, usuario)
+            for post in itertools.islice(perfil.get_posts(), n_posts):
+                fecha = iso(post.date_utc.replace(tzinfo=timezone.utc))
+                if rango and not (rango[0] <= fecha[:10] <= rango[1]):
+                    continue
+                purl = f"https://www.instagram.com/p/{post.shortcode}/"
+                post_banco[purl], conteo[purl], objetos[purl] = banco, int(post.comments or 0), post
+                out.append({"id": f"instagram:post:{purl}", "fuente": "Instagram", "tipo": "post_oficial", "peru": True,
+                            "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "fecha": fecha, "url": purl,
+                            "texto": post.caption or "(publicación sin texto)",
+                            "metricas": {"comentarios": post.comments, "reacciones": post.likes}})
+            time.sleep(pausa)
+        previos = _vistos(conteo)
+        for purl, n in conteo.items():
+            nuevos = n - previos.get(purl, 0)
+            if nuevos <= 0:
+                continue
+            banco = post_banco[purl]
+            for c in itertools.islice(objetos[purl].get_comments(), min(nuevos, cfg.get("comentarios_max_por_post", 50))):
+                if (c.text or "").strip():
+                    out.append({"id": f"instagram:{c.id}", "fuente": "Instagram", "tipo": "comentario", "peru": True,
+                                "bancos_fijos": [banco], "cuenta": banco, "autor": c.owner.username if c.owner else "",
+                                "texto": c.text, "fecha": iso(c.created_at_utc.replace(tzinfo=timezone.utc)), "url": purl})
+            time.sleep(pausa)
+    except (instaloader.exceptions.LoginRequiredException, instaloader.exceptions.LoginException,
+            instaloader.exceptions.BadCredentialsException) as e:
+        _IG["L"] = None  # sesión vencida o cuenta con verificación pendiente: hay que volver a iniciar sesión
+        raise RuntimeError(f"La sesión de Instagram no es válida; vuelve a iniciar sesión ({type(e).__name__})")
+    _marcar_vistos(conteo)
+    return out
 
 
 def fuente_tiktok(rango=None):

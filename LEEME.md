@@ -47,6 +47,17 @@ Abre http://localhost:8765 . No necesita instalar nada (Python 3.9+).
 - **YouTube gratis:** yt-dlp busca videos de la semana cuyo título nombra a la entidad y trae sus comentarios más
   recientes; funciona en paralelo con la API oficial.
 
+- **Instagram con Instaloader (opcional):** sin sesión, Instagram no deja leer comentarios. Si quieres usarlo, inicia
+  sesión tú mismo con una **cuenta secundaria** (no la personal: Instagram puede bloquearla):
+
+  ```bash
+  .venv/bin/instaloader --login TU_CUENTA_SECUNDARIA
+  ```
+
+  El monitor detecta el archivo de sesión solo (nunca ve la contraseña), lee 3 publicaciones por cuenta oficial cada
+  3 horas con pausas entre consultas, y deja Apify/ScrapeCreators/CreatorCrawl de respaldo. Va contra los términos de
+  Instagram: el riesgo es para esa cuenta. Si la sesión vence, el panel lo indica y basta con repetir el comando.
+
 Sin `.venv` el monitor funciona igual, solo con Python.
 
 Copia `.env.example` como `.env` y pega las claves que tengas. Reinicia el servidor.
