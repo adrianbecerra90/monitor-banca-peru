@@ -362,6 +362,8 @@ def es_relevante(texto, tipo=""):
 
 
 def _fila(it):
+    if it.get("sin_fecha"):  # resultado web cuya fecha real no se pudo saber: no se mezcla con lo reciente
+        return None
     if es_ruido(it["texto"]) or not es_relevante(it["texto"], it.get("tipo", "")):
         return None
     bancos = detectar_bancos(it["texto"] + " " + it.get("contexto", ""), it.get("peru", False))
@@ -767,6 +769,59 @@ def _fecha_relativa(txt):
              "dia": timedelta(days=n), "semana": timedelta(weeks=n), "mes": timedelta(days=30 * n),
              "ano": timedelta(days=365 * n)}[u]
     return iso(ahora() - delta)
+
+
+_MESES = {"ene": 1, "jan": 1, "feb": 2, "mar": 3, "abr": 4, "apr": 4, "may": 5, "jun": 6, "jul": 7, "ago": 8, "aug": 8,
+          "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12, "dec": 12}
+_B64_IG = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _fecha_de_url(url):
+    """La fecha de publicación viene codificada en el ID de Instagram, TikTok y X."""
+    try:
+        m = re.search(r"instagram\.com/(?:[\w.]+/)?(?:p|reel|reels|tv)/([A-Za-z0-9_-]{6,14})", url or "")
+        if m:
+            n = 0
+            for c in m.group(1)[:11]:
+                n = n * 64 + _B64_IG.index(c)
+            return iso(datetime.fromtimestamp(((n >> 23) + 1314220021721) / 1000, timezone.utc))
+        m = re.search(r"tiktok\.com/@[\w.-]+/(?:video|photo)/(\d{15,20})", url or "")
+        if m:
+            return iso(datetime.fromtimestamp(int(m.group(1)) >> 32, timezone.utc))
+        m = re.search(r"(?:x|twitter)\.com/\w+/status/(\d{15,20})", url or "")
+        if m:
+            return iso(datetime.fromtimestamp(((int(m.group(1)) >> 22) + 1288834974657) / 1000, timezone.utc))
+    except (ValueError, OverflowError, OSError):
+        pass
+    return None
+
+
+def _fecha_absoluta(txt):
+    """«21 nov 2025», «15 de abril de 2026», «Apr 15, 2026», «15/04/2026» en títulos y extractos de Google."""
+    t = normalizar(txt or "")
+    m = re.search(r"\b(\d{1,2})\s+(?:de\s+)?([a-z]{3})[a-z]*\.?\s+(?:de\s+)?(20\d\d)\b", t)
+    if m and m.group(2) in _MESES:
+        d, mes, a = int(m.group(1)), _MESES[m.group(2)], int(m.group(3))
+    else:
+        m = re.search(r"\b([a-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(20\d\d)\b", t)
+        if m and m.group(1) in _MESES:
+            d, mes, a = int(m.group(2)), _MESES[m.group(1)], int(m.group(3))
+        else:
+            m = re.search(r"\b(\d{1,2})/(\d{1,2})/(20\d\d)\b", t)
+            if not m:
+                return None
+            d, mes, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return iso(datetime(a, mes, d, 12, tzinfo=timezone.utc))
+    except ValueError:
+        return None
+
+
+def fecha_resultado_web(r, url, desc):
+    """Fecha real de un resultado de Google, o None si no se puede saber (entonces no se usa: Google marca como
+    «últimas 24 h» lo que indexó hace poco, aunque se publicara hace meses)."""
+    return (_fecha_de_url(url) or (parse_fecha(r["date"]) if r.get("date") else None)
+            or _fecha_absoluta((r.get("title") or "") + " " + desc) or _fecha_relativa(desc))
 
 
 def _yt_renderers(obj):
@@ -1483,9 +1538,11 @@ def fuente_busqueda_web(rango=None):
             dominio = (r.get("domain") or urllib.parse.urlparse(url).netloc).lower().replace("www.", "").replace("m.", "", 1)
             red = next((v for k, v in RED_POR_DOMINIO.items() if dominio.endswith(k)), "Web")
             desc = r.get("description") or ""
+            fecha = fecha_resultado_web(r, url, desc)
+            if not fecha or fecha < iso(ahora() - timedelta(days=CONFIG.get("scrapingbee", {}).get("max_dias", 3))):
+                continue  # sin fecha fiable o antiguo: no es una mención nueva
             out.append({"id": "web:" + url.split("?")[0], "fuente": red, "tipo": "", "peru": True, "via": "Google",
-                        "autor": dominio, "texto": (r.get("title") or "") + ". " + desc,
-                        "fecha": _fecha_relativa(desc) or iso(ahora()), "url": url})
+                        "autor": dominio, "texto": (r.get("title") or "") + ". " + desc, "fecha": fecha, "url": url})
         time.sleep(1)
     return out
 
