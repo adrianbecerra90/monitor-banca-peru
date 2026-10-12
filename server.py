@@ -393,10 +393,10 @@ def init_db():
             capturado TEXT, meta TEXT, sentimiento TEXT)""")
         cols = [r[1] for r in con.execute("PRAGMA table_info(items)")]
         tipos = {"oculto": "INTEGER DEFAULT 0", "ia_queja": "INTEGER", "ia_severidad": "INTEGER", "ia_relevante": "INTEGER",
-                 "ia_atribuible": "INTEGER", "loc_conf": "REAL",
+                 "ia_atribuible": "INTEGER",
                  "restaurado": "INTEGER DEFAULT 0"}
         for col in ("meta", "sentimiento", "oculto", "ia_sentimiento", "ia_queja", "ia_severidad", "ia_categorias",
-                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible", "loc_sentimiento", "loc_conf"):
+                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible"):
             if col not in cols:
                 con.execute(f"ALTER TABLE items ADD COLUMN {col} {tipos.get(col, 'TEXT')}")
         con.execute("CREATE INDEX IF NOT EXISTS idx_fecha ON items(fecha)")
@@ -2333,77 +2333,8 @@ def _json_tolerante(texto):
     return objetos
 
 
-SIN_IA_BASE = """ia_sentimiento IS NULL AND oculto = 0 AND meta NOT LIKE '%"tipo": "post_oficial"%'
+SIN_IA = """ia_sentimiento IS NULL AND oculto = 0 AND meta NOT LIKE '%"tipo": "post_oficial"%'
             AND meta NOT LIKE '%"tipo": "oficial"%'"""
-MODELO_LOCAL = {"listo": False}
-
-
-def umbral_local():
-    u = CONFIG.get("modelo_local", {}).get("umbral_confianza", 0.85)
-    return float(u) if isinstance(u, (int, float)) and 0.5 <= u <= 1 else 0.85
-
-
-def sin_ia():
-    """Lo que aún necesita la IA. Con el modelo local listo, solo las dudas: lo que el modelo no ha visto todavía,
-    lo que clasifica con poca confianza y lo que no coincide con las reglas."""
-    if not MODELO_LOCAL["listo"]:
-        return SIN_IA_BASE
-    return (SIN_IA_BASE + f" AND loc_sentimiento IS NOT NULL"
-            f" AND NOT (loc_conf >= {umbral_local():.3f} AND loc_sentimiento = sentimiento)")
-
-
-def trabajador_local():
-    """Clasificador de sentimiento en el propio equipo (pysentimiento, modelo RoBERTuito entrenado con tuits en
-    español). Rápido y gratuito: decide los casos claros; la IA externa queda para las dudas."""
-    nombre = "Modelo local (pysentimiento)"
-    if not CONFIG.get("modelo_local", {}).get("activo", True):
-        ruta_inactiva("IA", nombre, "Desactivado en la configuración")
-        return
-    try:
-        import torch
-        from pysentimiento import create_analyzer
-        from pysentimiento.preprocessing import preprocess_tweet
-    except ImportError:
-        ruta_inactiva("IA", nombre, "Inactivo: falta instalar pysentimiento (ver LEEME)")
-        return
-    _salud("IA", nombre)["msg"] = "Cargando el modelo…"
-    try:
-        analizador = create_analyzer(task="sentiment", lang="es")
-        modelo, tok = analizador.model.to("cpu").eval(), analizador.tokenizer
-        etiquetas = {i: {"NEG": "negativo", "NEU": "neutro", "POS": "positivo"}[e] for i, e in analizador.id2label.items()}
-        pargs = analizador.preprocessing_args or {}
-    except Exception as e:
-        ruta_fallo("IA", nombre, e)
-        return
-    MODELO_LOCAL["listo"] = True
-    while True:
-        if en_pausa("IA"):
-            time.sleep(10)
-            continue
-        try:
-            with _db_lock, db() as con:
-                filas = con.execute(f"SELECT id, texto FROM items WHERE loc_sentimiento IS NULL AND oculto = 0 "
-                                    f"AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%' ORDER BY fecha DESC LIMIT 64").fetchall()
-            if not filas:
-                with _db_lock, db() as con:
-                    u = umbral_local()
-                    seguros = con.execute("SELECT COUNT(*) FROM items WHERE ia_sentimiento IS NULL AND loc_conf >= ? "
-                                          "AND loc_sentimiento = sentimiento AND oculto = 0", (u,)).fetchone()[0]
-                ruta_ok("IA", nombre, f"Al día · {seguros} casos claros resueltos sin IA")
-                time.sleep(15)
-                continue
-            with torch.no_grad():
-                enc = tok([preprocess_tweet(r["texto"] or "", **pargs) for r in filas], padding=True, truncation=True,
-                          max_length=128, return_tensors="pt")
-                probs = torch.softmax(modelo(**enc).logits, -1)
-            conf, idx = probs.max(-1)
-            with _db_lock, db() as con:
-                con.executemany("UPDATE items SET loc_sentimiento = ?, loc_conf = ? WHERE id = ?",
-                                [(etiquetas[int(i)], round(float(c), 3), r["id"]) for r, c, i in zip(filas, conf, idx)])
-            _salud("IA", nombre).update(ok=True, ultima=iso(ahora()), msg=f"Analizando… ({len(filas)} en el último lote)")
-        except Exception as e:
-            ruta_fallo("IA", nombre, e)
-            time.sleep(30)
 
 
 def _guardar_ia(filas, res):
@@ -2458,9 +2389,9 @@ def trabajador_ia(k):
                      and not _ia_falta_clave(q)]
             n, parte = (len(sanos), sanos.index(k)) if k in sanos else (1, 0)
             with _db_lock, db() as con:
-                filas = con.execute(f"SELECT rowid, id, fuente, bancos, texto, meta FROM items WHERE {sin_ia()} "
+                filas = con.execute(f"SELECT rowid, id, fuente, bancos, texto, meta FROM items WHERE {SIN_IA} "
                                     f"AND (rowid % ?) = ? ORDER BY fecha DESC LIMIT ?", (n, parte, lote)).fetchall()
-                pendientes = con.execute(f"SELECT COUNT(*) FROM items WHERE {sin_ia()}").fetchone()[0]
+                pendientes = con.execute(f"SELECT COUNT(*) FROM items WHERE {SIN_IA}").fetchone()[0]
             ESTADO["ia"]["pendientes"] = pendientes
             if not filas:
                 ruta_ok("IA", nombre, f"Al día · {modelo}")
@@ -2522,16 +2453,13 @@ def resumen_proveedores():
 
 def _resumen_ia():
     rutas = SALUD.get("IA", {})
-    externos = {p["nombre"] for p in _ia_proveedores()}
-    activos = [n for n, r in rutas.items() if r.get("ok") and n in externos]
-    ESTADO["ia"]["activo"] = bool(activos) or MODELO_LOCAL["listo"]
+    activos = [n for n, r in rutas.items() if r.get("ok")]
+    ESTADO["ia"]["activo"] = bool(activos)
     pend = ESTADO["ia"].get("pendientes")
     ultimas = [r.get("ultima") for r in rutas.values() if r.get("ultima")]
     ESTADO["ia"]["ultima"] = max(ultimas) if ultimas else None
     ESTADO["ia"]["msg"] = (f"{len(activos)} de {len(_ia_proveedores())} proveedores activos"
-                           + (" + modelo local" if MODELO_LOCAL["listo"] else "")
-                           + (f" · {pend} dudas pendientes" if pend and MODELO_LOCAL["listo"] else
-                              f" · {pend} pendientes" if pend else " · al día"))
+                           + (f" · {pend} pendientes" if pend else " · al día"))
     return ESTADO["ia"]
 
 
@@ -2564,7 +2492,6 @@ def config_editable():
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "modelo_local": {"activo": c.get("modelo_local", {}).get("activo", True), "umbral_confianza": umbral_local()},
         "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
@@ -2684,15 +2611,6 @@ def validar_config(d):
         nueva.setdefault("scrapecreators", {}).update(
             max_creditos_mes=_entero(sc.get("max_creditos_mes", 3000), "Tope de ScrapeCreators", 0, 1_000_000),
             paginas_max_por_post=_entero(sc.get("paginas_max_por_post", 5), "Páginas de comentarios", 1, 50))
-    if isinstance(d.get("modelo_local"), dict):
-        ml = d["modelo_local"]
-        try:
-            u = float(ml.get("umbral_confianza", 0.85))
-        except (TypeError, ValueError):
-            raise ValueError("Modelo local: umbral no válido")
-        if not 0.5 <= u <= 1:
-            raise ValueError("Modelo local: el umbral de confianza va de 0.5 a 1")
-        nueva.setdefault("modelo_local", {}).update(activo=bool(ml.get("activo", True)), umbral_confianza=round(u, 3))
     if "ia" in d:
         por_nombre = {p["nombre"]: p for p in d["ia"] if isinstance(p, dict)}
         for p in nueva.get("ia", {}).get("proveedores", []):
@@ -3225,8 +3143,6 @@ def consultar(qs):
         meta = json.loads(r.pop("meta") or "{}")
         r["tipo"], r["cuenta"] = meta.get("tipo", ""), meta.get("cuenta", "")
         r["por_ia"] = r.get("ia_sentimiento") is not None
-        r["por_local"] = (not r["por_ia"] and r.get("loc_conf") is not None and r["loc_conf"] >= umbral_local()
-                          and r.get("loc_sentimiento") == r.get("sentimiento"))
         r["metricas"] = meta.get("metricas")
         r["via"] = meta.get("via")
     return rows
@@ -4072,7 +3988,6 @@ def main():
     threading.Thread(target=saldo_scrapecreators, daemon=True).start()
     threading.Thread(target=saldo_scrapingbee, daemon=True).start()
     presupuesto_apify_inicial()
-    threading.Thread(target=trabajador_local, daemon=True).start()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)

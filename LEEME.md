@@ -32,25 +32,22 @@ Abre http://localhost:8765 . No necesita instalar nada (Python 3.9+).
 | TikTok | Búsqueda por palabra clave + comentarios en las cuentas oficiales (Apify) | `APIFY_TOKEN` |
 | Bluesky | API pública | — |
 
-### Rutas gratuitas y modelo local (opcional, recomendado)
+### Rutas gratuitas de TikTok y YouTube (opcional, recomendado)
 
 ```bash
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-`iniciar.command` usa `.venv` automáticamente si existe. Con esto:
+`iniciar.command` usa `.venv` automáticamente si existe (en Docker, yt-dlp ya viene instalado). Con esto:
 
 - **TikTok gratis:** yt-dlp lista los últimos videos de cada cuenta oficial y el monitor lee sus comentarios públicos
   (sin cuenta ni créditos). Apify, ScrapeCreators y CreatorCrawl quedan solo de respaldo si esta ruta falla.
   Si TikTok no deja listar una cuenta, se siguen sus videos de los últimos 7 días ya conocidos.
 - **YouTube gratis:** yt-dlp busca videos de la semana cuyo título nombra a la entidad y trae sus comentarios más
   recientes; funciona en paralelo con la API oficial.
-- **Modelo local de sentimiento (pysentimiento):** clasifica todo en el propio equipo. Si coincide con las reglas y su
-  confianza supera el umbral (0.85 por defecto, en ⚙ Configuración → Presupuestos e IA), el caso se da por resuelto;
-  la IA externa solo revisa las dudas. Con 0.85, ~30 % de los casos se resuelven sin IA, con 98,6 % de coincidencia.
 
-Sin `.venv` el monitor funciona igual que antes, solo con Python.
+Sin `.venv` el monitor funciona igual, solo con Python.
 
 Copia `.env.example` como `.env` y pega las claves que tengas. Reinicia el servidor.
 
