@@ -582,7 +582,7 @@ function pintarConfig(){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
       <div class="sub" style="margin-top:8px">El monitor arranca siempre en vivo; la pausa es solo manual.</div></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
     <div class="bloque"><b>Frecuencia de consulta (minutos)</b><div class="rej" style="margin-top:8px">${CFG.fuentes.map(f=>`<label class="campo">${esc(f)}<input type="number" min="1" max="1440" data-int="${esc(f)}" value="${CFG.intervalos_minutos[f]??30}"></label>`).join('')}</div></div>`;
@@ -625,6 +625,9 @@ function pintarConfig(){
     <div class="bloque"><b>ScrapeCreators</b> (Facebook, Instagram, TikTok · se reparte las cuentas con Apify)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de créditos al mes (1 crédito ≈ 1 consulta)<input type="number" min="0" max="1000000" data-s="max_creditos_mes" value="${CFG.scrapecreators.max_creditos_mes??3000}"></label>
       <label class="campo">Máx. páginas de comentarios por publicación (~12 comentarios c/u)<input type="number" min="1" max="50" data-s="paginas_max_por_post" value="${CFG.scrapecreators.paginas_max_por_post??5}"></label></div></div>
+    <div class="bloque"><b>RapidAPI · Facebook Scraper</b> (Facebook · se reparte las páginas con los demás)<div class="rej" style="margin-top:8px">
+      <label class="campo">Tope de llamadas al mes (tu plan gratuito: 100)<input type="number" min="0" max="10000000" data-r="max_llamadas_mes" value="${CFG.rapidapi?.max_llamadas_mes??95}"></label>
+      <label class="campo">Máx. consultas de comentarios por pasada<input type="number" min="0" max="500" data-r="comentarios_por_pasada" value="${CFG.rapidapi?.comentarios_por_pasada??5}"></label></div></div>
     <div class="bloque"><b>ScrapingBee</b> (búsqueda en Google de menciones en redes y foros · ≈10 créditos por búsqueda)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de créditos al mes<input type="number" min="0" max="10000000" data-b="max_creditos_mes" value="${CFG.scrapingbee?.max_creditos_mes??900}"></label></div></div>
     <div class="bloque"><b>CreatorCrawl</b> (Instagram y TikTok · se reparte las cuentas con los demás)<div class="rej" style="margin-top:8px">
@@ -636,6 +639,7 @@ function pintarConfig(){
     <div class="bloque"><b>Claves</b> <span class="sub">(por seguridad se editan solo en el archivo <code>.env</code>)</span><div style="margin-top:6px">${Object.entries(CFG.claves).map(([k,v])=>`<div class="sub">${v?'✅':'⚪'} ${esc(k)} ${v?'configurada':'sin configurar'}</div>`).join('')}</div></div>`;
     c.querySelectorAll('[data-a]').forEach(x=>x.oninput=()=>CFG.apify[x.dataset.a]=x.value);
     c.querySelectorAll('[data-s]').forEach(x=>x.oninput=()=>CFG.scrapecreators[x.dataset.s]=x.value);
+    CFG.rapidapi=CFG.rapidapi||{};c.querySelectorAll('[data-r]').forEach(x=>x.oninput=()=>CFG.rapidapi[x.dataset.r]=x.value);
     CFG.scrapingbee=CFG.scrapingbee||{};c.querySelectorAll('[data-b]').forEach(x=>x.oninput=()=>CFG.scrapingbee[x.dataset.b]=x.value);
     CFG.creatorcrawl=CFG.creatorcrawl||{};c.querySelectorAll('[data-c]').forEach(x=>x.oninput=()=>CFG.creatorcrawl[x.dataset.c]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value})}
@@ -705,7 +709,7 @@ async function guardarConfig(){
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
-    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,ia:CFG.ia};
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,rapidapi:CFG.rapidapi,ia:CFG.ia};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});

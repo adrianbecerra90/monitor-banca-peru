@@ -1074,16 +1074,23 @@ def x_nitter(rango=None):
 # Redes de Meta y TikTok: dos proveedores en activo-activo (Apify + ScrapeCreators) que se reparten las cuentas
 # --------------------------------------------------------------------------
 
-CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY", "CreatorCrawl": "CREATORCRAWL_API_KEY"}
+CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY", "CreatorCrawl": "CREATORCRAWL_API_KEY",
+                   "RapidAPI": "RAPIDAPI_KEY"}
 SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"}, "ScrapeCreators": {"facebook", "instagram", "tiktok"},
-           "CreatorCrawl": {"instagram", "tiktok"}}  # CreatorCrawl no ofrece Facebook
+           "CreatorCrawl": {"instagram", "tiktok"},  # CreatorCrawl no ofrece Facebook
+           "RapidAPI": {"facebook"}}                 # Facebook Scraper (krasnoludkolo) en RapidAPI
 
 
 def _presupuesto_agotado(prov):
     """Lo que ya se sabe sin gastar nada: presupuesto de Apify (consultado gratis) y topes mensuales locales."""
-    e = ESTADO.get({"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl"}[prov], {})
+    e = ESTADO.get({"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
+                    "RapidAPI": "rapidapi"}[prov], {})
     if prov == "Apify":
         return e.get("usado") is not None and e.get("usado") >= e.get("tope", 1e9)
+    if prov == "RapidAPI":
+        r = ESTADO.get("rapidapi", {})
+        return (r.get("restantes") is not None and r["restantes"] <= r.get("reserva", 5)) or \
+               (r.get("usados_mes") is not None and r["usados_mes"] >= r.get("tope", 1e9))
     return e.get("usados_mes") is not None and e.get("usados_mes") >= e.get("tope", 1e9)
 
 
@@ -1408,12 +1415,112 @@ def saldo_scrapingbee():
         time.sleep(6 * 3600)
 
 
+# ---------------- RapidAPI · Facebook Scraper (plan con pocas llamadas: se administra con cuidado) ----------------
+
+def rapid_get(ruta, **q):
+    cfg = CONFIG.get("rapidapi", {})
+    mes = ahora().strftime("%Y-%m")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='RapidAPI'", (mes,)).fetchone()
+    usados, tope = (r[0] if r else 0), cfg.get("max_llamadas_mes", 95)
+    est = ESTADO.setdefault("rapidapi", {})
+    if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 5)):
+        raise RutaInactiva(f"Cuota agotada ({usados} de {tope} llamadas este mes): súbela en ⚙ Configuración o espera al nuevo ciclo")
+    host = os.environ.get("RAPIDAPI_FB_HOST", "facebook-scraper3.p.rapidapi.com")
+    req = urllib.request.Request(f"https://{host}{ruta}?" + urllib.parse.urlencode({k: v for k, v in q.items() if v}),
+                                 headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": host, "User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+        restantes = resp.headers.get("X-RateLimit-Requests-Remaining")
+        limite = resp.headers.get("X-RateLimit-Requests-Limit")
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO uso_proveedores VALUES (?, 'RapidAPI', 1) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + 1", (mes,))
+    est.update(usados_mes=usados + 1, tope=tope, reserva=cfg.get("reserva", 5),
+               restantes=int(restantes) if str(restantes).isdigit() else est.get("restantes"),
+               limite_plan=int(limite) if str(limite).isdigit() else est.get("limite_plan"))
+    return d
+
+
+def _rapid_page_id(url_pagina):
+    with _db_lock, db() as con:  # el ID de cada página se guarda: no se gasta una llamada en pedirlo otra vez
+        con.execute("CREATE TABLE IF NOT EXISTS rapid_paginas (url TEXT PRIMARY KEY, page_id TEXT)")
+        r = con.execute("SELECT page_id FROM rapid_paginas WHERE url = ?", (url_pagina,)).fetchone()
+    if r:
+        return r[0]
+    pid = rapid_get("/page/page_id", url=url_pagina).get("page_id")
+    if pid:
+        with _db_lock, db() as con:
+            con.execute("INSERT OR REPLACE INTO rapid_paginas VALUES (?, ?)", (url_pagina, str(pid)))
+    return pid
+
+
+def _rapid_facebook(rango):
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise RutaInactiva("Sin clave: añade RAPIDAPI_KEY en .env")
+    if en_pausa("RapidAPI"):
+        raise RutaInactiva("⏸ En pausa")
+    cfg = CONFIG.get("rapidapi", {})
+    mapa = cuentas_asignadas("facebook", "Facebook", "RapidAPI")
+    out, conteo, post_banco, errores = [], {}, {}, []
+    for url_pagina, banco in mapa.items():
+        try:
+            pid = _rapid_page_id(url_pagina)
+            posts = rapid_get("/page/posts", page_id=pid).get("results") or [] if pid else []
+        except RuntimeError:
+            raise
+        except Exception as e:
+            errores.append(f"{banco}: {type(e).__name__}")
+            continue
+        for p in posts[:CONFIG["apify"].get("posts_por_cuenta", 5)]:
+            purl = (p.get("url") or "").split("?")[0]
+            if not purl or not p.get("post_id"):
+                continue
+            post_banco[purl] = (banco, p["post_id"])
+            conteo[purl] = int(p.get("comments_count") or 0)
+            out.append({"id": f"facebook:post:{purl}", "fuente": "Facebook", "tipo": "post_oficial", "peru": True,
+                        "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "texto": p.get("message") or "(publicación sin texto)",
+                        "fecha": p.get("timestamp"), "url": purl,
+                        "metricas": {"comentarios": p.get("comments_count"), "reacciones": p.get("reactions_count"),
+                                     "compartidos": p.get("reshare_count")}})
+    if errores and len(errores) == len(mapa):
+        raise RuntimeError("Todas las páginas fallaron: " + ", ".join(errores))
+    previos = _vistos(conteo)
+    consultas = 0
+    # las publicaciones con más comentarios nuevos primero: con pocas llamadas, se aprovechan mejor
+    for purl, n in sorted(conteo.items(), key=lambda kv: -(kv[1] - previos.get(kv[0], 0))):
+        if n - previos.get(purl, 0) <= 0:
+            continue
+        if consultas >= cfg.get("comentarios_por_pasada", 5):
+            conteo[purl] = previos.get(purl, 0)  # quedan para la próxima pasada
+            continue
+        banco, post_id = post_banco[purl]
+        try:
+            consultas += 1
+            for c in rapid_get("/post/comments", post_id=post_id).get("results") or []:
+                if not (c.get("message") or "").strip():
+                    continue
+                out.append({"id": f"facebook:{c.get('comment_id') or c.get('legacy_comment_id')}", "fuente": "Facebook",
+                            "tipo": "comentario", "peru": True, "bancos_fijos": [banco], "cuenta": banco,
+                            "autor": (c.get("author") or {}).get("name", ""), "texto": c["message"],
+                            "fecha": c.get("created_time"), "url": purl})
+        except RuntimeError:
+            raise
+        except Exception as e:
+            conteo[purl] = previos.get(purl, 0)
+            print(f"  Facebook · RapidAPI: comentarios fallaron ({type(e).__name__})", flush=True)
+    _marcar_vistos(conteo)
+    return out
+
+
 def fuente_facebook(rango=None):
     return ejecutar_rutas("Facebook", [
         ("Apify", lambda r: _comentarios_de_cuentas("facebook", "Facebook", "facebook_posts", "facebook_comentarios",
                                                     ("url", "postUrl", "topLevelUrl"), r)
          if os.environ.get("APIFY_TOKEN") else None, "activo"),
-        ("ScrapeCreators", lambda r: _sc_red("facebook", "Facebook", r), "activo")], rango)
+        ("ScrapeCreators", lambda r: _sc_red("facebook", "Facebook", r), "activo"),
+        ("RapidAPI", _rapid_facebook, "activo")], rango)
 
 
 def fuente_instagram(rango=None):
@@ -1489,7 +1596,7 @@ def bluesky_buscar(host, rango=None):
 
 FUENTES = {
     "X": (fuente_x, "Nitter (varias instancias); Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
-    "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
+    "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + RapidAPI en activo-activo"),
     "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
     "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) o scraping de búsqueda"),
@@ -1504,7 +1611,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee"]
+PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "RapidAPI"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -1817,7 +1924,7 @@ def resumen_proveedores():
         estado_rutas = {f"{f}": SALUD.get(f, {}).get(r, {}) for f, r in rutas}
         return {"nombre": nombre, "clave": bool(os.environ.get(clave)) if isinstance(clave, str) else clave,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
-    ap, sc, cc, sb = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee"))
+    ap, sc, cc, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee", "rapidapi"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
@@ -1833,6 +1940,10 @@ def resumen_proveedores():
         ficha("ScrapingBee", "SCRAPINGBEE_API_KEY", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros",
               f"{sb['restantes']:,} créditos".replace(",", ".") if sb.get("restantes") is not None else None,
               f"{sb.get('usados_mes', 0)} de {sb.get('tope', CONFIG.get('scrapingbee', {}).get('max_creditos_mes', 0))} créditos este mes", []),
+        ficha("RapidAPI", "RAPIDAPI_KEY", "Facebook (Facebook Scraper)",
+              f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
+              f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
+              [("Facebook", "RapidAPI")]),
     ]
 
 
@@ -1874,9 +1985,10 @@ def config_editable():
         "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
+        "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 
@@ -1978,6 +2090,10 @@ def validar_config(d):
         nueva["apify"].update(presupuesto_usd_mes=round(pres, 2),
                               posts_por_cuenta=_entero(a.get("posts_por_cuenta", 5), "Publicaciones por cuenta", 1, 20),
                               comentarios_max_por_post=_entero(a.get("comentarios_max_por_post", 200), "Comentarios por publicación", 10, 1000))
+    if "rapidapi" in d:
+        nueva.setdefault("rapidapi", {}).update(
+            max_llamadas_mes=_entero(d["rapidapi"].get("max_llamadas_mes", 95), "Tope de RapidAPI", 0, 10_000_000),
+            comentarios_por_pasada=_entero(d["rapidapi"].get("comentarios_por_pasada", 5), "Comentarios por pasada (RapidAPI)", 0, 500))
     if "scrapingbee" in d:
         nueva.setdefault("scrapingbee", {})["max_creditos_mes"] = _entero(
             d["scrapingbee"].get("max_creditos_mes", 900), "Tope de ScrapingBee", 0, 10_000_000)

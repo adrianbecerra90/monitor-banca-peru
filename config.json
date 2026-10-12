@@ -468,5 +468,11 @@
       "(site:tiktok.com OR site:instagram.com)",
       "(site:reddit.com OR inurl:foro OR inurl:forum)"
     ]
+  },
+  "rapidapi": {
+    "_nota": "Facebook Scraper en RapidAPI. Plan gratuito: 100 llamadas al mes; tope 95 y como mucho 5 consultas de comentarios por pasada.",
+    "max_llamadas_mes": 95,
+    "comentarios_por_pasada": 5,
+    "reserva": 5
   }
 }
