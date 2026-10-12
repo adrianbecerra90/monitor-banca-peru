@@ -6,3 +6,4 @@ config_copias/
 pausa.json
 nube.json
 .git/
+.venv

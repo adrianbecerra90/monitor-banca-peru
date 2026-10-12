@@ -48,6 +48,16 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Librerías opcionales (entorno .venv): rutas gratuitas para TikTok y YouTube. Sin ellas, esas rutas quedan inactivas.
+try:
+    import yt_dlp
+except ImportError:
+    yt_dlp = None
+try:
+    from curl_cffi import requests as cffi_requests
+except ImportError:
+    cffi_requests = None
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 # Datos (base, archivo, configuración editable, pausas…): en local, junto al código; en un servidor, en un disco
 # persistente indicado con DATA_DIR (p. ej. /data)
@@ -383,10 +393,10 @@ def init_db():
             capturado TEXT, meta TEXT, sentimiento TEXT)""")
         cols = [r[1] for r in con.execute("PRAGMA table_info(items)")]
         tipos = {"oculto": "INTEGER DEFAULT 0", "ia_queja": "INTEGER", "ia_severidad": "INTEGER", "ia_relevante": "INTEGER",
-                 "ia_atribuible": "INTEGER",
+                 "ia_atribuible": "INTEGER", "loc_conf": "REAL",
                  "restaurado": "INTEGER DEFAULT 0"}
         for col in ("meta", "sentimiento", "oculto", "ia_sentimiento", "ia_queja", "ia_severidad", "ia_categorias",
-                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible"):
+                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible", "loc_sentimiento", "loc_conf"):
             if col not in cols:
                 con.execute(f"ALTER TABLE items ADD COLUMN {col} {tipos.get(col, 'TEXT')}")
         con.execute("CREATE INDEX IF NOT EXISTS idx_fecha ON items(fecha)")
@@ -907,10 +917,79 @@ def youtube_api(key, rango=None):
     return out
 
 
+class _SinLog:
+    """yt-dlp escribe sus errores en la consola; aquí se capturan y el monitor los resume a su manera."""
+    def debug(self, msg):
+        pass
+
+    info = warning = error = debug
+
+
+def _ytdlp(**opciones):
+    base = {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 30, "noprogress": True,
+            "logger": _SinLog(),
+            "http_headers": {"Accept-Language": "es-PE,es;q=0.9"}}
+    return yt_dlp.YoutubeDL({**base, **opciones})
+
+
+def youtube_ytdlp(rango=None):
+    """Ruta gratuita: búsqueda de videos de la semana + comentarios más recientes, con yt-dlp (sin clave ni cuota)."""
+    if yt_dlp is None:
+        raise RutaInactiva("Inactiva: falta instalar yt-dlp (ver LEEME)")
+    if rango:
+        return []  # el histórico lo cubre la API oficial
+    cfg = CONFIG.get("youtube_libre", {})
+    candidatos, ids = [], set()
+    for banco, c in BANCOS.items():
+        termino = c["buscar"][0]
+        url = "https://www.youtube.com/results?" + urllib.parse.urlencode(
+            {"search_query": termino + " Perú", "sp": "EgQIAxAB"})  # EgQIAxAB: videos de esta semana
+        with _ytdlp(extract_flat=True, playlistend=cfg.get("videos_por_busqueda", 8)) as y:
+            d = y.extract_info(url, download=False)
+        for e in d.get("entries") or []:
+            vid = e.get("id")
+            if not vid or vid in ids or e.get("ie_key") not in (None, "Youtube"):
+                continue
+            bancos = detectar_bancos(e.get("title") or "", True)  # solo videos cuyo título trata de la entidad
+            if bancos:
+                ids.add(vid)
+                candidatos.append((vid, bancos))
+        time.sleep(1)
+    out = []
+    opciones = {"getcomments": True, "ignore_no_formats_error": True, "format": "best",
+                "extractor_args": {"youtube": {"max_comments": [str(cfg.get("comentarios_por_video", 60)), "all", "0"],
+                                               "comment_sort": ["new"]}}}
+    for vid, bancos in candidatos[:cfg.get("videos_max", 10)]:
+        watch = "https://www.youtube.com/watch?v=" + vid
+        try:
+            with _ytdlp(**opciones) as y:
+                v = y.extract_info(watch, download=True)  # skip_download: procesa (comentarios) sin bajar el video
+        except Exception as e:
+            print(f"  YouTube · yt-dlp: {vid} falló ({type(e).__name__})", flush=True)
+            continue
+        fecha = _epoch(v["timestamp"]) if v.get("timestamp") else (
+            iso(datetime.strptime(v["upload_date"], "%Y%m%d").replace(tzinfo=timezone.utc)) if v.get("upload_date") else None)
+        if not fecha or fecha < iso(ahora() - timedelta(days=30)):
+            continue
+        canal = v.get("channel") or v.get("uploader") or ""
+        out.append({"id": "yt:" + vid, "fuente": "YouTube", "autor": canal, "fecha": fecha, "url": watch,
+                    "texto": ((v.get("title") or "") + ". " + (v.get("description") or "")[:500]).strip(". ")})
+        for c in v.get("comments") or []:
+            if c.get("parent", "root") != "root" or not (c.get("text") or "").strip():
+                continue  # solo comentarios principales, como la API oficial
+            out.append({"id": "ytc:" + str(c.get("id")), "fuente": "YouTube", "tipo": "comentario", "peru": True,
+                        "bancos_fijos": bancos, "cuenta": canal, "autor": c.get("author") or "", "texto": c["text"],
+                        "fecha": _epoch(c.get("timestamp")) if c.get("timestamp") else fecha,
+                        "url": f"{watch}&lc={c.get('id')}"})
+        time.sleep(1)
+    return out
+
+
 def fuente_youtube(rango=None):
     key = os.environ.get("YOUTUBE_API_KEY")
     return ejecutar_rutas("YouTube", [
         ("API oficial", lambda r: youtube_api(key, r) if key else None, "activo"),
+        ("yt-dlp (gratis)", youtube_ytdlp, "activo"),
         ("Búsqueda web", lambda r: [] if r else youtube_scraping(), "activo")], rango)
 
 
@@ -1680,9 +1759,116 @@ def fuente_instagram(rango=None):
 
 
 def fuente_tiktok(rango=None):
-    return ejecutar_rutas("TikTok", [("Apify", tiktok_apify, "activo"),
-                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "activo"),
-                                     ("CreatorCrawl", lambda r: _cc_red("tiktok", "TikTok", r), "activo")], rango)
+    # La ruta gratuita va primero; los servicios de pago solo entran si ella falla (así no se gastan créditos)
+    return ejecutar_rutas("TikTok", [("yt-dlp (gratis)", tiktok_libre, "activo"),
+                                     ("Apify", tiktok_apify, "respaldo"),
+                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "respaldo"),
+                                     ("CreatorCrawl", lambda r: _cc_red("tiktok", "TikTok", r), "respaldo")], rango)
+
+
+def _tiktok_comentarios(sesion, purl, banco, nuevos):
+    """Comentarios públicos de un video (la misma consulta que hace la web de TikTok, sin cuenta)."""
+    cfg = CONFIG.get("tiktok_libre", {})
+    aweme, cursor, out = purl.rstrip("/").rsplit("/", 1)[-1], 0, []
+    for _ in range(max(1, min(cfg.get("paginas_max_por_post", 5), nuevos // 50 + 1))):
+        r = sesion.get("https://www.tiktok.com/api/comment/list/", timeout=30, headers={"Referer": purl},
+                       params={"aweme_id": aweme, "count": "50", "cursor": str(cursor), "aid": "1988"})
+        d = r.json()
+        for c in d.get("comments") or []:
+            texto = (c.get("text") or "").strip()
+            if not texto or not c.get("cid"):
+                continue
+            u = c.get("user") or {}
+            out.append({"id": f"tiktok:{c['cid']}", "fuente": "TikTok", "tipo": "comentario", "peru": True,
+                        "bancos_fijos": [banco], "cuenta": banco, "autor": u.get("unique_id") or u.get("nickname") or "",
+                        "texto": texto, "fecha": _epoch(c.get("create_time")), "url": purl})
+        if not d.get("has_more"):
+            break
+        cursor = d.get("cursor") or cursor + 50
+        time.sleep(1)
+    return out
+
+
+_SEC_UID = {}
+
+
+def _tiktok_listar(sesion, usuario, n_posts):
+    """Últimos videos de una cuenta. Si yt-dlp no obtiene el ID interno desde la URL, se busca en el perfil."""
+    for intento in range(2):
+        fuente = f"https://www.tiktok.com/@{usuario}"
+        if intento:
+            if usuario not in _SEC_UID:
+                m = re.search(r'"secUid":"([^"]+)"', sesion.get(fuente, timeout=30).text)
+                if not m:
+                    return None
+                _SEC_UID[usuario] = m.group(1)
+            fuente = "tiktokuser:" + _SEC_UID[usuario]
+        try:
+            with _ytdlp(extract_flat=True, playlistend=n_posts) as y:
+                return y.extract_info(fuente, download=False)
+        except Exception:
+            time.sleep(2)
+    return None
+
+
+def tiktok_libre(rango=None):
+    """Ruta gratuita: últimos videos de cada cuenta oficial (yt-dlp) y solo los comentarios nuevos de cada uno."""
+    if yt_dlp is None or cffi_requests is None:
+        raise RutaInactiva("Inactiva: falta instalar yt-dlp con curl-cffi (ver LEEME)")
+    cfg = CONFIG.get("tiktok_libre", {})
+    n_posts = cfg.get("posts_por_cuenta_historico" if rango else "posts_por_cuenta", 20 if rango else 6)
+    mapa = cuentas("tiktok")
+    out, post_banco, conteo, errores = [], {}, {}, []
+    sesion = cffi_requests.Session(impersonate="chrome")
+    sesion.get("https://www.tiktok.com/", timeout=30)  # cookies de visitante
+    conocidos = {}  # cuentas cuyo listado falla: se siguen sus videos recientes ya conocidos
+    for url_cuenta, banco in mapa.items():
+        usuario = url_cuenta.rstrip("/").rsplit("@", 1)[-1]
+        d = _tiktok_listar(sesion, usuario, n_posts)
+        if d is None:
+            errores.append(banco)
+            if not rango:
+                with _db_lock, db() as con:
+                    for (u,) in con.execute("SELECT url FROM items WHERE id LIKE 'tiktok:post:%' AND bancos LIKE ? "
+                                            "AND fecha >= ? ORDER BY fecha DESC LIMIT ?",
+                                            (f'%"{banco}"%', iso(ahora() - timedelta(days=7)), n_posts)):
+                        conocidos[u] = banco
+            continue
+        for e in d.get("entries") or []:
+            purl, ts = e.get("url"), e.get("timestamp")
+            if not purl or not ts:
+                continue
+            fecha = _epoch(ts)
+            if rango and not (rango[0] <= fecha[:10] <= rango[1]):
+                continue
+            n_com = int(e.get("comment_count") or 0)
+            post_banco[purl], conteo[purl] = banco, n_com
+            out.append({"id": f"tiktok:post:{purl}", "fuente": "TikTok", "tipo": "post_oficial", "peru": True,
+                        "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "fecha": fecha, "url": purl,
+                        "texto": e.get("description") or e.get("title") or "(publicación sin texto)",
+                        "metricas": {"comentarios": n_com, "reacciones": e.get("like_count"),
+                                     "compartidos": e.get("repost_count")}})
+        time.sleep(1)
+    if mapa and len(errores) == len(mapa) and not conocidos:
+        raise RuntimeError("TikTok no dejó listar ninguna cuenta")
+    if errores:
+        print(f"  TikTok · yt-dlp: sin listado de {', '.join(errores)}; se revisan sus videos recientes ya conocidos",
+              flush=True)
+    previos = _vistos(conteo)
+    pendientes = {u: n - previos.get(u, 0) for u, n in conteo.items() if n > previos.get(u, 0)}
+    for u, banco in conocidos.items():  # sin conteo: una página de los comentarios más recientes
+        post_banco.setdefault(u, banco)
+        pendientes.setdefault(u, 1)
+    if pendientes:
+        for purl, nuevos in pendientes.items():
+            try:
+                out += _tiktok_comentarios(sesion, purl, post_banco[purl], nuevos)
+            except Exception as e:
+                conteo[purl] = previos.get(purl, 0)  # se reintenta en la próxima pasada
+                print(f"  TikTok · yt-dlp: comentarios de {purl} fallaron ({type(e).__name__})", flush=True)
+            time.sleep(1)
+    _marcar_vistos(conteo)
+    return out
 
 
 def tiktok_apify(rango=None):
@@ -1745,8 +1931,8 @@ FUENTES = {
     "X": (fuente_x, "Nitter (varias instancias); Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
     "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + RapidAPI en activo-activo"),
     "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
-    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
-    "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) o scraping de búsqueda"),
+    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: yt-dlp (gratis); Apify, ScrapeCreators y CreatorCrawl de respaldo"),
+    "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) + yt-dlp (gratis, con comentarios) + búsqueda web"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
     "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía ScrapingBee (de pago)"),
@@ -2147,8 +2333,77 @@ def _json_tolerante(texto):
     return objetos
 
 
-SIN_IA = """ia_sentimiento IS NULL AND oculto = 0 AND meta NOT LIKE '%"tipo": "post_oficial"%'
+SIN_IA_BASE = """ia_sentimiento IS NULL AND oculto = 0 AND meta NOT LIKE '%"tipo": "post_oficial"%'
             AND meta NOT LIKE '%"tipo": "oficial"%'"""
+MODELO_LOCAL = {"listo": False}
+
+
+def umbral_local():
+    u = CONFIG.get("modelo_local", {}).get("umbral_confianza", 0.85)
+    return float(u) if isinstance(u, (int, float)) and 0.5 <= u <= 1 else 0.85
+
+
+def sin_ia():
+    """Lo que aún necesita la IA. Con el modelo local listo, solo las dudas: lo que el modelo no ha visto todavía,
+    lo que clasifica con poca confianza y lo que no coincide con las reglas."""
+    if not MODELO_LOCAL["listo"]:
+        return SIN_IA_BASE
+    return (SIN_IA_BASE + f" AND loc_sentimiento IS NOT NULL"
+            f" AND NOT (loc_conf >= {umbral_local():.3f} AND loc_sentimiento = sentimiento)")
+
+
+def trabajador_local():
+    """Clasificador de sentimiento en el propio equipo (pysentimiento, modelo RoBERTuito entrenado con tuits en
+    español). Rápido y gratuito: decide los casos claros; la IA externa queda para las dudas."""
+    nombre = "Modelo local (pysentimiento)"
+    if not CONFIG.get("modelo_local", {}).get("activo", True):
+        ruta_inactiva("IA", nombre, "Desactivado en la configuración")
+        return
+    try:
+        import torch
+        from pysentimiento import create_analyzer
+        from pysentimiento.preprocessing import preprocess_tweet
+    except ImportError:
+        ruta_inactiva("IA", nombre, "Inactivo: falta instalar pysentimiento (ver LEEME)")
+        return
+    _salud("IA", nombre)["msg"] = "Cargando el modelo…"
+    try:
+        analizador = create_analyzer(task="sentiment", lang="es")
+        modelo, tok = analizador.model.to("cpu").eval(), analizador.tokenizer
+        etiquetas = {i: {"NEG": "negativo", "NEU": "neutro", "POS": "positivo"}[e] for i, e in analizador.id2label.items()}
+        pargs = analizador.preprocessing_args or {}
+    except Exception as e:
+        ruta_fallo("IA", nombre, e)
+        return
+    MODELO_LOCAL["listo"] = True
+    while True:
+        if en_pausa("IA"):
+            time.sleep(10)
+            continue
+        try:
+            with _db_lock, db() as con:
+                filas = con.execute(f"SELECT id, texto FROM items WHERE loc_sentimiento IS NULL AND oculto = 0 "
+                                    f"AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%' ORDER BY fecha DESC LIMIT 64").fetchall()
+            if not filas:
+                with _db_lock, db() as con:
+                    u = umbral_local()
+                    seguros = con.execute("SELECT COUNT(*) FROM items WHERE ia_sentimiento IS NULL AND loc_conf >= ? "
+                                          "AND loc_sentimiento = sentimiento AND oculto = 0", (u,)).fetchone()[0]
+                ruta_ok("IA", nombre, f"Al día · {seguros} casos claros resueltos sin IA")
+                time.sleep(15)
+                continue
+            with torch.no_grad():
+                enc = tok([preprocess_tweet(r["texto"] or "", **pargs) for r in filas], padding=True, truncation=True,
+                          max_length=128, return_tensors="pt")
+                probs = torch.softmax(modelo(**enc).logits, -1)
+            conf, idx = probs.max(-1)
+            with _db_lock, db() as con:
+                con.executemany("UPDATE items SET loc_sentimiento = ?, loc_conf = ? WHERE id = ?",
+                                [(etiquetas[int(i)], round(float(c), 3), r["id"]) for r, c, i in zip(filas, conf, idx)])
+            _salud("IA", nombre).update(ok=True, ultima=iso(ahora()), msg=f"Analizando… ({len(filas)} en el último lote)")
+        except Exception as e:
+            ruta_fallo("IA", nombre, e)
+            time.sleep(30)
 
 
 def _guardar_ia(filas, res):
@@ -2203,9 +2458,9 @@ def trabajador_ia(k):
                      and not _ia_falta_clave(q)]
             n, parte = (len(sanos), sanos.index(k)) if k in sanos else (1, 0)
             with _db_lock, db() as con:
-                filas = con.execute(f"SELECT rowid, id, fuente, bancos, texto, meta FROM items WHERE {SIN_IA} "
+                filas = con.execute(f"SELECT rowid, id, fuente, bancos, texto, meta FROM items WHERE {sin_ia()} "
                                     f"AND (rowid % ?) = ? ORDER BY fecha DESC LIMIT ?", (n, parte, lote)).fetchall()
-                pendientes = con.execute(f"SELECT COUNT(*) FROM items WHERE {SIN_IA}").fetchone()[0]
+                pendientes = con.execute(f"SELECT COUNT(*) FROM items WHERE {sin_ia()}").fetchone()[0]
             ESTADO["ia"]["pendientes"] = pendientes
             if not filas:
                 ruta_ok("IA", nombre, f"Al día · {modelo}")
@@ -2267,13 +2522,16 @@ def resumen_proveedores():
 
 def _resumen_ia():
     rutas = SALUD.get("IA", {})
-    activos = [n for n, r in rutas.items() if r.get("ok")]
-    ESTADO["ia"]["activo"] = bool(activos)
+    externos = {p["nombre"] for p in _ia_proveedores()}
+    activos = [n for n, r in rutas.items() if r.get("ok") and n in externos]
+    ESTADO["ia"]["activo"] = bool(activos) or MODELO_LOCAL["listo"]
     pend = ESTADO["ia"].get("pendientes")
     ultimas = [r.get("ultima") for r in rutas.values() if r.get("ultima")]
     ESTADO["ia"]["ultima"] = max(ultimas) if ultimas else None
     ESTADO["ia"]["msg"] = (f"{len(activos)} de {len(_ia_proveedores())} proveedores activos"
-                           + (f" · {pend} pendientes" if pend else " · al día"))
+                           + (" + modelo local" if MODELO_LOCAL["listo"] else "")
+                           + (f" · {pend} dudas pendientes" if pend and MODELO_LOCAL["listo"] else
+                              f" · {pend} pendientes" if pend else " · al día"))
     return ESTADO["ia"]
 
 
@@ -2306,6 +2564,7 @@ def config_editable():
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
+        "modelo_local": {"activo": c.get("modelo_local", {}).get("activo", True), "umbral_confianza": umbral_local()},
         "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
@@ -2425,6 +2684,15 @@ def validar_config(d):
         nueva.setdefault("scrapecreators", {}).update(
             max_creditos_mes=_entero(sc.get("max_creditos_mes", 3000), "Tope de ScrapeCreators", 0, 1_000_000),
             paginas_max_por_post=_entero(sc.get("paginas_max_por_post", 5), "Páginas de comentarios", 1, 50))
+    if isinstance(d.get("modelo_local"), dict):
+        ml = d["modelo_local"]
+        try:
+            u = float(ml.get("umbral_confianza", 0.85))
+        except (TypeError, ValueError):
+            raise ValueError("Modelo local: umbral no válido")
+        if not 0.5 <= u <= 1:
+            raise ValueError("Modelo local: el umbral de confianza va de 0.5 a 1")
+        nueva.setdefault("modelo_local", {}).update(activo=bool(ml.get("activo", True)), umbral_confianza=round(u, 3))
     if "ia" in d:
         por_nombre = {p["nombre"]: p for p in d["ia"] if isinstance(p, dict)}
         for p in nueva.get("ia", {}).get("proveedores", []):
@@ -2957,6 +3225,8 @@ def consultar(qs):
         meta = json.loads(r.pop("meta") or "{}")
         r["tipo"], r["cuenta"] = meta.get("tipo", ""), meta.get("cuenta", "")
         r["por_ia"] = r.get("ia_sentimiento") is not None
+        r["por_local"] = (not r["por_ia"] and r.get("loc_conf") is not None and r["loc_conf"] >= umbral_local()
+                          and r.get("loc_sentimiento") == r.get("sentimiento"))
         r["metricas"] = meta.get("metricas")
         r["via"] = meta.get("via")
     return rows
@@ -3802,6 +4072,7 @@ def main():
     threading.Thread(target=saldo_scrapecreators, daemon=True).start()
     threading.Thread(target=saldo_scrapingbee, daemon=True).start()
     presupuesto_apify_inicial()
+    threading.Thread(target=trabajador_local, daemon=True).start()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)

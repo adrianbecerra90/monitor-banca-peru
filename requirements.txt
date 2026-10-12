@@ -1,0 +1,3 @@
+# Opcionales: sin ellas el monitor funciona igual (solo con Python), pero sin las rutas gratuitas ni el modelo local.
+yt-dlp[default,curl-cffi]   # TikTok (cuentas oficiales + comentarios) y YouTube (comentarios) sin claves ni créditos
+pysentimiento               # clasificador de sentimiento en español en el propio equipo (instala PyTorch, ~1 GB)
