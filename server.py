@@ -322,6 +322,23 @@ bancos cuenta plata dinero gracias favor pues nomas xq pq ke porq sale salio est
 vez solo bien mal ya tambien hasta sin sobre entre cual su sus al lo un""".split())
 
 
+_RELLENO = set("y o a e u mi mis tu tus su sus el la los las lo un una de del al en con por para que q k ke "
+               "ahi ahora pues pe oe ya ah eh uh oh mmm ps nomas este esta es mas tambien sera osea".split())
+
+
+def _sin_contenido(texto):
+    """Fragmentos que solo nombran a la entidad con muletillas ("y mi yape", "el bcp pues"): no dicen nada."""
+    t = normalizar(texto)
+    if re.search(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", texto or ""):
+        return False  # un emoji ("Interbank 👎") sí expresa algo
+    palabras = re.findall(r"[a-zñ0-9]+", re.sub(r"https?://\S+|[@#]\w+", " ", t))
+    if not palabras or len(palabras) > 6:
+        return False
+    entidad = {w for c in BANCOS.values() for a in c.get("buscar", []) + c.get("alias", []) + c.get("ambiguos", [])
+               for w in re.findall(r"[a-zñ0-9]+", normalizar(a))} | {"banco", "app", "yape", "plin", "via"}
+    return all(p in _RELLENO or p in entidad for p in palabras)
+
+
 def es_relevante(texto, tipo=""):
     """Descarta lo que no habla de la entidad: solo emojis o exclamaciones ("Ohhhh❤❤❤") y textos en otro idioma
     (p.ej. "plin" significa "lleno" en rumano)."""
@@ -329,6 +346,8 @@ def es_relevante(texto, tipo=""):
     palabras = re.findall(r"[a-zñ]{2,}", t)
     if tipo == "noticia":
         return True
+    if _sin_contenido(texto):
+        return False
     if len(palabras) < 2:
         # emojis, "ohhhh", "jaja"…: solo cuenta si nombra a la entidad ("Interbank 👎👎")
         return bool(detectar_bancos(texto, True))
@@ -562,6 +581,27 @@ class RutaInactiva(RuntimeError):
     """Una ruta que no se usa por un motivo esperado (pausa, sin clave…), con el motivo para mostrarlo en el panel."""
 
 
+def _resumen_inactivas(msgs):
+    """Un solo mensaje corto: agrupa los servicios apagados por fecha y nombra aparte lo demás."""
+    por_fecha, otros = {}, []
+    for n, m in msgs.items():
+        prov = next((p for p in AGOTADOS if n.startswith(p)), None) if "AGOTADOS" in globals() else None
+        hasta = agotado(prov) if prov else None
+        if hasta:
+            por_fecha.setdefault(hasta, [])
+            if prov not in por_fecha[hasta]:
+                por_fecha[hasta].append(prov)
+        elif m and "falta clave" not in m:
+            otros.append(f"{n} ({m.split(';')[0].split(' · ')[0][:50]})")
+    def lista(xs):
+        return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " y " + xs[-1]
+    partes = [f"{lista(ps)} hasta el {f:%d/%m}" for f, ps in sorted(por_fecha.items())]
+    texto = ("Sin créditos: " + "; ".join(partes) + ". Se pueden encender en ⚙ Configuración") if partes else ""
+    if otros:
+        texto += (" · " if texto else "Sin proveedores disponibles: ") + ", ".join(otros)
+    return texto
+
+
 def ejecutar_rutas(fuente, rutas, rango=None):
     """rutas: [(nombre, funcion(rango), modo)]; modo 'activo' (todas a la vez) o 'respaldo' (solo si fallan las activas).
     Devuelve la unión sin duplicados; None si ninguna ruta tiene clave; excepción si todas fallaron."""
@@ -599,11 +639,10 @@ def ejecutar_rutas(fuente, rutas, rango=None):
                 break
     if not any(st == "ok" for st, _ in resultados):
         if all(st == "inactiva" for st, _ in resultados):
-            motivos = [f"{n}: {SALUD.get(fuente, {}).get(n, {}).get('msg', '')}" for n, _, _ in rutas
-                       if SALUD.get(fuente, {}).get(n, {}).get("msg")]
-            if motivos and not all("falta clave" in m for m in motivos):
-                raise RutaInactiva("Sin proveedores disponibles · " + " · ".join(m[:70] for m in motivos))
-            return None
+            msgs = {n: SALUD.get(fuente, {}).get(n, {}).get("msg", "") for n, _, _ in rutas}
+            if not any(m and "falta clave" not in m for m in msgs.values()):
+                return None
+            raise RutaInactiva(_resumen_inactivas(msgs))
         raise RuntimeError("Todas las rutas fallaron: " + ", ".join(
             f"{n} ({SALUD.get(fuente, {}).get(n, {}).get('msg', '')[:60]})" for n, _, _ in rutas))
     vistos, out = set(), []
@@ -1757,12 +1796,12 @@ def exigir_disponible(prov):
     """Corta antes de cualquier llamada de red si el servicio está apagado por créditos agotados."""
     hasta = agotado(prov)
     if hasta:
-        raise RutaInactiva(f"Apagado hasta el {hasta:%d/%m/%Y} (renovación de créditos); no se consulta")
+        raise RutaInactiva(f"Apagado hasta el {hasta:%d/%m} (sin créditos)")
 
 
 def agotar(prov, motivo):
     apagar_hasta_renovacion(prov, motivo)
-    raise RutaInactiva(f"{motivo}. Apagado hasta el {fecha_renovacion(prov):%d/%m/%Y} (renovación de créditos)")
+    raise RutaInactiva(f"Apagado hasta el {fecha_renovacion(prov):%d/%m} (sin créditos)")
 
 
 def _tope_alcanzado(prov):
@@ -1936,6 +1975,8 @@ Para cada elemento devuelve:
 - "relevante": false si el texto no está en español, si es solo emojis o una exclamación sin contenido
   ("Ohhhh❤❤❤", "🔥🔥"), o si la entidad solo aparece de pasada y el texto no trata de ella (p. ej. el banco como medio
   de pago para donaciones, ventas o colectas; homónimos como Santander ciudad; política sin relación). Si no, true.
+- "relevante": false también si el texto no dice nada sobre la entidad: fragmentos o muletillas que solo la
+  nombran ("y mi yape", "el bcp pues", "Interbank?") sin queja, pregunta, opinión ni hecho concreto.
 - "atribuible": true solo si lo que se critica o reporta es responsabilidad de la entidad: sus apps y sistemas,
   atención, cobros, comisiones, políticas, personal o seguridad de sus canales. Es false cuando el problema lo causan
   terceros o no tiene que ver con la entidad, aunque se la nombre: estafas de delincuentes que usan su marca
