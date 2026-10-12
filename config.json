@@ -196,14 +196,14 @@
     "drama"
   ],
   "intervalos_minutos": {
-    "X": 3,
-    "Facebook": 720,
-    "Instagram": 720,
-    "TikTok": 1440,
+    "X": 5,
+    "Facebook": 60,
+    "Instagram": 60,
+    "TikTok": 30,
     "YouTube": 30,
     "Noticias": 5,
     "Bluesky": 5,
-    "Búsqueda Google": 1440
+    "Búsqueda Google": 30
   },
   "noticias_rss": [
     "https://rpp.pe/feed",
@@ -328,7 +328,8 @@
     },
     "presupuesto_usd_mes": 4.5,
     "x_via_apify": false,
-    "comentarios_max_por_post": 20
+    "comentarios_max_por_post": 20,
+    "dia_renovacion": 10
   },
   "nitter": {
     "_nota": "X sin clave vía Nitter. Las consultas se reparten entre las instancias sanas (activo-activo) y saltan a otra si una falla. Lista actualizada de instancias: https://status.d420.de",
@@ -445,18 +446,22 @@
       "bcp",
       "interbank"
     ],
-    "relacionadas_horas": 6
+    "relacionadas_horas": 6,
+    "alerta_minutos": 10,
+    "minutos_alerta": 90
   },
   "retencion_dias": 90,
   "scrapecreators": {
     "_nota": "Segunda ruta para Facebook, Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify; si uno cae, el otro asume todas.",
     "max_creditos_mes": 90,
-    "paginas_max_por_post": 35
+    "paginas_max_por_post": 10,
+    "dia_renovacion": 1
   },
   "creatorcrawl": {
     "_nota": "Tercera ruta para Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify y ScrapeCreators. El tope está ajustado al saldo gratuito; súbelo al recargar.",
     "max_creditos_mes": 45,
-    "paginas_max_por_post": 10
+    "paginas_max_por_post": 10,
+    "dia_renovacion": 1
   },
   "scrapingbee": {
     "_nota": "Búsqueda en Google de menciones públicas (≈10 créditos por búsqueda). 3 búsquedas al día ≈ 900 créditos/mes.",
@@ -467,12 +472,34 @@
       "site:facebook.com",
       "(site:tiktok.com OR site:instagram.com)",
       "(site:reddit.com OR inurl:foro OR inurl:forum)"
-    ]
+    ],
+    "dia_renovacion": 27
   },
   "rapidapi": {
     "_nota": "Facebook Scraper en RapidAPI. Plan gratuito: 100 llamadas al mes; tope 95 y como mucho 5 consultas de comentarios por pasada.",
     "max_llamadas_mes": 95,
     "comentarios_por_pasada": 5,
-    "reserva": 5
+    "reserva": 5,
+    "dia_renovacion": 1
+  },
+  "tiktok_libre": {
+    "_nota": "Ruta gratuita para TikTok: videos de las cuentas oficiales con yt-dlp y comentarios públicos. Los servicios de pago quedan de respaldo.",
+    "posts_por_cuenta": 6,
+    "posts_por_cuenta_historico": 20,
+    "paginas_max_por_post": 5
+  },
+  "youtube_libre": {
+    "_nota": "Ruta gratuita para YouTube con yt-dlp: videos de la semana cuyo título nombra a la entidad y sus comentarios más recientes.",
+    "videos_por_busqueda": 8,
+    "videos_max": 10,
+    "comentarios_por_video": 60
+  },
+  "instaloader": {
+    "_nota": "Instagram con la sesión de una cuenta secundaria creada por el usuario (instaloader --login). Lee poco y despacio para no exponer la cuenta. 'usuario' vacío = usa el único archivo de sesión que encuentre.",
+    "usuario": "",
+    "intervalo_minutos": 180,
+    "posts_por_cuenta": 3,
+    "comentarios_max_por_post": 50,
+    "pausa_seg": 8
   }
 }
