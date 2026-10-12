@@ -166,7 +166,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <h2>Nube de palabras <span class="sub" id="nb-info" style="text-transform:none;letter-spacing:0"></span></h2>
         <div class="frow" style="margin-bottom:8px">
           <select id="nb-max" aria-label="Cantidad de palabras"><option value="30">30 palabras</option><option value="60" selected>60 palabras</option><option value="100">100 palabras</option></select>
-          <select id="nb-n" aria-label="Palabras o frases"><option value="2-4" selected>Frases cortas (2 a 4 palabras)</option><option value="1">Palabras sueltas</option><option value="2">Frases de 2 palabras</option><option value="3">Frases de 3 palabras</option><option value="4">Frases de 4 palabras</option></select>
+          <select id="nb-n" aria-label="Palabras o frases"><option value="mix" selected>Palabras y frases cortas</option><option value="1">Solo palabras</option><option value="2-4">Solo frases (2 a 4 palabras)</option><option value="2">Frases de 2 palabras</option><option value="3">Frases de 3 palabras</option><option value="4">Frases de 4 palabras</option></select>
           <label class="sub"><input type="checkbox" id="nb-ent"> Incluir nombres de entidades</label>
           <label class="sub"><input type="checkbox" id="nb-not"> Incluir noticias</label>
           <input id="nb-excluir" placeholder="Excluir palabra y Enter…" style="min-width:170px">
@@ -566,13 +566,12 @@ function pintarConfig(){
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
       ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','API oficial de X']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
-      <label class="sub" style="display:block;margin-top:8px"><input type="checkbox" id="cfg-ini-pausa" ${CFG.iniciar_en_pausa?'checked':''}> Iniciar el monitor en pausa (se guarda con "Guardar y aplicar")</label></div>
+      <div class="sub" style="margin-top:8px">El monitor arranca siempre en vivo; la pausa es solo manual.</div></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
     <div class="bloque"><b>Frecuencia de consulta (minutos)</b><div class="rej" style="margin-top:8px">${CFG.fuentes.map(f=>`<label class="campo">${esc(f)}<input type="number" min="1" max="1440" data-int="${esc(f)}" value="${CFG.intervalos_minutos[f]??30}"></label>`).join('')}</div></div>`;
     c.querySelector('[data-k=retencion_dias]').oninput=e=>CFG.retencion_dias=e.target.value;
     $('#cfg-pausa-todo').onclick=()=>pausa('todo',!ESTADO.pausa.todo);
     c.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>pausa(b.dataset.pf,!pausada(b.dataset.pf)));
-    $('#cfg-ini-pausa').onchange=e=>CFG.iniciar_en_pausa=e.target.checked;
     c.querySelectorAll('[data-int]').forEach(i=>i.oninput=()=>CFG.intervalos_minutos[i.dataset.int]=i.value)}
   if(cfgTab==='entidades'){
     c.innerHTML=`<p class="ayuda"><b>Términos de búsqueda</b>: lo que se busca en X, noticias, YouTube y Bluesky. <b>Alias</b>: formas en que la gente nombra a la entidad (separados por comas). <b>Ambiguos</b>: alias que solo cuentan si el texto habla de Perú (p. ej. "BBVA" a secas).</p>`+
@@ -692,7 +691,7 @@ async function guardarConfig(){
   for(const e of CFG._ents){const n=e.nombre.trim();if(!n)continue;
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
-  const cuerpo={iniciar_en_pausa:CFG.iniciar_en_pausa,retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
+  const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
     trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,x_api:CFG.x_api,ia:CFG.ia};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{

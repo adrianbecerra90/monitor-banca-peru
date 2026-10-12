@@ -127,5 +127,4 @@ El repositorio ya incluye un `Dockerfile`. Pasos:
 5. Cada vez que se suba un cambio al repositorio, Railway lo vuelve a publicar solo.
 
 Notas: el plan Hobby de Railway cuesta unos US$5/mes. Desde servidores en la nube, Nitter (X) y Google Trends pueden
-bloquear más que desde una conexión doméstica; el monitor usa rutas de respaldo. Si prefieres que en el servidor no
-arranque en pausa tras cada despliegue, desmarca "Iniciar en pausa" en ⚙ Configuración → General.
+bloquear más que desde una conexión doméstica; el monitor usa rutas de respaldo.

@@ -581,6 +581,10 @@ def ejecutar_rutas(fuente, rutas, rango=None):
                 break
     if not any(st == "ok" for st, _ in resultados):
         if all(st == "inactiva" for st, _ in resultados):
+            motivos = [f"{n}: {SALUD.get(fuente, {}).get(n, {}).get('msg', '')}" for n, _, _ in rutas
+                       if SALUD.get(fuente, {}).get(n, {}).get("msg")]
+            if motivos and not all("falta clave" in m for m in motivos):
+                raise RutaInactiva("Sin proveedores disponibles · " + " · ".join(m[:70] for m in motivos))
             return None
         raise RuntimeError("Todas las rutas fallaron: " + ", ".join(
             f"{n} ({SALUD.get(fuente, {}).get(n, {}).get('msg', '')[:60]})" for n, _, _ in rutas))
@@ -1574,11 +1578,7 @@ except (FileNotFoundError, ValueError):
     PAUSA = {"todo": False, "fuentes": []}
 # migración: quita las pausas que antes se añadían solas a los servicios de pago
 PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "CreatorCrawl", "Búsqueda Google")]
-if CONFIG.get("iniciar_en_pausa", True):
-    PAUSA["todo"] = True  # el monitoreo nace pausado: empieza a consultar cuando el usuario pulsa Reanudar
-    for _s in SIEMPRE_MANUAL:
-        if _s not in PAUSA["fuentes"]:
-            PAUSA["fuentes"].append(_s)
+PAUSA["todo"] = False  # el monitor siempre arranca en vivo; la pausa general es solo una acción del usuario
 ESTADO["pausa"] = PAUSA
 
 
@@ -1931,7 +1931,6 @@ def config_editable():
     c = CONFIG
     return {
         "retencion_dias": c.get("retencion_dias", 90),
-        "iniciar_en_pausa": c.get("iniciar_en_pausa", True),
         "intervalos_minutos": c.get("intervalos_minutos", {}),
         "fuentes": list(FUENTES),
         "bancos": c.get("bancos", {}),
@@ -1977,8 +1976,6 @@ def validar_config(d):
     if not isinstance(d, dict):
         raise ValueError("Formato inválido")
     nueva = json.loads(json.dumps(CONFIG))
-    if "iniciar_en_pausa" in d:
-        nueva["iniciar_en_pausa"] = bool(d["iniciar_en_pausa"])
     if "retencion_dias" in d:
         nueva["retencion_dias"] = _entero(d["retencion_dias"], "Días de análisis", 30, 365)
     if "intervalos_minutos" in d:
@@ -2599,7 +2596,7 @@ pasa paso poder usar uso tener tienes tengo hacen hacer realizar voy vas fui fue
 vez mil millones miles gente alguien nadie persona personas posible bancos banco clientes cliente usuarios usuario
 empresa empresas sector publico programa informacion datos financiera financieras entidad entidades peruanos lima
 nino varita senor senora amigo amigos favor buen buena dios lp retail canalb altavoz""".split() + [
-    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion", "nota de prensa", "lee la nota", "bimestre setiembre octubre", "correspondiente al bimestre"]
+    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion", "nota de prensa", "lee la nota", "bimestre setiembre octubre", "correspondiente al bimestre", "ni siquiera", "este problema", "este caso"]
 
 
 def nube_excluidas():
@@ -2646,7 +2643,7 @@ def palabras(qs):
                 excluir |= set(re.findall(r"[a-zñ]{2,}", normalizar(a.lstrip("@#"))))
     # n = 1 (palabras), 2, 3, 4 (frases de exactamente n palabras) o "2-4" (frases cortas de 2 a 4 palabras)
     modo = g("n", "2" if g("bigramas") == "1" else "1")
-    tamanos = {"1": [1], "2": [2], "3": [3], "4": [4], "2-4": [2, 3, 4]}.get(modo, [1])
+    tamanos = {"1": [1], "2": [2], "3": [3], "4": [4], "2-4": [2, 3, 4], "mix": [1, 2, 3, 4]}.get(modo, [1])
     vacias = PALABRAS_VACIAS | excluir
     # una frase no puede empezar ni terminar en artículos o preposiciones ("de la", "en el"…); sí puede empezar en "no"
     bordes = {"de", "la", "el", "los", "las", "y", "a", "en", "que", "por", "con", "para", "un", "una", "del", "al",
@@ -2666,8 +2663,10 @@ def palabras(qs):
                         if len(trozo[0]) >= 3 and tn[0] not in vacias:
                             claves.add(trozo[0])
                         continue
-                    if tn[0] in bordes - {"no"} or tn[-1] in bordes or " ".join(tn) in frases_excluidas:
+                    if tn[0] in bordes - {"no"} or tn[-1] in bordes | {"no", "si", "ni"} or " ".join(tn) in frases_excluidas:
                         continue
+                    if tn[0] in excluir or tn[-1] in excluir:
+                        continue  # fragmentos que empiezan o acaban en un nombre de entidad o palabra excluida ("nación cobran")
                     if not any(t not in vacias and len(t) >= 3 for t in tn):
                         continue  # al menos una palabra con contenido
                     claves.add(" ".join(trozo))
@@ -2687,7 +2686,15 @@ def palabras(qs):
                     candidatas.pop(m)
         conteo = candidatas
     maximo = max(10, min(int(g("max", "60")), 150))
-    top = sorted(conteo.items(), key=lambda kv: -kv[1]["total"])[:maximo]
+    if modo == "mix":  # cupo para cada tipo: las palabras sueltas siempre son más frecuentes y taparían las frases
+        orden = sorted(conteo.items(), key=lambda kv: -kv[1]["total"])
+        frases = [kv for kv in orden if " " in kv[0]][:int(maximo * 0.45)]
+        palabras_ = [kv for kv in orden if " " not in kv[0]
+                     # una palabra que solo aparece dentro de una frase ya elegida no se repite
+                     and not any(f" {kv[0]} " in f" {f} " and kv[1]["total"] <= c["total"] * 1.2 for f, c in frases)]
+        top = sorted(frases + palabras_[:maximo - len(frases)], key=lambda kv: -kv[1]["total"])
+    else:
+        top = sorted(conteo.items(), key=lambda kv: -kv[1]["total"])[:maximo]
     return {"publicaciones": len(filas), "palabras": [{"palabra": k, **v} for k, v in top if v["total"] >= 2]}
 
 
