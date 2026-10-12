@@ -9,7 +9,6 @@ ENV HOST=0.0.0.0 \
     DATA_DIR=/data \
     TRUST_PROXY=1 \
     PYTHONUNBUFFERED=1
-RUN useradd --create-home monitor && mkdir -p /data && chown monitor /data
-USER monitor
+RUN mkdir -p /data
 EXPOSE 8765
 CMD ["python", "server.py"]
