@@ -8,3 +8,4 @@ pausa.json
 nube.json
 agotados.json
 .venv/
+.DS_Store
