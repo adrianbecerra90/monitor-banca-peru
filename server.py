@@ -3065,21 +3065,51 @@ def estadisticas(qs):
     return resultado
 
 
+# Cambia cuando cambia el panel o el servidor: el navegador se recarga solo para no quedarse con una versión vieja
+VERSION_PANEL = hashlib.sha256(b"".join(open(os.path.join(BASE, f), "rb").read()
+                                        for f in ("index.html", "server.py"))).hexdigest()[:12]
+
+
+def fuentes_disponibles():
+    """Fuentes que hoy sí están trayendo datos (no en pausa y con al menos una ruta viva). Los promedios y umbrales
+    se calculan solo con ellas: si una fuente está apagada, su histórico inflaría el promedio frente al presente."""
+    ahora_ = time.time()
+    disp = set()
+    for n in FUENTES:
+        if en_pausa(n):
+            continue
+        rutas_ = SALUD.get(n, {})
+        if not rutas_ or any(not r.get("inactiva") and r.get("pausa_hasta", 0) <= ahora_ and r.get("ok") is not False
+                             for r in rutas_.values()):
+            disp.add(n)
+    if not en_pausa("Google Trends"):
+        disp.add("Google Trends")
+    return disp
+
+
+def _origen(id_, fuente):
+    """Por qué fuente de recolección entró el item (las menciones halladas vía Google cuentan como «Búsqueda Google»)."""
+    return "Búsqueda Google" if str(id_).startswith("web:") else fuente
+
+
 def _estadisticas(qs):
     desde, hasta = _rango(qs)
     gran = qs.get("gran", ["auto"])[0]
     sql, args = _filtrar(qs, ignorar=("banco", "sentimiento", "solo_quejas", "categoria"))
     with _db_lock, db() as con:
         rows = [dict(r) for r in con.execute(
-            f"SELECT bancos, fuente, categorias, es_queja, severidad, fecha, sentimiento FROM items{sql}", args)]
+            f"SELECT id, bancos, fuente, categorias, es_queja, severidad, fecha, sentimiento FROM items{sql}", args)]
         # para picos: quejas última hora vs. 48 h previas, siempre sobre datos recientes
         recientes = [dict(r) for r in con.execute(
-            "SELECT bancos, fecha FROM items WHERE oculto = 0 AND es_queja = 1 AND fecha >= ?", (iso(ahora() - timedelta(hours=49)),))]
+            "SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND es_queja = 1 AND fecha >= ?",
+            (iso(ahora() - timedelta(hours=49)),))]
+    disp = fuentes_disponibles()
+    fuera = sorted({_origen(r["id"], r["fuente"]) for r in rows} - disp)
     sel_bancos = [b for b in qs.get("banco", [""])[0].split(",") if b]
     sel_sent = [s for s in qs.get("sentimiento", [""])[0].split(",") if s]
     vacio = lambda: {"menciones": 0, "quejas": 0, "graves": 0, "positivo": 0, "neutro": 0, "negativo": 0}
     por_banco = {b: vacio() for b in BANCOS}
-    por_cat, por_fuente, serie = {}, {}, {}
+    por_cat, por_fuente, serie, serie_ref = {}, {}, {}, {}
     calor = [[0] * 24 for _ in range(7)]  # quejas por día de la semana x hora (Lima)
     fechas = [datetime.fromisoformat(r["fecha"]) for r in rows]
     # Rango efectivo del gráfico: lo pedido, recortado a los datos existentes y a "ahora"
@@ -3112,6 +3142,10 @@ def _estadisticas(qs):
         serie.setdefault(t, {"positivo": 0, "neutro": 0, "negativo": 0, "quejas": 0})
         serie[t][s] += 1
         serie[t]["quejas"] += r["es_queja"]
+        if _origen(r["id"], r["fuente"]) in disp:  # base comparable para promedio y umbral
+            serie_ref.setdefault(t, {"positivo": 0, "neutro": 0, "negativo": 0, "quejas": 0})
+            serie_ref[t][s] += 1
+            serie_ref[t]["quejas"] += r["es_queja"]
         if s == "negativo":
             local = fdt.astimezone(LIMA)
             calor[local.weekday()][local.hour] += 1
@@ -3124,12 +3158,15 @@ def _estadisticas(qs):
     hace1h = iso(ahora() - timedelta(hours=1))
     ultima, base = {}, {}
     for r in recientes:
+        if _origen(r["id"], r["fuente"]) not in disp:  # el pico se mide con las mismas fuentes antes y ahora
+            continue
         for b in json.loads(r["bancos"]):
             (ultima if r["fecha"] >= hace1h else base)[b] = (ultima if r["fecha"] >= hace1h else base).get(b, 0) + 1
     picos = [{"banco": b, "ultima_hora": n, "promedio": round(base.get(b, 0) / 48, 1)}
              for b, n in ultima.items() if n >= 5 and n >= 3 * max(base.get(b, 0) / 48, 1)]
     return {**tot, "por_banco": por_banco, "por_categoria": por_cat, "por_fuente": por_fuente,
             "serie": _serie_continua(serie, ini, fin, gran), "granularidad": gran,
+            "serie_ref": _serie_continua(serie_ref, ini, fin, gran) if fuera else None, "fuentes_fuera": fuera,
             "calor": calor, "desde": desde, "hasta": hasta, "picos": picos}
 
 
@@ -3540,7 +3577,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
-                               "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(),
+                               "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":

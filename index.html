@@ -350,7 +350,9 @@ function serie(st){
   const tots=pts.map(v=>v.negativo+v.neutro+v.positivo);
   // Promedio y umbral de alerta (promedio + 2σ). En granularidad intradía, uno para el día y otro para la noche
   const intradia=!['dia','semana'].includes(gran);
-  const Rs=referencias(tots,pts.map(p=>+p.t.slice(11,13)),intradia);
+  // Promedio y umbral solo con las fuentes disponibles ahora: una fuente apagada inflaría la base frente al presente
+  const refTots=st.serie_ref?st.serie_ref.map(v=>v.negativo+v.neutro+v.positivo):tots;
+  const Rs=referencias(refTots,pts.map(p=>+p.t.slice(11,13)),intradia);
   const max=Math.max(1,...tots,...Rs.umbAt.filter((_,i)=>Rs.valAt[i]));
   const nice=Math.ceil(max/4)*4||4, bw=iw/pts.length, gap=bw>6?2:bw>3?1:0;
   const yv=v=>T+ih-v/nice*ih;
@@ -371,7 +373,8 @@ function serie(st){
   const ult=pts.length-1,yp=yv(Rs.promAt[ult]),yu=yv(Rs.umbAt[ult]);
   g+=`<text x="${L+iw+6}" y="${yp+3}" style="fill:var(--ink2);font-size:10px">Prom. ${fmt(Math.round(Rs.promAt[ult]*10)/10)}</text>`;
   if(Rs.valAt[ult])g+=`<text x="${L+iw+6}" y="${Math.abs(yu-yp)<12?yu-4:yu+3}" style="fill:var(--ink2);font-size:10px">Alerta ${fmt(Math.round(Rs.umbAt[ult]*10)/10)}</text>`;
-  $('#serie-nota').innerHTML=notaRefs(Rs,'menciones por '+GRAN_TXT[gran])+(Rs.porFranja?' Las franjas sombreadas son la noche.':'');
+  $('#serie-nota').innerHTML=notaRefs(Rs,'menciones por '+GRAN_TXT[gran])+(Rs.porFranja?' Las franjas sombreadas son la noche.':'')+
+    (st.fuentes_fuera?.length?` Promedio, umbral y ▲ se calculan solo con las fuentes disponibles ahora; quedan fuera: <b>${st.fuentes_fuera.map(esc).join(', ')}</b> (las barras sí muestran todo).`:'');
   // etiquetas del eje: ~8, marcando el cambio de día cuando la granularidad es intradía
   const nl=Math.min(8,pts.length),pasoL=Math.max(1,Math.round(pts.length/nl));let diaPrev='';
   for(let i=0;i<pts.length;i+=pasoL){const t=pts[i].t,dia=t.slice(0,10),intradia=!['dia','semana'].includes(gran);
@@ -382,7 +385,7 @@ function serie(st){
   $('#chart svg').querySelectorAll('.hit').forEach(r=>{const v=pts[+r.dataset.i];
     r.onmousemove=e=>{const tot=v.negativo+v.neutro+v.positivo;
       const rango=['dia','semana'].includes(gran)?etiqueta(v.t,gran,true)+(gran==='semana'?' (semana)':''):etiqueta(v.t,gran,true)+' – '+v.fin.slice(11);
-      tip.innerHTML=`<b>${esc(rango)}</b>${SENT.map(([s,l,c])=>`<span style="--c:${c}">${l}: ${fmt(v[s])}</span>`).join('<br>')}<br><span style="--c:transparent">Total ${fmt(tot)} · quejas ${fmt(v.quejas)}</span><br><span style="--c:transparent">${(()=>{const i=+r.dataset.i,p=Rs.promAt[i],fr=Rs.porFranja?(Rs.grupo(i)==='dia'?' de día':' de noche'):'';return p?`${tot>=p?'+':''}${fmt(Math.round((tot-p)/p*100))}% vs. promedio${fr}${Rs.altos[i]?' · <b>por encima del umbral</b>':''}`:''})()}</span><div class="hint">Clic para ampliar</div>`;
+      tip.innerHTML=`<b>${esc(rango)}</b>${SENT.map(([s,l,c])=>`<span style="--c:${c}">${l}: ${fmt(v[s])}</span>`).join('<br>')}<br><span style="--c:transparent">Total ${fmt(tot)} · quejas ${fmt(v.quejas)}</span><br><span style="--c:transparent">${(()=>{const i=+r.dataset.i,p=Rs.promAt[i],fr=Rs.porFranja?(Rs.grupo(i)==='dia'?' de día':' de noche'):'';const tc=refTots[i];return p?`${tc>=p?'+':''}${fmt(Math.round((tc-p)/p*100))}% vs. promedio${fr}${st.serie_ref?' (fuentes disponibles: '+fmt(tc)+')':''}${Rs.altos[i]?' · <b>por encima del umbral</b>':''}`:''})()}</span><div class="hint">Clic para ampliar</div>`;
       const box=$('#chart').getBoundingClientRect();tip.style.display='block';let x=e.clientX-box.left+12;if(x+tip.offsetWidth>box.width)x-=tip.offsetWidth+24;tip.style.left=x+'px';tip.style.top=Math.max(0,e.clientY-box.top-50)+'px';r.setAttribute('fill','color-mix(in srgb,var(--ink) 6%,transparent)')};
     r.onmouseleave=()=>{tip.style.display='none';r.setAttribute('fill','transparent')};
     r.onclick=()=>{ // zoom: el intervalo pasa a ser el periodo y el detalle se afina solo
@@ -465,7 +468,9 @@ function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponi
     const sinRes=!r.msg||r.msg==='Pendiente'?'iniciando…':/clasificando|consultando|reanudando/i.test(r.msg)?r.msg:'inactiva · '+r.msg;
     return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':/clasificando|iniciando/i.test(sinRes)?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?(/clasificando/i.test(r.msg||'')?r.msg:'OK'):r.ok===false?'falló':sinRes)}</div>`}).join('')+'</div>'}
 async function cargarEstado(){
-  const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;ESTADO=es;
+  const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;
+  if(!primera&&es.version&&ESTADO.version&&es.version!==ESTADO.version&&!$('#cfg').classList.contains('on')){location.reload();return} // el monitor se actualizó
+  ESTADO=es;
   if(primera){es.categorias.forEach(c=>$('#f-cat').add(new Option(c,c)));leerF();if(!es.categorias.includes(F.categoria))F.categoria='';pintarFiltros();
     $('#h-fuentes').innerHTML=es.fuentes_lista.filter(f=>f!=='Google Trends').map(f=>`<label><input type="checkbox" value="${esc(f)}" checked> ${esc(f)}</label>`).join('');
     const hoy=new Date(),min=new Date(hoy-89*864e5).toISOString().slice(0,10);$('#h-hasta').value=hoy.toISOString().slice(0,10);$('#h-desde').value=new Date(hoy-30*864e5).toISOString().slice(0,10);$('#h-desde').min=min;$('#h-hasta').min=min;$('#h-hasta').max=$('#h-hasta').value}
@@ -614,7 +619,7 @@ function pintarConfig(){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
       <div class="sub" style="margin-top:8px">El monitor arranca siempre en vivo; la pausa es solo manual.</div></div>
     <div class="bloque" id="cfg-apagados"></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
