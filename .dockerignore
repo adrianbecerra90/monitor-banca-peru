@@ -1,0 +1,8 @@
+.env
+*.db
+*.log
+archivo/
+config_copias/
+pausa.json
+nube.json
+.git/

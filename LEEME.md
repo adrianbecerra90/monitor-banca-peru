@@ -82,8 +82,8 @@ Los datos se guardan en `quejas.db` (SQLite).
 
 Revisión de desarrollo seguro aplicada (octubre 2026):
 
-- **Solo local por defecto:** escucha en `127.0.0.1`. Para escuchar fuera del equipo (`HOST=0.0.0.0`) el servidor
-  exige `PANEL_USUARIO` y `PANEL_CLAVE` (≥ 12 caracteres) y no arranca sin ellos.
+- **Solo local por defecto:** escucha en `127.0.0.1`. Para publicarlo (`HOST=0.0.0.0`) exige al menos una cuenta de
+  administrador (o `ADMIN_USUARIO`/`ADMIN_CLAVE`) y no arranca sin ella.
 - **DNS rebinding:** solo responde a los nombres de host esperados (`localhost`, `127.0.0.1` y `HOSTS_PERMITIDOS`).
 - **CSRF:** las acciones (consultar ahora, carga histórica) exigen una cabecera propia del panel y origen propio;
   una web maliciosa abierta en tu navegador no puede dispararlas ni gastar tu crédito de Apify.
@@ -97,8 +97,35 @@ Revisión de desarrollo seguro aplicada (octubre 2026):
 - **Robustez:** límite de 25 MB por respuesta externa, máximo 20 conexiones en vivo, validación de parámetros y
   rango máximo de 3 años para cargas históricas.
 
-**Para publicarlo en internet:** pon delante un proxy con HTTPS (Caddy o Nginx con Let's Encrypt), define
-`PANEL_USUARIO`, `PANEL_CLAVE` y `HOSTS_PERMITIDOS`, y no expongas el puerto 8765 directamente.
+- **Inicio de sesión y roles:** cuentas con contraseña cifrada (PBKDF2-SHA256), sesiones de 12 h en cookie
+  `HttpOnly`/`SameSite=Strict`, bloqueo tras 5 intentos fallidos por usuario (20 por IP), registro de accesos y dos
+  roles: **Administrador** (todo) y **Lector** (ver y descargar). Se gestionan en ⚙ Configuración → Accesos.
 
 **Datos personales:** se guardan publicaciones públicas con nombre de usuario. Define cuánto tiempo conservarlas
 y quién accede al panel conforme a la Ley N.º 29733 de Protección de Datos Personales.
+
+
+## Acceso
+
+La primera vez que abras el monitor te pedirá **crear la cuenta de administrador** (solo se permite desde el mismo
+equipo donde está instalado). Después, en **⚙ Configuración → Accesos** puedes crear cuentas para tu equipo.
+
+## Publicarlo en internet (Railway)
+
+El repositorio ya incluye un `Dockerfile`. Pasos:
+
+1. Entra en https://railway.com con tu cuenta de GitHub y crea un proyecto: **New Project → Deploy from GitHub repo →
+   monitor-banca-peru**.
+2. En el servicio, **Settings → Volumes → Add Volume** con ruta de montaje **`/data`** (ahí se guardan la base de
+   datos, el archivo y la configuración; sin volumen se perderían en cada despliegue).
+3. En **Variables**, añade como secretas:
+   - `ADMIN_USUARIO` y `ADMIN_CLAVE` (tu primer administrador; mínimo 10 caracteres con letras y números),
+   - las claves que uses: `APIFY_TOKEN`, `SCRAPECREATORS_API_KEY`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`,
+     `YOUTUBE_API_KEY`, `X_BEARER_TOKEN`.
+4. **Settings → Networking → Generate Domain**. Railway te da una dirección `https://….up.railway.app`; ese es tu
+   monitor en internet (con HTTPS y login).
+5. Cada vez que se suba un cambio al repositorio, Railway lo vuelve a publicar solo.
+
+Notas: el plan Hobby de Railway cuesta unos US$5/mes. Desde servidores en la nube, Nitter (X) y Google Trends pueden
+bloquear más que desde una conexión doméstica; el monitor usa rutas de respaldo. Si prefieres que en el servidor no
+arranque en pausa tras cada despliegue, desmarca "Iniciar en pausa" en ⚙ Configuración → General.

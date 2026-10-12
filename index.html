@@ -98,6 +98,9 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 #cfg .ayuda{font-size:12px;color:var(--muted);margin:0 0 12px}
 #cfg-msg{font-size:13px;margin-right:auto}
 .exp{display:grid;gap:8px}.exp .fila{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.exp label{font-size:12px;color:var(--ink2)}
+body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{display:none!important}
+#cfg table.us{width:100%;border-collapse:collapse;font-size:13px}#cfg table.us td,#cfg table.us th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:middle}
+#cfg table.us th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .empty{color:var(--muted);padding:30px;text-align:center}
 .keys a{color:var(--acc)}
 @media(max-width:600px){header,.wrap{padding-left:16px;padding-right:16px}.frow .lbl{width:100%}.ent{grid-template-columns:96px 1fr 44px}.bar{grid-template-columns:110px 1fr 30px}}
@@ -113,9 +116,11 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
     <span class="live" id="live"><i></i>EN VIVO</span>
     <label class="sub"><input type="checkbox" id="notif"> Avisos de quejas graves</label>
     <a id="csv" href="#"><button>Exportar CSV</button></a>
-    <button id="pausa-global" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
+    <span class="sub" id="yo"></span>
+    <button id="pausa-global" class="solo-admin" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
     <button id="cfg-abrir" title="Configuración">⚙ Configuración</button>
-    <button class="pri" id="refresh">Consultar ahora</button>
+    <button class="pri solo-admin" id="refresh">Consultar ahora</button>
+    <button id="salir" title="Cerrar sesión">Salir</button>
   </div>
 </header>
 
@@ -161,7 +166,7 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
         <h2>Nube de palabras <span class="sub" id="nb-info" style="text-transform:none;letter-spacing:0"></span></h2>
         <div class="frow" style="margin-bottom:8px">
           <select id="nb-max" aria-label="Cantidad de palabras"><option value="30">30 palabras</option><option value="60" selected>60 palabras</option><option value="100">100 palabras</option></select>
-          <label class="sub"><input type="checkbox" id="nb-bi"> Frases de 2 palabras</label>
+          <select id="nb-n" aria-label="Palabras o frases"><option value="1">Palabras sueltas</option><option value="2-4">Frases cortas (2 a 4 palabras)</option><option value="2">Frases de 2 palabras</option><option value="3">Frases de 3 palabras</option><option value="4">Frases de 4 palabras</option></select>
           <label class="sub"><input type="checkbox" id="nb-ent"> Incluir nombres de entidades</label>
           <input id="nb-excluir" placeholder="Excluir palabra y Enter…" style="min-width:170px">
         </div>
@@ -198,7 +203,7 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
       </div>
       <div class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
       <div class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
-      <div class="card">
+      <div class="card hist-card">
         <h2>Carga histórica</h2>
         <div class="hist">
           <input type="date" id="h-desde"> → <input type="date" id="h-hasta">
@@ -223,6 +228,18 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 </div>
 <script>
 const $=s=>document.querySelector(s);
+// ---------- sesión ----------
+let YO=null;
+const _fetch=window.fetch.bind(window);
+window.fetch=async(...a)=>{const r=await _fetch(...a);if(r.status===401&&String(a[0]).startsWith('/api/'))location.replace('/login');return r};
+async function cargarSesion(){
+  const s=await _fetch('/api/sesion').then(r=>r.json());
+  if(!s.autenticado){location.replace('/login');return false}
+  YO=s;document.body.classList.toggle('lector',s.rol!=='admin');
+  $('#yo').textContent=`👤 ${s.nombre} · ${s.rol==='admin'?'Administrador':'Lector'}`;
+  if(s.rol!=='admin')$('#cfg-abrir').textContent='👤 Mi cuenta';
+  return true}
+$('#salir').onclick=async()=>{await post('/api/logout');location.replace('/login')};
 const segura=u=>/^https?:\/\//i.test(u||'')?u:'';
 const post=u=>fetch(u,{method:'POST',headers:{'X-Monitor':'1'}});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -421,6 +438,10 @@ async function cargarStats(){
   barras($('#redes'),Object.entries(st.por_fuente).sort((a,b)=>b[1]-a[1]),F.fuente.length===1?F.fuente[0]:'',n=>{F.fuente=F.fuente.length===1&&F.fuente[0]===n?[]:[n];pintarFiltros();recargar()});
   $('#csv').href='/api/export.csv?'+params()}
 
+function ultimaAct(f){ // "Última actualización: 15:42 (hace 3 min)" en hora de Lima
+  if(!f)return '<span class="sub">Sin actualizar todavía</span>';
+  const t=new Date(f).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  return `<span class="sub">Última actualización: <b>${esc(t)}</b> (hace ${hace(f)})</span>`}
 function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponibilidad)
   if(!rs||!Object.keys(rs).length)return '';
   return '<div class="rutas">'+Object.entries(rs).map(([n,r])=>{const pausa=r.pausa_hasta*1000>Date.now();
@@ -432,11 +453,13 @@ async function cargarEstado(){
     const hoy=new Date(),min=new Date(hoy-89*864e5).toISOString().slice(0,10);$('#h-hasta').value=hoy.toISOString().slice(0,10);$('#h-desde').value=new Date(hoy-30*864e5).toISOString().slice(0,10);$('#h-desde').min=min;$('#h-hasta').min=min;$('#h-hasta').max=$('#h-hasta').value}
   const fs=Object.entries(es.fuentes);const ult=fs.map(([,f])=>f.ultima).filter(Boolean).sort().pop();
   $('#estado').textContent=`${fs.filter(([,f])=>f.ok).length}/${fs.length} fuentes activas · `+(ult?'último dato hace '+hace(ult):'primer escaneo en curso…')+` · ${fmt(es.base.total)} publicaciones guardadas`;
-  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br><span class="sub">${esc(f.ejecutando?'Consultando…':f.msg)}</span>${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
+  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br>${ultimaAct(f.ultima)}<br><span class="sub">${esc(f.ejecutando?'Consultando…':f.msg)}</span>${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
   $('#fuentes').querySelectorAll('button[data-f]').forEach(b=>b.onclick=async()=>{await post('/api/refresh?fuente='+encodeURIComponent(b.dataset.f));setTimeout(cargarEstado,800)});
   const ia=es.ia_estado||{};
-  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('IA')?'var(--warn)':ia.activo?(ia.pendientes?'var(--warn)':'var(--good)'):'var(--neg)'}"></span><b>Clasificación IA</b>${es.pausa.todo?'':`<button data-p="IA">${pausada('IA')?'▶':'⏸'}</button>`}<br><span class="sub">${esc(pausada('IA')?'⏸ En pausa':ia.msg||'')}</span>${rutasHTML(es.rutas.IA)}</div>`);
-  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('Google Trends')?'var(--warn)':'var(--good)'}"></span><b>Google Trends</b>${es.pausa.todo?'':`<button data-p="Google Trends">${pausada('Google Trends')?'▶':'⏸'}</button>`}<br><span class="sub">${pausada('Google Trends')?'⏸ En pausa':'cada '+(TR?'hora':'hora')}</span>${rutasHTML(es.rutas['Google Trends'])}</div>`);
+  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('IA')?'var(--warn)':ia.activo?(ia.pendientes?'var(--warn)':'var(--good)'):'var(--neg)'}"></span><b>Clasificación IA</b>${es.pausa.todo?'':`<button data-p="IA">${pausada('IA')?'▶':'⏸'}</button>`}<br>${ultimaAct(ia.ultima)}<br><span class="sub">${esc(pausada('IA')?'⏸ En pausa':ia.msg||'')}</span>${rutasHTML(es.rutas.IA)}</div>`);
+  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('Google Trends')?'var(--warn)':'var(--good)'}"></span><b>Google Trends</b>${es.pausa.todo?'':`<button data-p="Google Trends">${pausada('Google Trends')?'▶':'⏸'}</button>`}<br>${ultimaAct(es.trends_estado?.actualizado)}<br><span class="sub">${pausada('Google Trends')?'⏸ En pausa':'Interés cada hora · tendencias cada 15 min'}</span>${rutasHTML(es.rutas['Google Trends'])}</div>`);
+  const sc=es.scrapecreators||{};
+  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('ScrapeCreators')?'var(--warn)':'var(--good)'}"></span><b>ScrapeCreators</b> <span class="sub">(pago por uso)</span>${es.pausa.todo?'':`<button data-p="ScrapeCreators">${pausada('ScrapeCreators')?'▶':'⏸'}</button>`}<br><span class="sub">${pausada('ScrapeCreators')?'⏸ En pausa · se reanuda solo a mano (no con «Reanudar monitoreo»)':'Activo para Facebook, Instagram y TikTok'}${sc.restantes!=null?` · ${fmt(sc.restantes)} créditos restantes · ${fmt(sc.usados_mes||0)}/${fmt(sc.tope||0)} usados este mes`:''}</span></div>`);
   $('#fuentes').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
   pintarPausa();
   const faltan=Object.entries(es.claves).filter(([,v])=>!v).map(([k])=>k);
@@ -470,7 +493,7 @@ async function excluirPalabras(lista){
   const r=await fetch('/api/nube/agregar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({palabras:lista})}).then(r=>r.json());
   if(r.error)alert(r.error);cargarNube()}
 async function cargarNube(){
-  const p=params({max:$('#nb-max').value,bigramas:$('#nb-bi').checked?'1':'0',entidades:$('#nb-ent').checked?'1':'0',excluir:NB.excluir.join(',')});
+  const p=params({max:$('#nb-max').value,n:$('#nb-n').value,entidades:$('#nb-ent').checked?'1':'0',excluir:NB.excluir.join(',')});
   let d;try{d=await fetch('/api/palabras?'+p).then(r=>r.json())}catch(e){return}
   $('#nb-excl').innerHTML='<span class="sub">Las palabras sin valor se filtran según la lista de <a href="#" id="nb-config">⚙ Configuración → Nube de palabras</a>.</span>';
   $('#nb-config').onclick=e=>{e.preventDefault();cfgTab='nube';abrirConfig()};
@@ -485,7 +508,8 @@ function dibujarNube(ws){
   const max=ws[0].total,min=ws.at(-1).total,cajas=[],out=[];
   const choca=b=>cajas.some(c=>b.x<c.x+c.w&&b.x+b.w>c.x&&b.y<c.y+c.h&&b.y+b.h>c.y);
   ws.forEach((w,i)=>{
-    const t=Math.sqrt((w.total-min)/Math.max(1,max-min)),fs=Math.round(13+t*(ws.length>80?44:54)),peso=fs>30?800:fs>20?700:600;
+    const nPal=w.palabra.split(' ').length,escala=nPal>2?0.62:nPal>1?0.78:1;
+    const t=Math.sqrt((w.total-min)/Math.max(1,max-min)),fs=Math.round((13+t*(ws.length>80?44:54))*escala),peso=fs>30?800:fs>20?700:600;
     ctx.font=`${peso} ${fs}px ${fam}`;
     const ancho=ctx.measureText(w.palabra).width,alto=fs*0.82,vert=i>2&&i%4===1&&fs<36&&!w.palabra.includes(' ');
     const bw=(vert?alto:ancho)+6,bh=(vert?ancho:alto)+4;
@@ -507,14 +531,17 @@ function dibujarNube(ws){
     el.onclick=e=>{tip.style.display='none';
       if(e.altKey){excluirPalabras([w.palabra]);return}
       F.q=w.palabra;pintarFiltros();recargar();document.querySelector('#lista').scrollIntoView({behavior:'smooth',block:'start'})}})}
-$('#nb-max').onchange=$('#nb-bi').onchange=$('#nb-ent').onchange=cargarNube;
+$('#nb-max').onchange=$('#nb-n').onchange=$('#nb-ent').onchange=cargarNube;
 $('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim().toLowerCase().slice(0,40);if(w)excluirPalabras([w]);e.target.value=''}};
 
 // ---------- Panel de configuración ----------
 let CFG=null,cfgTab='general';
 const lista=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
-const TABS=[['general','General'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas']];
+const TABS_ADMIN=[['general','General'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
+const tabsVisibles=()=>YO?.rol==='admin'?TABS_ADMIN:[['cuenta','Mi cuenta']];
 async function abrirConfig(){
+  if(YO?.rol!=='admin'){CFG={};cfgTab='cuenta';$('#cfg-msg').textContent='';$('#cfg').classList.add('on');$('#cfg-guardar').style.display='none';pintarConfig();return}
+  $('#cfg-guardar').style.display='';
   CFG=await fetch('/api/config').then(r=>r.json());
   // estructura de trabajo editable (las entidades llevan un id estable para enlazar sus cuentas aunque se renombren)
   CFG._ents=Object.entries(CFG.bancos).map(([n,b],i)=>({id:i,nombre:n,buscar:b.buscar.join(', '),alias:b.alias.join(', '),ambiguos:(b.ambiguos||[]).join(', '),cuentas:{...(CFG.cuentas_oficiales[n]||{})}}));
@@ -522,14 +549,15 @@ async function abrirConfig(){
   $('#cfg-msg').textContent='';$('#cfg').classList.add('on');pintarConfig()}
 $('#cfg-abrir').addEventListener('click',()=>{cfgTab='general'},true);
 function pintarConfig(){
-  $('#cfg-tabs').innerHTML=TABS.map(([k,l])=>`<button class="tg ${k===cfgTab?'on':''}" data-k="${k}">${l}</button>`).join('');
+  $('#cfg-tabs').innerHTML=tabsVisibles().map(([k,l])=>`<button class="tg ${k===cfgTab?'on':''}" data-k="${k}">${l}</button>`).join('');
   $('#cfg-tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{cfgTab=b.dataset.k;pintarConfig()});
   const c=$('#cfg-cuerpo');
   if(cfgTab==='general'){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','ScrapeCreators']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      <div class="sub" style="margin-top:6px">ScrapeCreators (de pago) no se reanuda con «Reanudar todo»: se activa solo con su propio botón.</div>
       <label class="sub" style="display:block;margin-top:8px"><input type="checkbox" id="cfg-ini-pausa" ${CFG.iniciar_en_pausa?'checked':''}> Iniciar el monitor en pausa (se guarda con "Guardar y aplicar")</label></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
     <div class="bloque"><b>Frecuencia de consulta (minutos)</b><div class="rej" style="margin-top:8px">${CFG.fuentes.map(f=>`<label class="campo">${esc(f)}<input type="number" min="1" max="1440" data-int="${esc(f)}" value="${CFG.intervalos_minutos[f]??30}"></label>`).join('')}</div></div>`;
@@ -584,6 +612,43 @@ function pintarConfig(){
     c.querySelectorAll('[data-x]').forEach(x=>x.oninput=x.onchange=()=>CFG.x_api[x.dataset.x]=x.value);
     c.querySelectorAll('[data-s]').forEach(x=>x.oninput=()=>CFG.scrapecreators[x.dataset.s]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value})}
+  if(cfgTab==='accesos'){
+    c.innerHTML=`<p class="ayuda"><b>Administrador</b>: todo (configuración, pausas, archivo, accesos). <b>Lector</b>: ver el panel, filtrar y descargar. Las contraseñas deben tener al menos 10 caracteres con letras y números. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
+    <div class="bloque"><b>Nueva cuenta</b><div class="rej" style="margin-top:8px">
+      <label class="campo">Usuario<input type="text" id="nu-usuario" placeholder="ej. maria.perez" autocomplete="off"></label>
+      <label class="campo">Nombre<input type="text" id="nu-nombre" placeholder="María Pérez"></label>
+      <label class="campo">Contraseña inicial<input type="password" id="nu-clave" autocomplete="new-password"></label>
+      <label class="campo">Rol<select id="nu-rol"><option value="lector">Lector</option><option value="admin">Administrador</option></select></label></div>
+      <button class="pri" id="nu-crear">Crear cuenta</button> <span class="sub" id="nu-msg"></span></div>
+    <div class="bloque"><b>Cuentas</b><div id="us-lista" style="margin-top:8px"><span class="sub">Cargando…</span></div></div>
+    <div class="bloque"><b>Registro de accesos</b> <span class="sub">(últimos 60 eventos)</span><div id="us-log" style="margin-top:8px;max-height:240px;overflow:auto"></div></div>`;
+    const pj=(u,d)=>fetch(u,{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json());
+    const fecha=f=>f?new Date(f).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+    const cargarUs=async()=>{const d=await fetch('/api/usuarios').then(r=>r.json());
+      $('#us-lista').innerHTML=`<table class="us"><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th></th></tr>${d.usuarios.map(u=>`<tr data-u="${esc(u.usuario)}">
+        <td><b>${esc(u.usuario)}</b>${u.usuario===YO.usuario?' <span class="sub">(tú)</span>':''}</td><td>${esc(u.nombre||'')}</td>
+        <td><select data-a="rol">${Object.entries(d.roles).map(([k,l])=>`<option value="${k}" ${k===u.rol?'selected':''}>${l}</option>`).join('')}</select></td>
+        <td><label class="sub"><input type="checkbox" data-a="activo" ${u.activo?'checked':''}> activa</label></td><td class="sub">${fecha(u.ultimo_acceso)}</td>
+        <td style="white-space:nowrap"><button data-a="clave">Restablecer contraseña</button> <button data-a="borrar">Eliminar</button></td></tr>`).join('')}</table>`;
+      $('#us-log').innerHTML=d.accesos.map(a=>`<div class="sub">${fecha(a.fecha)} · <b>${esc(a.usuario)}</b> ${esc(a.evento)}${a.ip?' · '+esc(a.ip):''}</div>`).join('')||'<span class="sub">Sin eventos</span>';
+      $('#us-lista').querySelectorAll('tr[data-u]').forEach(tr=>{const u=tr.dataset.u,acc=async d=>{const r=await pj('/api/usuarios/editar',{usuario:u,...d});if(r.error)alert(r.error);cargarUs()};
+        tr.querySelector('[data-a=rol]').onchange=e=>acc({rol:e.target.value});
+        tr.querySelector('[data-a=activo]').onchange=e=>acc({activo:e.target.checked});
+        tr.querySelector('[data-a=clave]').onclick=()=>{const c=prompt('Nueva contraseña para «'+u+'» (mín. 10 caracteres con letras y números):');if(c)acc({clave:c})};
+        tr.querySelector('[data-a=borrar]').onclick=()=>{if(confirm('¿Eliminar la cuenta «'+u+'»? No se puede deshacer.'))acc({borrar:true})}})};
+    $('#nu-crear').onclick=async()=>{const r=await pj('/api/usuarios',{usuario:$('#nu-usuario').value.trim().toLowerCase(),nombre:$('#nu-nombre').value,clave:$('#nu-clave').value,rol:$('#nu-rol').value});
+      $('#nu-msg').innerHTML=r.error?`<span style="color:var(--neg)">⚠ ${esc(r.error)}</span>`:'✓ Cuenta creada';if(!r.error){['#nu-usuario','#nu-nombre','#nu-clave'].forEach(s=>$(s).value='');cargarUs()}};
+    cargarUs()}
+  if(cfgTab==='cuenta'){
+    c.innerHTML=`<div class="bloque"><b>${esc(YO.nombre)}</b> <span class="sub">· usuario ${esc(YO.usuario)} · ${YO.rol==='admin'?'Administrador':'Lector'}</span></div>
+    <div class="bloque"><b>Cambiar mi contraseña</b><div class="rej" style="margin-top:8px">
+      <label class="campo">Contraseña actual<input type="password" id="mc-actual" autocomplete="current-password"></label>
+      <label class="campo">Nueva contraseña<input type="password" id="mc-nueva" autocomplete="new-password"></label>
+      <label class="campo">Repite la nueva<input type="password" id="mc-nueva2" autocomplete="new-password"></label></div>
+      <button class="pri" id="mc-guardar">Cambiar contraseña</button> <span class="sub" id="mc-msg"></span></div>`;
+    $('#mc-guardar').onclick=async()=>{if($('#mc-nueva').value!==$('#mc-nueva2').value){$('#mc-msg').textContent='Las contraseñas nuevas no coinciden';return}
+      const r=await fetch('/api/mi-clave',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({actual:$('#mc-actual').value,nueva:$('#mc-nueva').value})}).then(r=>r.json());
+      $('#mc-msg').innerHTML=r.error?`<span style="color:var(--neg)">⚠ ${esc(r.error)}</span>`:'✓ Contraseña actualizada';if(!r.error)['#mc-actual','#mc-nueva','#mc-nueva2'].forEach(s=>$(s).value='')}}
   if(cfgTab==='nube'){
     c.innerHTML=`<p class="ayuda">Palabras que <b>no se muestran</b> en la nube porque no aportan valor (medios, fechas, verbos genéricos…). Escribe una por línea. Se aplica al instante, sin reiniciar. Los nombres de las entidades se controlan con la casilla "Incluir nombres de entidades" de la nube.</p>
     <div class="bloque"><div class="frow" style="margin-bottom:8px"><input type="text" id="nb-cfg-nueva" placeholder="Añadir palabra y Enter…" style="flex:1"><span class="sub" id="nb-cfg-n"></span></div>
@@ -744,7 +809,7 @@ $('#h-go').onclick=async()=>{const fuentes=[...$('#h-fuentes').querySelectorAll(
   const r=await post(`/api/historico?desde=${$('#h-desde').value}&hasta=${$('#h-hasta').value}&fuentes=${encodeURIComponent(fuentes)}`).then(r=>r.json());
   if(r.error)alert(r.error);cargarEstado()};
 
-(async()=>{await cargarEstado();pintarFiltros();recargar();conectarVivo();cargarTrends();setInterval(cargarTrends,300000);
+(async()=>{if(!await cargarSesion())return;await cargarEstado();pintarFiltros();recargar();conectarVivo();cargarTrends();setInterval(cargarTrends,300000);
   setInterval(cargarEstado,10000);
   setInterval(()=>{if(document.visibilityState==='visible')refrescarGraficos()},30000);
   // las clasificaciones de la IA llegan después: si estás al inicio de la lista, se refresca para mostrarlas

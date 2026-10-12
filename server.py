@@ -26,7 +26,9 @@ import base64
 import csv
 import glob
 import http.cookiejar
+import hashlib
 import hmac
+import secrets
 from concurrent.futures import ThreadPoolExecutor
 import html
 import io
@@ -48,7 +50,11 @@ from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE, "quejas.db")
+# Datos (base, archivo, configuración editable, pausas…): en local, junto al código; en un servidor, en un disco
+# persistente indicado con DATA_DIR (p. ej. /data)
+DATOS = os.environ.get("DATA_DIR") or BASE
+os.makedirs(DATOS, exist_ok=True)
+DB_PATH = os.path.join(DATOS, "quejas.db")
 PORT = int(os.environ.get("PORT", "8765"))
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
@@ -67,7 +73,10 @@ def cargar_env():
 
 
 cargar_env()
-with open(os.path.join(BASE, "config.json"), encoding="utf-8") as f:
+if not os.path.exists(os.path.join(DATOS, "config.json")):  # primer arranque en un disco nuevo: copia la configuración base
+    import shutil
+    shutil.copy(os.path.join(BASE, "config.json"), os.path.join(DATOS, "config.json"))
+with open(os.path.join(DATOS, "config.json"), encoding="utf-8") as f:
     CONFIG = json.load(f)
 BANCOS = CONFIG["bancos"]
 
@@ -1112,7 +1121,8 @@ CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API
 
 def _proveedor_sano(fuente, prov):
     s = SALUD.get(fuente, {}).get(prov, {})
-    return bool(os.environ.get(CLAVE_PROVEEDOR[prov])) and ruta_disponible(fuente, prov) and s.get("ok") is not False
+    return (bool(os.environ.get(CLAVE_PROVEEDOR[prov])) and not en_pausa(prov) and ruta_disponible(fuente, prov)
+            and s.get("ok") is not False)
 
 
 def cuentas_asignadas(red, fuente, prov):
@@ -1178,7 +1188,7 @@ def _sc_comentarios(red, ruta, url_post, nuevos, banco, fuente):
 
 def _sc_red(red, fuente, rango):
     """Publicaciones de las cuentas asignadas + comentarios nuevos (lectura incremental compartida con Apify)."""
-    if not os.environ.get("SCRAPECREATORS_API_KEY"):
+    if not os.environ.get("SCRAPECREATORS_API_KEY") or en_pausa("ScrapeCreators"):
         return None
     mapa = cuentas_asignadas(red, fuente, "ScrapeCreators")
     out, conteo, post_banco = [], {}, {}
@@ -1332,8 +1342,9 @@ ESTADO = {"fuentes": {n: {"ok": None, "msg": "Pendiente", "desc": d} for n, (_, 
 _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
-RUTA_PAUSA = os.path.join(BASE, "pausa.json")
-PAUSABLES = list(FUENTES) + ["Google Trends", "IA"]
+RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
+PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "ScrapeCreators"]
+SIEMPRE_MANUAL = ["ScrapeCreators"]  # servicios de pago que solo se reanudan a mano, uno por uno
 try:
     with open(RUTA_PAUSA, encoding="utf-8") as _f:
         PAUSA = json.load(_f)
@@ -1342,6 +1353,9 @@ except (FileNotFoundError, ValueError):
     PAUSA = {"todo": False, "fuentes": []}
 if CONFIG.get("iniciar_en_pausa", True):
     PAUSA["todo"] = True  # el monitoreo nace pausado: empieza a consultar cuando el usuario pulsa Reanudar
+    for _s in SIEMPRE_MANUAL:
+        if _s not in PAUSA["fuentes"]:
+            PAUSA["fuentes"].append(_s)
 ESTADO["pausa"] = PAUSA
 
 
@@ -1352,6 +1366,10 @@ def en_pausa(nombre=None):
 def cambiar_pausa(objetivo, pausar):
     if objetivo == "todo":
         PAUSA["todo"] = pausar
+        if not pausar:  # reanudar todo no reanuda los servicios de pago de uso manual
+            for s_ in SIEMPRE_MANUAL:
+                if s_ not in PAUSA["fuentes"]:
+                    PAUSA["fuentes"].append(s_)
     elif objetivo in PAUSABLES:
         if pausar and objetivo not in PAUSA["fuentes"]:
             PAUSA["fuentes"].append(objetivo)
@@ -1630,6 +1648,8 @@ def _resumen_ia():
     activos = [n for n, r in rutas.items() if r.get("ok")]
     ESTADO["ia"]["activo"] = bool(activos)
     pend = ESTADO["ia"].get("pendientes")
+    ultimas = [r.get("ultima") for r in rutas.values() if r.get("ultima")]
+    ESTADO["ia"]["ultima"] = max(ultimas) if ultimas else None
     ESTADO["ia"]["msg"] = (f"{len(activos)} de {len(_ia_proveedores())} proveedores activos"
                            + (f" · {pend} pendientes" if pend else " · al día"))
     return ESTADO["ia"]
@@ -1639,7 +1659,7 @@ def _resumen_ia():
 # Configuración editable desde el panel (validada; los secretos de .env nunca se exponen ni se editan aquí)
 # --------------------------------------------------------------------------
 
-RUTA_CONFIG = os.path.join(BASE, "config.json")
+RUTA_CONFIG = os.path.join(DATOS, "config.json")
 NOMBRE_OK = re.compile(r"^[\w ÁÉÍÓÚÜÑáéíóúüñ.&()'-]{2,40}$")
 TERMINO_OK = re.compile(r"^[^<>{}\\`]{1,60}$")
 HANDLE_X_OK = re.compile(r"^[A-Za-z0-9_]{1,15}$")
@@ -1793,7 +1813,7 @@ def validar_config(d):
 
 def guardar_config(nueva):
     """Copia de seguridad + escritura atómica; después el servidor se reinicia para aplicarla."""
-    dir_copias = os.path.join(BASE, "config_copias")
+    dir_copias = os.path.join(DATOS, "config_copias")
     os.makedirs(dir_copias, mode=0o700, exist_ok=True)
     marca = datetime.now().strftime("%Y%m%d-%H%M%S")
     with open(RUTA_CONFIG, encoding="utf-8") as f:
@@ -1820,7 +1840,7 @@ def reiniciar_servidor(retraso=1.0):
 # Archivo: el análisis cubre los últimos N días; lo anterior se guarda por mes y se puede restaurar
 # --------------------------------------------------------------------------
 
-DIR_ARCHIVO = os.path.join(BASE, "archivo")
+DIR_ARCHIVO = os.path.join(DATOS, "archivo")
 ESTADO["archivo"] = {}
 
 
@@ -2130,6 +2150,7 @@ def trabajador_trends():
             if ok:
                 ruta_ok("Google Trends", "Interés por hora", f"{ok} grupos actualizados")
                 ESTADO["trends"]["actualizado"] = iso(ahora())
+        ESTADO["trends"]["ultima"] = iso(ahora())
         if time.time() >= _trends_op.get("proximo_rel", 0) and ruta_disponible("Google Trends", "Búsquedas relacionadas"):
             _trends_op["proximo_rel"] = time.time() + cfg.get("relacionadas_horas", 6) * 3600
             filas = []
@@ -2299,7 +2320,7 @@ peru peruano peruanos lima""".split())
 
 
 # Palabras que no aportan valor a la nube (editables desde Configuración; se guardan en nube.json, sin reiniciar)
-RUTA_NUBE = os.path.join(BASE, "nube.json")
+RUTA_NUBE = os.path.join(DATOS, "nube.json")
 NUBE_EXCLUIDAS_INICIALES = """infobae comercio diario andina gestion republica rpp correo peru21 portal noticias noticia video link
 nota articulo fuente ayer hoy manana dia dias hora horas minutos minuto momento tiempo semana mes meses ano anos fecha fechas
 enero febrero marzo abril mayo junio julio agosto septiembre setiembre octubre noviembre diciembre lunes martes miercoles
@@ -2307,7 +2328,8 @@ jueves viernes sabado domingo despues antes luego tras ademas mediante igual pri
 pasa paso poder usar uso tener tienes tengo hacen hacer realizar voy vas fui fue sigue sale caso cosa cosas parte veces
 vez mil millones miles gente alguien nadie persona personas posible bancos banco clientes cliente usuarios usuario
 empresa empresas sector publico programa informacion datos financiera financieras entidad entidades peruanos lima
-nino varita senor senora amigo amigos favor buen buena dios""".split()
+nino varita senor senora amigo amigos favor buen buena dios lp retail canalb altavoz""".split() + [
+    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion"]
 
 
 def nube_excluidas():
@@ -2350,19 +2372,48 @@ def palabras(qs):
         for cfg in BANCOS.values():
             for a in cfg["alias"] + cfg["buscar"]:
                 excluir |= set(re.findall(r"[a-zñ]{2,}", normalizar(a.lstrip("@#"))))
-    bigramas = g("bigramas") == "1"
+    # n = 1 (palabras), 2, 3, 4 (frases de exactamente n palabras) o "2-4" (frases cortas de 2 a 4 palabras)
+    modo = g("n", "2" if g("bigramas") == "1" else "1")
+    tamanos = {"1": [1], "2": [2], "3": [3], "4": [4], "2-4": [2, 3, 4]}.get(modo, [1])
+    vacias = PALABRAS_VACIAS | excluir
+    # una frase no puede empezar ni terminar en artículos o preposiciones ("de la", "en el"…); sí puede empezar en "no"
+    bordes = {"de", "la", "el", "los", "las", "y", "a", "en", "que", "por", "con", "para", "un", "una", "del", "al",
+              "lo", "se", "su", "sus", "mi", "me", "te", "le", "les", "o", "e", "es", "ya", "muy", "mas", "pero"}
+    frases_excluidas = {normalizar(x) for x in nube_excluidas() if " " in x}
     conteo = {}
     for texto, sent in filas:
         texto = re.sub(r"https?://\S+|@\w+", " ", texto or "")
-        tokens = [t for t in re.findall(r"[a-záéíóúüñ]{3,}", texto.lower())]
-        claves = [t for t in tokens if normalizar(t) not in PALABRAS_VACIAS and normalizar(t) not in excluir]
-        if bigramas:
-            claves = [f"{a} {b}" for a, b in zip(tokens, tokens[1:])
-                      if normalizar(a) not in PALABRAS_VACIAS | excluir and normalizar(b) not in PALABRAS_VACIAS | excluir]
-        for k in set(claves):  # cada publicación cuenta una vez por palabra
+        claves = set()
+        for oracion in re.split(r"[.!?¿¡;:\n,()]+", texto.lower()):  # las frases no cruzan signos de puntuación
+            tokens = re.findall(r"[a-záéíóúüñ]{2,}", oracion)
+            norm = [normalizar(t) for t in tokens]
+            for n in tamanos:
+                for k in range(len(tokens) - n + 1):
+                    trozo, tn = tokens[k:k + n], norm[k:k + n]
+                    if n == 1:
+                        if len(trozo[0]) >= 3 and tn[0] not in vacias:
+                            claves.add(trozo[0])
+                        continue
+                    if tn[0] in bordes - {"no"} or tn[-1] in bordes or " ".join(tn) in frases_excluidas:
+                        continue
+                    if not any(t not in vacias and len(t) >= 3 for t in tn):
+                        continue  # al menos una palabra con contenido
+                    claves.add(" ".join(trozo))
+        for k in claves:  # cada publicación cuenta una vez por palabra o frase
             c = conteo.setdefault(k, {"total": 0, "negativo": 0, "neutro": 0, "positivo": 0})
             c["total"] += 1
             c[sent or "neutro"] += 1
+    if len(tamanos) > 1:
+        # modo mixto: entre las candidatas más frecuentes, si una frase corta solo aparece dentro de una más larga
+        # (misma frecuencia), se muestra la larga, que dice más ("no puedo" → "no puedo entrar")
+        candidatas = dict(sorted(conteo.items(), key=lambda kv: -kv[1]["total"])[:400])
+        for k in sorted(candidatas, key=lambda x: -len(x.split())):
+            if k not in candidatas:
+                continue
+            for m in [m for m in candidatas if m != k and len(m) < len(k) and f" {m} " in f" {k} "]:
+                if candidatas[m]["total"] <= candidatas[k]["total"]:
+                    candidatas.pop(m)
+        conteo = candidatas
     maximo = max(10, min(int(g("max", "60")), 150))
     top = sorted(conteo.items(), key=lambda kv: -kv[1]["total"])[:maximo]
     return {"publicaciones": len(filas), "palabras": [{"palabra": k, **v} for k, v in top if v["total"] >= 2]}
@@ -2452,16 +2503,206 @@ def _serie_continua(serie, ini, fin, gran):
 # HTTP
 # --------------------------------------------------------------------------
 
-PANEL_USUARIO = os.environ.get("PANEL_USUARIO", "")
-PANEL_CLAVE = os.environ.get("PANEL_CLAVE", "")
+# --------------------------------------------------------------------------
+# Cuentas, sesiones y registro de accesos
+# --------------------------------------------------------------------------
+
+ROLES = {"admin": "Administrador", "lector": "Lector"}
+ITERACIONES = 240_000            # PBKDF2-SHA256
+DURACION_SESION = 12 * 3600      # segundos
+COOKIE = "monitor_sesion"
+_intentos = {}                   # clave (ip o usuario) -> [fallos, bloqueado_hasta]
+_intentos_lock = threading.Lock()
+USUARIO_OK = re.compile(r"^[a-z0-9._-]{3,32}$")
+
+
+def _hash_clave(clave, sal):
+    return hashlib.pbkdf2_hmac("sha256", clave.encode("utf-8"), bytes.fromhex(sal), ITERACIONES).hex()
+
+
+def validar_clave(clave, usuario=""):
+    if not isinstance(clave, str) or not 10 <= len(clave) <= 128:
+        raise ValueError("La contraseña debe tener entre 10 y 128 caracteres")
+    if not (re.search(r"[A-Za-zÁÉÍÓÚáéíóúÑñ]", clave) and re.search(r"\d", clave)):
+        raise ValueError("La contraseña debe combinar letras y números")
+    if usuario and usuario.lower() in clave.lower():
+        raise ValueError("La contraseña no puede contener el nombre de usuario")
+
+
+def init_cuentas():
+    with _db_lock, db() as con:
+        con.execute("""CREATE TABLE IF NOT EXISTS usuarios (usuario TEXT PRIMARY KEY, nombre TEXT, hash TEXT, sal TEXT,
+                       rol TEXT, activo INTEGER DEFAULT 1, creado TEXT, ultimo_acceso TEXT)""")
+        con.execute("CREATE TABLE IF NOT EXISTS sesiones (token_hash TEXT PRIMARY KEY, usuario TEXT, creada TEXT, expira TEXT, ip TEXT)")
+        con.execute("CREATE TABLE IF NOT EXISTS accesos (fecha TEXT, usuario TEXT, evento TEXT, ip TEXT)")
+        con.execute("DELETE FROM sesiones WHERE expira < ?", (iso(ahora()),))
+        hay = con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]
+    # primer administrador desde variables de entorno (útil al desplegar en un servidor)
+    if not hay and os.environ.get("ADMIN_USUARIO") and os.environ.get("ADMIN_CLAVE"):
+        crear_usuario(os.environ["ADMIN_USUARIO"], os.environ["ADMIN_CLAVE"], "admin", "Administrador", "sistema")
+
+
+def hay_usuarios():
+    with _db_lock, db() as con:
+        return con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] > 0
+
+
+def registrar(usuario, evento, ip=""):
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO accesos VALUES (?,?,?,?)", (iso(ahora()), usuario, evento[:200], ip))
+        con.execute("DELETE FROM accesos WHERE fecha < ?", (iso(ahora() - timedelta(days=180)),))
+
+
+def crear_usuario(usuario, clave, rol, nombre="", por=""):
+    usuario = (usuario or "").strip().lower()
+    if not USUARIO_OK.match(usuario):
+        raise ValueError("Usuario: 3 a 32 caracteres (letras minúsculas, números, punto, guion)")
+    if rol not in ROLES:
+        raise ValueError("Rol inválido")
+    validar_clave(clave, usuario)
+    sal = secrets.token_hex(16)
+    with _db_lock, db() as con:
+        if con.execute("SELECT 1 FROM usuarios WHERE usuario = ?", (usuario,)).fetchone():
+            raise ValueError("Ese usuario ya existe")
+        con.execute("INSERT INTO usuarios VALUES (?,?,?,?,?,1,?,NULL)",
+                    (usuario, (nombre or "").strip()[:60], _hash_clave(clave, sal), sal, rol, iso(ahora())))
+    registrar(por or usuario, f"creó la cuenta «{usuario}» ({ROLES[rol]})")
+
+
+def _bloqueado(clave):
+    with _intentos_lock:
+        f = _intentos.get(clave)
+        return bool(f and f[1] > time.time())
+
+
+def _fallo(clave):
+    """5 fallos de un mismo usuario, o 20 desde una misma IP (oficina compartida), bloquean 10 min (y crece si insiste)."""
+    limite = 20 if clave.startswith("ip:") else 5
+    with _intentos_lock:
+        f = _intentos.setdefault(clave, [0, 0])
+        f[0] += 1
+        if f[0] >= limite:
+            f[1] = time.time() + 600 * (2 ** min(f[0] - limite, 4))
+
+
+def iniciar_sesion(usuario, clave, ip):
+    usuario = (usuario or "").strip().lower()
+    if _bloqueado("ip:" + ip) or _bloqueado("u:" + usuario):
+        raise PermissionError("Demasiados intentos fallidos. Espera unos minutos.")
+    with _db_lock, db() as con:
+        r = con.execute("SELECT hash, sal, activo FROM usuarios WHERE usuario = ?", (usuario,)).fetchone()
+    # se calcula el hash aunque el usuario no exista, para no revelar qué usuarios existen por el tiempo de respuesta
+    calculado = _hash_clave(clave or "", r[1] if r else "00" * 16)
+    if not r or not hmac.compare_digest(calculado, r[0]) or not r[2]:
+        _fallo("ip:" + ip)
+        _fallo("u:" + usuario)
+        registrar(usuario or "?", "inicio de sesión fallido", ip)
+        raise PermissionError("Usuario o contraseña incorrectos")
+    with _intentos_lock:
+        _intentos.pop("ip:" + ip, None)
+        _intentos.pop("u:" + usuario, None)
+    token = secrets.token_urlsafe(32)
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO sesiones VALUES (?,?,?,?,?)", (hashlib.sha256(token.encode()).hexdigest(), usuario,
+                    iso(ahora()), iso(ahora() + timedelta(seconds=DURACION_SESION)), ip))
+        con.execute("UPDATE usuarios SET ultimo_acceso = ? WHERE usuario = ?", (iso(ahora()), usuario))
+    registrar(usuario, "inicio de sesión", ip)
+    return token
+
+
+def usuario_de_token(token):
+    if not token:
+        return None
+    with _db_lock, db() as con:
+        r = con.execute("""SELECT u.usuario, u.nombre, u.rol FROM sesiones s JOIN usuarios u ON u.usuario = s.usuario
+                           WHERE s.token_hash = ? AND s.expira > ? AND u.activo = 1""",
+                        (hashlib.sha256(token.encode()).hexdigest(), iso(ahora()))).fetchone()
+    return {"usuario": r[0], "nombre": r[1] or r[0], "rol": r[2]} if r else None
+
+
+def cerrar_sesiones(usuario=None, token=None):
+    with _db_lock, db() as con:
+        if token:
+            con.execute("DELETE FROM sesiones WHERE token_hash = ?", (hashlib.sha256(token.encode()).hexdigest(),))
+        elif usuario:
+            con.execute("DELETE FROM sesiones WHERE usuario = ?", (usuario,))
+
+
+def listar_usuarios():
+    with _db_lock, db() as con:
+        us = [dict(zip(("usuario", "nombre", "rol", "activo", "creado", "ultimo_acceso"), r)) for r in
+              con.execute("SELECT usuario, nombre, rol, activo, creado, ultimo_acceso FROM usuarios ORDER BY usuario")]
+        log = [dict(zip(("fecha", "usuario", "evento", "ip"), r)) for r in
+               con.execute("SELECT fecha, usuario, evento, ip FROM accesos ORDER BY fecha DESC LIMIT 60")]
+    return {"usuarios": us, "accesos": log, "roles": ROLES}
+
+
+def _admins_activos(con, salvo=None):
+    return con.execute("SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=1 AND usuario <> ?",
+                       (salvo or "",)).fetchone()[0]
+
+
+def editar_usuario(admin, d):
+    usuario = str(d.get("usuario", "")).lower()
+    with _db_lock, db() as con:
+        r = con.execute("SELECT rol, activo FROM usuarios WHERE usuario = ?", (usuario,)).fetchone()
+        if not r:
+            raise ValueError("Usuario inexistente")
+        quita_admin = (d.get("rol") and d["rol"] != "admin" and r[0] == "admin") or (d.get("activo") is False and r[0] == "admin") \
+            or (d.get("borrar") and r[0] == "admin")
+        if quita_admin and _admins_activos(con, usuario) == 0:
+            raise ValueError("Debe quedar al menos un administrador activo")
+    if d.get("borrar"):
+        if usuario == admin:
+            raise ValueError("No puedes eliminar tu propia cuenta")
+        with _db_lock, db() as con:
+            con.execute("DELETE FROM usuarios WHERE usuario = ?", (usuario,))
+        cerrar_sesiones(usuario)
+        registrar(admin, f"eliminó la cuenta «{usuario}»")
+        return
+    cambios = []
+    with _db_lock, db() as con:
+        if d.get("rol") in ROLES and d["rol"] != r[0]:
+            con.execute("UPDATE usuarios SET rol = ? WHERE usuario = ?", (d["rol"], usuario))
+            cambios.append(f"rol → {ROLES[d['rol']]}")
+        if isinstance(d.get("activo"), bool) and int(d["activo"]) != r[1]:
+            if usuario == admin and not d["activo"]:
+                raise ValueError("No puedes desactivar tu propia cuenta")
+            con.execute("UPDATE usuarios SET activo = ? WHERE usuario = ?", (int(d["activo"]), usuario))
+            cambios.append("activada" if d["activo"] else "desactivada")
+    if d.get("clave"):
+        validar_clave(d["clave"], usuario)
+        sal = secrets.token_hex(16)
+        with _db_lock, db() as con:
+            con.execute("UPDATE usuarios SET hash = ?, sal = ? WHERE usuario = ?", (_hash_clave(d["clave"], sal), sal, usuario))
+        cambios.append("contraseña restablecida")
+    if cambios:
+        if any(c != "activada" and not c.startswith("rol → Admin") for c in cambios):
+            cerrar_sesiones(usuario)  # cualquier cambio de permisos o contraseña cierra sus sesiones abiertas
+        registrar(admin, f"modificó «{usuario}»: " + ", ".join(cambios))
+
+
+def cambiar_mi_clave(usuario, actual, nueva, ip):
+    with _db_lock, db() as con:
+        r = con.execute("SELECT hash, sal FROM usuarios WHERE usuario = ?", (usuario,)).fetchone()
+    if not r or not hmac.compare_digest(_hash_clave(actual or "", r[1]), r[0]):
+        raise ValueError("La contraseña actual no es correcta")
+    validar_clave(nueva, usuario)
+    sal = secrets.token_hex(16)
+    with _db_lock, db() as con:
+        con.execute("UPDATE usuarios SET hash = ?, sal = ? WHERE usuario = ?", (_hash_clave(nueva, sal), sal, usuario))
+    registrar(usuario, "cambió su contraseña", ip)
+
+
 HOST = os.environ.get("HOST", "127.0.0.1")
-HOSTS_PERMITIDOS = {h.strip().lower() for h in os.environ.get("HOSTS_PERMITIDOS", "").split(",") if h.strip()} | {
+HOSTS_PERMITIDOS = {h.strip().lower() for h in (os.environ.get("HOSTS_PERMITIDOS", "") + "," +
+                    os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")).split(",") if h.strip()} | {
     f"localhost:{PORT}", f"127.0.0.1:{PORT}", f"[::1]:{PORT}"}
 MAX_SUSCRIPTORES = 20
 CABECERAS_SEGURIDAD = {
     "Content-Security-Policy": ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
                                 "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
-                                "form-action 'none'; object-src 'none'"),
+                                "form-action 'self'; object-src 'none'"),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
@@ -2483,17 +2724,33 @@ class Handler(BaseHTTPRequestHandler):
         """Bloquea ataques de DNS rebinding: solo se responde a los nombres de host esperados."""
         return (self.headers.get("Host") or "").lower() in HOSTS_PERMITIDOS
 
-    def _autorizado(self):
-        if not (PANEL_USUARIO and PANEL_CLAVE):
-            return True
-        cab = self.headers.get("Authorization") or ""
-        if not cab.startswith("Basic "):
-            return False
-        try:
-            usuario, _, clave = base64.b64decode(cab[6:]).decode("utf-8").partition(":")
-        except Exception:
-            return False
-        return hmac.compare_digest(usuario, PANEL_USUARIO) & hmac.compare_digest(clave, PANEL_CLAVE)
+    def _ip(self):
+        if os.environ.get("TRUST_PROXY") == "1" and self.headers.get("X-Forwarded-For"):
+            return self.headers["X-Forwarded-For"].split(",")[0].strip()[:45]
+        return self.client_address[0]
+
+    def _es_local(self):
+        return self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("X-Forwarded-For")
+
+    def _token(self):
+        for parte in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = parte.strip().partition("=")
+            if k == COOKIE:
+                return v
+        return None
+
+    def _cookie(self, token, max_age=DURACION_SESION):
+        segura = "; Secure" if (os.environ.get("TRUST_PROXY") == "1" and self.headers.get("X-Forwarded-Proto") == "https") else ""
+        return f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age}{segura}"
+
+    def _json_cuerpo(self, maximo=50_000):
+        largo = int(self.headers.get("Content-Length") or 0)
+        if not 0 < largo <= maximo or (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
+            raise ValueError("Se esperaba JSON")
+        d = json.loads(self.rfile.read(largo))
+        if not isinstance(d, dict):
+            raise ValueError("Formato inválido")
+        return d
 
     def _origen_valido(self):
         """Protección CSRF para acciones: exige la cabecera propia del panel y, si hay Origin, que sea el propio."""
@@ -2505,10 +2762,6 @@ class Handler(BaseHTTPRequestHandler):
     def _filtro(self):
         if not self._host_valido():
             self._send({"error": "Host no permitido"}, code=421)
-            return False
-        if not self._autorizado():
-            self._send({"error": "Autenticación requerida"}, code=401,
-                       extra={"WWW-Authenticate": 'Basic realm="Monitor banca", charset="UTF-8"'})
             return False
         return True
 
@@ -2563,6 +2816,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._filtro():
             return
+        u = urllib.parse.urlparse(self.path)
+        if u.path == "/login":
+            with open(os.path.join(BASE, "login.html"), "rb") as f:
+                return self._send(f.read(), "text/html; charset=utf-8")
+        if u.path == "/api/sesion":
+            yo = usuario_de_token(self._token())
+            return self._send({"autenticado": bool(yo), **(yo or {}),
+                               "configuracion_inicial": not hay_usuarios(), "puede_configurar": self._es_local()})
+        self.yo = usuario_de_token(self._token())
+        if not self.yo:  # todo lo demás exige sesión
+            if u.path.startswith("/api/"):
+                return self._send({"error": "Sesión requerida"}, code=401)
+            self.send_response(303)
+            self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         try:
             self._get()
         except (ValueError, KeyError) as e:
@@ -2606,6 +2876,10 @@ class Handler(BaseHTTPRequestHandler):
                                                      "X-Registros": str(n)})
         if u.path == "/api/config":
             return self._send(config_editable())
+        if u.path == "/api/usuarios":
+            if self.yo["rol"] != "admin":
+                return self._send({"error": "Solo administradores"}, code=403)
+            return self._send(listar_usuarios())
         if u.path == "/api/trends":
             return self._send(datos_trends())
         if u.path == "/api/nube":
@@ -2620,6 +2894,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
                                "fuentes_lista": list(FUENTES) + ["Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
+                               "trends_estado": ESTADO.get("trends", {}),
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY", "X_BEARER_TOKEN")}})
         if u.path == "/api/export.csv":
@@ -2646,6 +2921,48 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"error": "Origen no permitido"}, code=403)
         u = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(u.query)
+        ip = self._ip()
+        try:
+            if u.path == "/api/login":
+                d = self._json_cuerpo()
+                token = iniciar_sesion(str(d.get("usuario", "")), str(d.get("clave", "")), ip)
+                return self._send({"ok": True}, extra={"Set-Cookie": self._cookie(token)})
+            if u.path == "/api/configuracion-inicial":
+                # crear el primer administrador: solo si no hay cuentas y desde este mismo equipo
+                if hay_usuarios() or not self._es_local():
+                    return self._send({"error": "No permitido"}, code=403)
+                d = self._json_cuerpo()
+                crear_usuario(str(d.get("usuario", "")), str(d.get("clave", "")), "admin", str(d.get("nombre", "")))
+                token = iniciar_sesion(str(d.get("usuario", "")), str(d.get("clave", "")), ip)
+                return self._send({"ok": True}, extra={"Set-Cookie": self._cookie(token)})
+        except PermissionError as e:
+            return self._send({"error": str(e)}, code=429 if "intentos" in str(e) else 401)
+        except ValueError as e:
+            return self._send({"error": str(e)[:200]}, code=400)
+        self.yo = usuario_de_token(self._token())
+        if not self.yo:
+            return self._send({"error": "Sesión requerida"}, code=401)
+        try:
+            if u.path == "/api/logout":
+                cerrar_sesiones(token=self._token())
+                registrar(self.yo["usuario"], "cerró sesión", ip)
+                return self._send({"ok": True}, extra={"Set-Cookie": self._cookie("", 0)})
+            if u.path == "/api/mi-clave":
+                d = self._json_cuerpo()
+                cambiar_mi_clave(self.yo["usuario"], str(d.get("actual", "")), str(d.get("nueva", "")), ip)
+                return self._send({"ok": True})
+            if self.yo["rol"] != "admin":  # el resto de acciones son solo para administradores
+                return self._send({"error": "Tu cuenta es de solo lectura"}, code=403)
+            if u.path == "/api/usuarios":
+                d = self._json_cuerpo()
+                crear_usuario(str(d.get("usuario", "")), str(d.get("clave", "")), str(d.get("rol", "lector")),
+                              str(d.get("nombre", "")), self.yo["usuario"])
+                return self._send({"ok": True})
+            if u.path == "/api/usuarios/editar":
+                editar_usuario(self.yo["usuario"], self._json_cuerpo())
+                return self._send({"ok": True})
+        except ValueError as e:
+            return self._send({"error": str(e)[:200]}, code=400)
         if u.path in ("/api/nube", "/api/nube/agregar"):
             largo = int(self.headers.get("Content-Length") or 0)
             if not 0 < largo <= 100_000 or (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
@@ -2716,16 +3033,21 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     os.umask(0o077)  # archivos nuevos (base de datos, logs) solo legibles por el usuario
-    for f in (".env", "quejas.db", "quejas.backup.db", "server.log"):
+    for f in (os.path.join(BASE, ".env"), DB_PATH, os.path.join(BASE, "quejas.backup.db"), os.path.join(BASE, "server.log")):
         try:
-            os.chmod(os.path.join(BASE, f), 0o600)
+            os.chmod(f, 0o600)
         except FileNotFoundError:
             pass
-    if HOST not in ("127.0.0.1", "localhost", "::1") and not (PANEL_USUARIO and PANEL_CLAVE):
-        sys.exit("Por seguridad, para escuchar fuera de este equipo (HOST=" + HOST + ") define PANEL_USUARIO y PANEL_CLAVE en .env")
-    if len(PANEL_CLAVE) and len(PANEL_CLAVE) < 12:
-        sys.exit("PANEL_CLAVE debe tener al menos 12 caracteres")
     init_db()
+    init_cuentas()
+    with _db_lock, db() as con:  # "última actualización" de cada fuente, aunque se haya reiniciado
+        for fuente, ultima in con.execute("SELECT fuente, MAX(capturado) FROM items GROUP BY fuente"):
+            if fuente in ESTADO["fuentes"] and ultima:
+                ESTADO["fuentes"][fuente].setdefault("ultima", ultima)
+            if fuente == "Google Trends" and ultima:
+                ESTADO["trends"].setdefault("actualizado", ultima)
+    if HOST not in ("127.0.0.1", "localhost", "::1") and not hay_usuarios():
+        sys.exit("Por seguridad, para publicar el monitor define ADMIN_USUARIO y ADMIN_CLAVE (primer administrador)")
     threading.Thread(target=planificador, daemon=True).start()
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()
