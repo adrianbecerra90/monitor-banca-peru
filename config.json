@@ -202,7 +202,8 @@
     "TikTok": 1440,
     "YouTube": 30,
     "Noticias": 5,
-    "Bluesky": 5
+    "Bluesky": 5,
+    "Búsqueda Google": 1440
   },
   "noticias_rss": [
     "https://rpp.pe/feed",
@@ -463,5 +464,16 @@
     "_nota": "Tercera ruta para Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify y ScrapeCreators. El tope está ajustado al saldo gratuito; súbelo al recargar.",
     "max_creditos_mes": 45,
     "paginas_max_por_post": 2
+  },
+  "scrapingbee": {
+    "_nota": "Búsqueda en Google de menciones públicas (≈10 créditos por búsqueda). 3 búsquedas al día ≈ 900 créditos/mes.",
+    "max_creditos_mes": 900,
+    "periodo": "d",
+    "resultados": 20,
+    "sitios": [
+      "site:facebook.com",
+      "(site:tiktok.com OR site:instagram.com)",
+      "(site:reddit.com OR inurl:foro OR inurl:forum)"
+    ]
   }
 }

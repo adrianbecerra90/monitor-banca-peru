@@ -411,7 +411,7 @@ def guardar(items, en_vivo=True):
             if fecha < corte:
                 continue
             res = _fila(it)
-            meta = {k: it[k] for k in ("tipo", "peru", "bancos_fijos", "contexto", "cuenta", "metricas") if it.get(k)}
+            meta = {k: it[k] for k in ("tipo", "peru", "bancos_fijos", "contexto", "cuenta", "metricas", "via") if it.get(k)}
             if not res:
                 # sin entidad o ruido: solo se conserva (oculto) si menciona alguna entidad o viene de una cuenta oficial
                 if it.get("bancos_fijos") or detectar_bancos(it["texto"], it.get("peru", False)):
@@ -1241,7 +1241,7 @@ def _sc_red(red, fuente, rango):
     if not os.environ.get("SCRAPECREATORS_API_KEY"):
         raise RutaInactiva("Sin clave: añade SCRAPECREATORS_API_KEY en .env")
     if en_pausa("ScrapeCreators"):
-        raise RutaInactiva("⏸ En pausa (se reanuda a mano con su botón ▶)")
+        raise RutaInactiva("⏸ En pausa")
     mapa = cuentas_asignadas(red, fuente, "ScrapeCreators")
     out, conteo, post_banco = [], {}, {}
     errores = []
@@ -1334,7 +1334,7 @@ def _cc_red(red, fuente, rango):
     if not os.environ.get("CREATORCRAWL_API_KEY"):
         raise RutaInactiva("Sin clave: añade CREATORCRAWL_API_KEY en .env")
     if en_pausa("CreatorCrawl"):
-        raise RutaInactiva("⏸ En pausa (se reanuda a mano con su botón ▶)")
+        raise RutaInactiva("⏸ En pausa")
     mapa = cuentas_asignadas(red, fuente, "CreatorCrawl")
     out, conteo, post_banco, errores = [], {}, {}, []
     for url_cuenta, banco in mapa.items():
@@ -1390,6 +1390,73 @@ def _cc_red(red, fuente, rango):
             print(f"  {fuente} · CreatorCrawl: comentarios de {purl[:60]} fallaron ({type(e).__name__})", flush=True)
     _marcar_vistos(conteo)
     return out
+
+
+# ---------------- ScrapingBee: búsqueda en Google de menciones públicas en redes y foros ----------------
+
+def sb_google(consulta):
+    """Una búsqueda en Google vía ScrapingBee (≈10 créditos). Respeta el tope mensual configurado."""
+    cfg = CONFIG.get("scrapingbee", {})
+    mes = ahora().strftime("%Y-%m")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapingBee'", (mes,)).fetchone()
+    usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 900)
+    if usados + 10 > tope:
+        raise RutaInactiva(f"Tope mensual alcanzado ({usados} de {tope} créditos): súbelo en ⚙ Configuración → Presupuestos")
+    q = {"search": consulta, "country_code": "pe", "language": "es", "nb_results": cfg.get("resultados", 20),
+         "extra_params": "tbs=qdr:" + cfg.get("periodo", "d")}  # qdr:d = últimas 24 h
+    req = urllib.request.Request("https://app.scrapingbee.com/api/v1/google?" + urllib.parse.urlencode(q),
+                                 headers={"Authorization": f"Bearer {os.environ['SCRAPINGBEE_API_KEY']}", "User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+        costo = int(resp.headers.get("spb-cost") or 10)
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO uso_proveedores VALUES (?, 'ScrapingBee', ?) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, costo))
+    ESTADO.setdefault("scrapingbee", {}).update(usados_mes=usados + costo, tope=tope)
+    return d.get("organic_results") or []
+
+
+RED_POR_DOMINIO = {"facebook.com": "Facebook", "instagram.com": "Instagram", "tiktok.com": "TikTok",
+                   "reddit.com": "Reddit", "x.com": "X", "twitter.com": "X", "youtube.com": "YouTube"}
+
+
+def fuente_busqueda_web(rango=None):
+    if rango:
+        return []  # Google solo sirve para lo reciente
+    if not os.environ.get("SCRAPINGBEE_API_KEY"):
+        return None
+    terminos = " OR ".join(f'"{c["buscar"][0]}"' for c in BANCOS.values())
+    quejas = '(reclamo OR problema OR estafa OR "no funciona" OR caído OR bloqueada OR queja)'
+    out = []
+    for sitios in CONFIG.get("scrapingbee", {}).get("sitios", []):
+        for r in sb_google(f"{sitios} ({terminos}) {quejas}"):
+            url = url_segura(r.get("url"))
+            if not url:
+                continue
+            dominio = (r.get("domain") or urllib.parse.urlparse(url).netloc).lower().replace("www.", "").replace("m.", "", 1)
+            red = next((v for k, v in RED_POR_DOMINIO.items() if dominio.endswith(k)), "Web")
+            desc = r.get("description") or ""
+            out.append({"id": "web:" + url.split("?")[0], "fuente": red, "tipo": "", "peru": True, "via": "Google",
+                        "autor": dominio, "texto": (r.get("title") or "") + ". " + desc,
+                        "fecha": _fecha_relativa(desc) or iso(ahora()), "url": url})
+        time.sleep(1)
+    return out
+
+
+def saldo_scrapingbee():
+    while True:
+        if os.environ.get("SCRAPINGBEE_API_KEY"):
+            try:
+                d = json.loads(http_get("https://app.scrapingbee.com/api/v1/usage?" + urllib.parse.urlencode(
+                    {"api_key": os.environ["SCRAPINGBEE_API_KEY"]}), timeout=30))
+                ESTADO.setdefault("scrapingbee", {}).update(
+                    restantes=(d.get("max_api_credit") or 0) - (d.get("used_api_credit") or 0),
+                    renovacion=d.get("renewal_subscription_date"), tope=CONFIG.get("scrapingbee", {}).get("max_creditos_mes", 900))
+            except Exception as e:
+                ESTADO.setdefault("scrapingbee", {})["error"] = f"{type(e).__name__}"
+        time.sleep(6 * 3600)
 
 
 def fuente_facebook(rango=None):
@@ -1477,6 +1544,7 @@ FUENTES = {
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) o scraping de búsqueda"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
+    "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía ScrapingBee (de pago)"),
 }
 
 ESTADO = {"fuentes": {n: {"ok": None, "msg": "Pendiente", "desc": d} for n, (_, d) in FUENTES.items()},
@@ -1486,13 +1554,15 @@ _proxima = {n: 0.0 for n in FUENTES}
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "ScrapeCreators", "CreatorCrawl"]
-SIEMPRE_MANUAL = ["ScrapeCreators", "CreatorCrawl"]  # servicios de pago que solo se reanudan a mano, uno por uno
+SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
     with open(RUTA_PAUSA, encoding="utf-8") as _f:
         PAUSA = json.load(_f)
     PAUSA = {"todo": bool(PAUSA.get("todo")), "fuentes": [x for x in PAUSA.get("fuentes", []) if x in PAUSABLES]}
 except (FileNotFoundError, ValueError):
     PAUSA = {"todo": False, "fuentes": []}
+# migración: quita las pausas que antes se añadían solas a los servicios de pago
+PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "CreatorCrawl", "Búsqueda Google")]
 if CONFIG.get("iniciar_en_pausa", True):
     PAUSA["todo"] = True  # el monitoreo nace pausado: empieza a consultar cuando el usuario pulsa Reanudar
     for _s in SIEMPRE_MANUAL:
@@ -1829,9 +1899,10 @@ def config_editable():
         "x_api": {k: c.get("x_api", {}).get(k) for k in ("modo", "max_lecturas_dia")},
         "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
+        "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY", "X_BEARER_TOKEN")},
     }
 
@@ -1935,6 +2006,9 @@ def validar_config(d):
         nueva["apify"].update(presupuesto_usd_mes=round(pres, 2),
                               posts_por_cuenta=_entero(a.get("posts_por_cuenta", 5), "Publicaciones por cuenta", 1, 20),
                               comentarios_max_por_post=_entero(a.get("comentarios_max_por_post", 200), "Comentarios por publicación", 10, 1000))
+    if "scrapingbee" in d:
+        nueva.setdefault("scrapingbee", {})["max_creditos_mes"] = _entero(
+            d["scrapingbee"].get("max_creditos_mes", 900), "Tope de ScrapingBee", 0, 10_000_000)
     if "creatorcrawl" in d:
         cc = d["creatorcrawl"]
         nueva.setdefault("creatorcrawl", {}).update(
@@ -2440,6 +2514,7 @@ def consultar(qs):
         r["tipo"], r["cuenta"] = meta.get("tipo", ""), meta.get("cuenta", "")
         r["por_ia"] = r.get("ia_sentimiento") is not None
         r["metricas"] = meta.get("metricas")
+        r["via"] = meta.get("via")
     return rows
 
 
@@ -3047,7 +3122,7 @@ class Handler(BaseHTTPRequestHandler):
             with _db_lock, db() as con:
                 r = con.execute("SELECT COUNT(*), MIN(fecha), MAX(fecha) FROM items WHERE oculto = 0").fetchone()
             return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
-                               "fuentes_lista": list(FUENTES) + ["Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
+                               "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
                                "trends_estado": ESTADO.get("trends", {}),
                                "claves": {k: bool(os.environ.get(k)) for k in
@@ -3207,6 +3282,7 @@ def main():
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()
     threading.Thread(target=saldo_scrapecreators, daemon=True).start()
+    threading.Thread(target=saldo_scrapingbee, daemon=True).start()
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
