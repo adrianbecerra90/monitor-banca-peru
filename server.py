@@ -917,6 +917,8 @@ def _pedir_comentarios(actor_coment, rango, fuente, pendientes, post_banco):
 
 def _comentarios_de_cuentas(red, fuente, actor_posts, actor_coment, url_post_keys, rango):
     """Publicaciones de cada cuenta oficial + sus comentarios nuevos (lectura incremental)."""
+    if en_pausa("Apify"):
+        raise RutaInactiva("⏸ En pausa")
     mapa = cuentas_asignadas(red, fuente, "Apify")
     if not mapa:
         return []
@@ -969,6 +971,8 @@ def x_api_oficial(rango=None):
     token = x_bearer()
     if not token or rango:  # la búsqueda reciente solo cubre los últimos 7 días
         return None
+    if en_pausa("API oficial de X"):
+        raise RutaInactiva("⏸ En pausa")
     cfg = CONFIG.get("x_api", {})
     hoy = ahora().date().isoformat()
     if _x_uso["dia"] != hoy:
@@ -1003,6 +1007,8 @@ def x_api_oficial(rango=None):
 def x_apify(rango=None):
     if not os.environ.get("APIFY_TOKEN"):
         return None
+    if en_pausa("Apify"):
+        raise RutaInactiva("⏸ En pausa")
     handles = cuentas("x")
     periodo = f" since:{rango[0]} until:{rango[1]}" if rango else ""
     qs = [f'"{t}" lang:es -filter:retweets{periodo}' for t in todos_terminos()]
@@ -1427,6 +1433,8 @@ def fuente_busqueda_web(rango=None):
         return []  # Google solo sirve para lo reciente
     if not os.environ.get("SCRAPINGBEE_API_KEY"):
         return None
+    if en_pausa("ScrapingBee"):
+        raise RutaInactiva("⏸ ScrapingBee en pausa")
     terminos = " OR ".join(f'"{c["buscar"][0]}"' for c in BANCOS.values())
     quejas = '(reclamo OR problema OR estafa OR "no funciona" OR caído OR bloqueada OR queja)'
     out = []
@@ -1485,6 +1493,8 @@ def fuente_tiktok(rango=None):
 def tiktok_apify(rango=None):
     if not os.environ.get("APIFY_TOKEN"):
         return None
+    if en_pausa("Apify"):
+        raise RutaInactiva("⏸ En pausa")
     mapa = cuentas_asignadas("tiktok", "TikTok", "Apify")
     por_usuario = {u.rstrip("/").rsplit("@", 1)[-1].lower(): b for u, b in mapa.items()}
     videos = apify("tiktok_busqueda", rango, q_lista=todos_terminos(), perfiles_tiktok=list(por_usuario))
@@ -1553,7 +1563,8 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "ScrapeCreators", "CreatorCrawl"]
+PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "API oficial de X"]
+PAUSABLES = list(FUENTES) + ["Google Trends", "IA"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
     with open(RUTA_PAUSA, encoding="utf-8") as _f:
@@ -1623,6 +1634,8 @@ def escanear_fuente(nombre):
         else:
             n = guardar(items)
             est.update(ok=True, msg=f"{len(items)} leídos, {n} nuevos ({time.time() - t0:.0f}s)", ultima=iso(ahora()))
+    except RutaInactiva as e:
+        est.update(ok=None, msg=str(e)[:220])
     except Exception as e:
         est.update(ok=False, msg=f"{type(e).__name__}: {e}"[:220])
     finally:
@@ -1858,6 +1871,35 @@ def trabajador_ia(k):
             if fallos_modelo >= 2 and modelos and len(modelos) > 1:
                 idx_modelo, fallos_modelo = idx_modelo + 1, 0  # failover al siguiente modelo del mismo proveedor
             time.sleep(5)
+
+
+def resumen_proveedores():
+    """Misma ficha para todos los servicios de pago: clave, pausa, redes que cubren, saldo y consumo frente a su tope."""
+    def ficha(nombre, clave, redes, saldo, uso, rutas):
+        estado_rutas = {f"{f}": SALUD.get(f, {}).get(r, {}) for f, r in rutas}
+        return {"nombre": nombre, "clave": bool(os.environ.get(clave)) if isinstance(clave, str) else clave,
+                "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
+    ap, sc, cc, sb = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee"))
+    xa = CONFIG.get("x_api", {})
+    return [
+        ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
+              f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
+              [("Facebook", "Apify"), ("Instagram", "Apify"), ("TikTok", "Apify"), ("X", "Apify (respaldo de pago)")]),
+        ficha("ScrapeCreators", "SCRAPECREATORS_API_KEY", "Facebook, Instagram, TikTok",
+              f"{sc['restantes']:,} créditos".replace(",", ".") if sc.get("restantes") is not None else None,
+              f"{sc.get('usados_mes', 0)} de {sc.get('tope', CONFIG.get('scrapecreators', {}).get('max_creditos_mes', 0))} créditos este mes",
+              [("Facebook", "ScrapeCreators"), ("Instagram", "ScrapeCreators"), ("TikTok", "ScrapeCreators")]),
+        ficha("CreatorCrawl", "CREATORCRAWL_API_KEY", "Instagram, TikTok",
+              f"{cc['restantes']} créditos" if cc.get("restantes") is not None else None,
+              f"{cc.get('usados_mes', 0)} de {cc.get('tope', CONFIG.get('creatorcrawl', {}).get('max_creditos_mes', 0))} créditos este mes",
+              [("Instagram", "CreatorCrawl"), ("TikTok", "CreatorCrawl")]),
+        ficha("ScrapingBee", "SCRAPINGBEE_API_KEY", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros",
+              f"{sb['restantes']:,} créditos".replace(",", ".") if sb.get("restantes") is not None else None,
+              f"{sb.get('usados_mes', 0)} de {sb.get('tope', CONFIG.get('scrapingbee', {}).get('max_creditos_mes', 0))} créditos este mes", []),
+        ficha("API oficial de X", bool(os.environ.get("X_BEARER_TOKEN") or os.environ.get("X_CONSUMER_KEY")),
+              f"X ({'respaldo de Nitter' if xa.get('modo', 'respaldo') == 'respaldo' else 'siempre activa'})", None,
+              f"{_x_uso['lecturas']} de {xa.get('max_lecturas_dia', 300)} tweets hoy", [("X", "API oficial de X")]),
+    ]
 
 
 def _resumen_ia():
@@ -3124,7 +3166,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
-                               "trends_estado": ESTADO.get("trends", {}),
+                               "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(),
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY", "X_BEARER_TOKEN")}})
         if u.path == "/api/export.csv":
