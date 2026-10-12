@@ -2596,7 +2596,7 @@ pasa paso poder usar uso tener tienes tengo hacen hacer realizar voy vas fui fue
 vez mil millones miles gente alguien nadie persona personas posible bancos banco clientes cliente usuarios usuario
 empresa empresas sector publico programa informacion datos financiera financieras entidad entidades peruanos lima
 nino varita senor senora amigo amigos favor buen buena dios lp retail canalb altavoz""".split() + [
-    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion", "nota de prensa", "lee la nota", "bimestre setiembre octubre", "correspondiente al bimestre", "ni siquiera", "este problema", "este caso"]
+    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion", "nota de prensa", "lee la nota", "bimestre setiembre octubre", "correspondiente al bimestre", "ni siquiera", "este problema", "este caso", "seran ganadores", "aplican tyc", "nombre completo"]
 
 
 def nube_excluidas():
