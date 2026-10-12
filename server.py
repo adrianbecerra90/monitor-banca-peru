@@ -540,6 +540,10 @@ def ruta_fallo(fuente, ruta, error):
         s["msg"] = f"En pausa {espera // 60} min tras {s['fallos']} fallos · " + s["msg"]
 
 
+class RutaInactiva(RuntimeError):
+    """Una ruta que no se usa por un motivo esperado (pausa, sin clave…), con el motivo para mostrarlo en el panel."""
+
+
 def ejecutar_rutas(fuente, rutas, rango=None):
     """rutas: [(nombre, funcion(rango), modo)]; modo 'activo' (todas a la vez) o 'respaldo' (solo si fallan las activas).
     Devuelve la unión sin duplicados; None si ninguna ruta tiene clave; excepción si todas fallaron."""
@@ -551,6 +555,13 @@ def ejecutar_rutas(fuente, rutas, rango=None):
             if r is None:
                 ruta_inactiva(fuente, nombre, "Inactiva: falta clave o no aplica")
                 return "inactiva", None
+        except RutaInactiva as e:
+            ruta_inactiva(fuente, nombre, str(e))
+            return "inactiva", None
+        except Exception as e:
+            ruta_fallo(fuente, nombre, e)
+            return "error", None
+        try:
             ruta_ok(fuente, nombre, f"{len(r)} leídos")
             return "ok", r
         except Exception as e:
@@ -821,7 +832,7 @@ def apify(nombre, rango=None, **valores):
     tope = min(cfg.get("presupuesto_usd_mes", 4.5), limite or 1e9)
     ESTADO["apify"] = {"usado": round(usado, 3), "tope": tope, "limite_plan": limite}
     if usado >= tope:
-        raise RuntimeError(f"Presupuesto de Apify alcanzado (US${usado:.2f} de US${tope:.2f} este mes)")
+        raise RutaInactiva(f"Presupuesto alcanzado (US${usado:.2f} de US${tope:.2f} este mes); súbelo en ⚙ Configuración")
     valores.setdefault("n_posts", cfg.get("posts_por_cuenta_historico" if rango else "posts_por_cuenta", 5))
     valores.setdefault("n_coment", cfg.get("comentarios_por_post", 80))
     valores.setdefault("n_max", 1000 if rango else 150)
@@ -1147,7 +1158,7 @@ def sc_get(ruta, **q):
         r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapeCreators'", (mes,)).fetchone()
     usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 3000)
     if usados >= tope:
-        raise RuntimeError(f"Tope mensual de ScrapeCreators alcanzado ({usados} de {tope} créditos)")
+        raise RutaInactiva(f"Tope mensual alcanzado ({usados} de {tope} créditos): súbelo en ⚙ Configuración → Presupuestos")
     url = "https://api.scrapecreators.com" + ruta + "?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
     d = json.loads(http_get(url, {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=90))
     with _db_lock, db() as con:
@@ -1155,6 +1166,25 @@ def sc_get(ruta, **q):
                     "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, int(d.get("credits_charged") or 1)))
     ESTADO.setdefault("scrapecreators", {}).update(restantes=d.get("credits_remaining"), usados_mes=usados + 1, tope=tope)
     return d
+
+
+def saldo_scrapecreators():
+    """Consulta gratuita del saldo real de créditos (al arrancar y cada 6 h) para mostrarlo en el panel."""
+    while True:
+        if os.environ.get("SCRAPECREATORS_API_KEY"):
+            try:
+                d = json.loads(http_get("https://api.scrapecreators.com/v1/account/credit-balance",
+                                        {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=30))
+                tope = CONFIG.get("scrapecreators", {}).get("max_creditos_mes", 3000)
+                with _db_lock, db() as con:
+                    con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+                    r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapeCreators'",
+                                    (ahora().strftime("%Y-%m"),)).fetchone()
+                ESTADO.setdefault("scrapecreators", {}).update(restantes=d.get("creditCount"), usados_mes=r[0] if r else 0,
+                                                               tope=tope, consultado=iso(ahora()))
+            except Exception as e:
+                ESTADO.setdefault("scrapecreators", {})["error"] = f"{type(e).__name__}: {e}"[:150]
+        time.sleep(6 * 3600)
 
 
 def _epoch(v):
@@ -1188,8 +1218,10 @@ def _sc_comentarios(red, ruta, url_post, nuevos, banco, fuente):
 
 def _sc_red(red, fuente, rango):
     """Publicaciones de las cuentas asignadas + comentarios nuevos (lectura incremental compartida con Apify)."""
-    if not os.environ.get("SCRAPECREATORS_API_KEY") or en_pausa("ScrapeCreators"):
-        return None
+    if not os.environ.get("SCRAPECREATORS_API_KEY"):
+        raise RutaInactiva("Sin clave: añade SCRAPECREATORS_API_KEY en .env")
+    if en_pausa("ScrapeCreators"):
+        raise RutaInactiva("⏸ En pausa (se reanuda a mano con su botón ▶)")
     mapa = cuentas_asignadas(red, fuente, "ScrapeCreators")
     out, conteo, post_banco = [], {}, {}
     errores = []
@@ -3051,6 +3083,7 @@ def main():
     threading.Thread(target=planificador, daemon=True).start()
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()
+    threading.Thread(target=saldo_scrapecreators, daemon=True).start()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
