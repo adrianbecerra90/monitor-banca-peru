@@ -199,6 +199,22 @@ def es_ruido(texto):
 RESPUESTA_OFICIAL = re.compile(r"^(@\w+\s*)*[¡!]?\s*hola\b.{0,60}\b(lamentamos|sentimos|entendemos|disculpas|"
                                r"te invitamos|escribenos|por interno|ya puedes|ya solucionamos|queremos ayudarte)")
 
+# Delitos de terceros que solo usan la marca (comprobantes falsos, estafadores): no es culpa de la entidad
+TERCEROS = re.compile(r"\b((falso|falsa|falsos|falsas|fake|trucad[oa]s?|adulterad[oa]s?|editad[oa]s?)\s+(yape|plin|comprobantes?|"
+                      r"vouchers?|capturas?|pagos?|constancias?|transferencias?)|(yape|plin|comprobantes?|vouchers?|capturas?|"
+                      r"constancias?|pagos?|transferencias?)\s+(falso|falsa|falsos|falsas|fake|trucad[oa]s?|adulterad[oa]s?|"
+                      r"editad[oa]s?|inexistente)|supuesto pago|sujetos|delincuentes|malhechores|detenid[oa]s?|capturad[oa]s?|"
+                      r"intervenid[oa]s?|pnp|policia|comisaria|atencion comerciantes|cuidado comerciantes|"
+                      r"estafador(es|as)?|hampones|banda criminal|se hacen pasar)\b")
+# La entidad sí es responsable: fallas de sus canales, seguridad o atención
+CULPA_ENTIDAD = re.compile(r"\b(no (me )?(devuelven|responden|reconocen|solucionan|bloquearon|protege)|el banco no|"
+                           r"(app|aplicativo|sistema|plataforma) (falla|fallo|vulnerable)|hackearon|filtracion|"
+                           r"(deberia|deben) (proteger|bloquear|devolver|responder))\b")
+# Situación económica personal del usuario ("me quedé con 20 soles en mi Yape"): no habla de la entidad
+SITUACION_PERSONAL = re.compile(r"\b(me (quede|queda|quedan|quedaron) (con|sin)|sobrevivir|fin de mes|todo el mes|"
+                                r"(estoy|ando|quede) (pobre|misio|quebrad[oa]|seco|sin plata)|no me alcanza|"
+                                r"revis(e|ar|o) mi (yape|plin|saldo|cuenta))\b")
+
 _cat_re = {k: [re.compile(p) for p in v] for k, v in CATEGORIAS.items()}
 _neg_re = [re.compile(p) for p in NEGATIVO]
 _pos_re = [re.compile(p) for p in POSITIVO]
@@ -212,6 +228,8 @@ def clasificar(texto, tipo=""):
     cats = [k for k, pats in _cat_re.items() if any(p.search(t) for p in pats)]
     if tipo in ("oficial", "post_oficial") or RESPUESTA_OFICIAL.search(t):  # respuesta de la propia cuenta del banco/SBS
         return False, cats, 0, "neutro"
+    if not CULPA_ENTIDAD.search(t) and (TERCEROS.search(t) or SITUACION_PERSONAL.search(t)):
+        return False, cats, 0, "neutro"  # no es atribuible a la entidad ni a sus servicios
     neg = sum(1 for p in _neg_re if p.search(t))
     pos = sum(1 for p in _pos_re if p.search(t)) if not NEGACION_POS.search(t) else 0
     grave = any(p.search(t) for p in _grave_re)
@@ -344,9 +362,10 @@ def init_db():
             capturado TEXT, meta TEXT, sentimiento TEXT)""")
         cols = [r[1] for r in con.execute("PRAGMA table_info(items)")]
         tipos = {"oculto": "INTEGER DEFAULT 0", "ia_queja": "INTEGER", "ia_severidad": "INTEGER", "ia_relevante": "INTEGER",
+                 "ia_atribuible": "INTEGER",
                  "restaurado": "INTEGER DEFAULT 0"}
         for col in ("meta", "sentimiento", "oculto", "ia_sentimiento", "ia_queja", "ia_severidad", "ia_categorias",
-                    "ia_relevante", "ia_motivo", "restaurado"):
+                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible"):
             if col not in cols:
                 con.execute(f"ALTER TABLE items ADD COLUMN {col} {tipos.get(col, 'TEXT')}")
         con.execute("CREATE INDEX IF NOT EXISTS idx_fecha ON items(fecha)")
@@ -822,9 +841,13 @@ def _rellenar(plantilla, valores):
 
 def apify_consumo():
     """Gasto del mes en Apify (USD) y límite del plan."""
+    exigir_disponible("Apify")
     req = urllib.request.Request("https://api.apify.com/v2/users/me/limits",
                                  headers={"Authorization": f"Bearer {os.environ['APIFY_TOKEN']}"})
     d = json.load(urllib.request.urlopen(req, timeout=20))["data"]
+    fin = (d.get("monthlyUsageCycle") or {}).get("endAt")
+    if fin:
+        ESTADO.setdefault("apify", {})["renovacion"] = fin
     return d.get("current", {}).get("monthlyUsageUsd", 0) or 0, d.get("limits", {}).get("maxMonthlyUsageUsd", 0) or 0
 
 
@@ -833,9 +856,9 @@ def apify(nombre, rango=None, **valores):
     cfg = CONFIG["apify"]
     usado, limite = apify_consumo()
     tope = min(cfg.get("presupuesto_usd_mes", 4.5), limite or 1e9)
-    ESTADO["apify"] = {"usado": round(usado, 3), "tope": tope, "limite_plan": limite}
+    ESTADO.setdefault("apify", {}).update(usado=round(usado, 3), tope=tope, limite_plan=limite)
     if usado >= tope:
-        raise RutaInactiva(f"Presupuesto alcanzado (US${usado:.2f} de US${tope:.2f} este mes); súbelo en ⚙ Configuración")
+        agotar("Apify", f"Presupuesto alcanzado (US${usado:.2f} de US${tope:.2f} este mes)")
     valores.setdefault("n_posts", cfg.get("posts_por_cuenta_historico" if rango else "posts_por_cuenta", 5))
     valores.setdefault("n_coment", cfg.get("comentarios_por_post", 80))
     valores.setdefault("n_max", 1000 if rango else 150)
@@ -1083,6 +1106,8 @@ SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"}, "ScrapeCreators": {"fac
 
 def _presupuesto_agotado(prov):
     """Lo que ya se sabe sin gastar nada: presupuesto de Apify (consultado gratis) y topes mensuales locales."""
+    if agotado(prov):
+        return True
     e = ESTADO.get({"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
                     "RapidAPI": "rapidapi"}[prov], {})
     if prov == "Apify":
@@ -1115,6 +1140,7 @@ _sc_lock = threading.Lock()
 
 def sc_get(ruta, **q):
     """ScrapeCreators: 1 crédito por consulta. Respeta el tope mensual de créditos configurado."""
+    exigir_disponible("ScrapeCreators")
     cfg = CONFIG.get("scrapecreators", {})
     mes = ahora().strftime("%Y-%m")
     with _db_lock, db() as con:
@@ -1122,9 +1148,14 @@ def sc_get(ruta, **q):
         r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapeCreators'", (mes,)).fetchone()
     usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 3000)
     if usados >= tope:
-        raise RutaInactiva(f"Tope mensual alcanzado ({usados} de {tope} créditos): súbelo en ⚙ Configuración → Presupuestos")
+        agotar("ScrapeCreators", f"Tope mensual alcanzado ({usados} de {tope} créditos)")
     url = "https://api.scrapecreators.com" + ruta + "?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
-    d = json.loads(http_get(url, {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=90))
+    try:
+        d = json.loads(http_get(url, {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=90))
+    except urllib.error.HTTPError as e:
+        if e.code == 402:
+            agotar("ScrapeCreators", "Sin créditos en la cuenta")
+        raise
     with _db_lock, db() as con:
         con.execute("INSERT INTO uso_proveedores VALUES (?, 'ScrapeCreators', ?) ON CONFLICT(mes, proveedor) "
                     "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, int(d.get("credits_charged") or 1)))
@@ -1136,8 +1167,12 @@ def presupuesto_apify_inicial():
     if os.environ.get("APIFY_TOKEN"):
         try:
             usado, limite = apify_consumo()
-            ESTADO["apify"] = {"usado": round(usado, 3), "tope": min(CONFIG["apify"].get("presupuesto_usd_mes", 4.5), limite or 1e9),
-                               "limite_plan": limite}
+            tope = min(CONFIG["apify"].get("presupuesto_usd_mes", 4.5), limite or 1e9)
+            ESTADO.setdefault("apify", {}).update(usado=round(usado, 3), tope=tope, limite_plan=limite)
+            if usado >= tope:
+                apagar_hasta_renovacion("Apify", f"Presupuesto alcanzado (US${usado:.2f} de US${tope:.2f} este mes)")
+        except RutaInactiva:
+            pass
         except Exception as e:
             print(f"  Apify: no se pudo consultar el presupuesto ({type(e).__name__})", flush=True)
 
@@ -1145,7 +1180,7 @@ def presupuesto_apify_inicial():
 def saldo_scrapecreators():
     """Consulta gratuita del saldo real de créditos (al arrancar y cada 6 h) para mostrarlo en el panel."""
     while True:
-        if os.environ.get("SCRAPECREATORS_API_KEY"):
+        if os.environ.get("SCRAPECREATORS_API_KEY") and not agotado("ScrapeCreators"):
             try:
                 d = json.loads(http_get("https://api.scrapecreators.com/v1/account/credit-balance",
                                         {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=30))
@@ -1261,6 +1296,7 @@ def _sc_comentarios_nuevos(red, fuente, conteo, post_banco, out):
 # ---------------- CreatorCrawl (Instagram y TikTok; formato de datos uniforme) ----------------
 
 def cc_get(ruta, **q):
+    exigir_disponible("CreatorCrawl")
     cfg = CONFIG.get("creatorcrawl", {})
     mes = ahora().strftime("%Y-%m")
     with _db_lock, db() as con:
@@ -1268,11 +1304,17 @@ def cc_get(ruta, **q):
         r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='CreatorCrawl'", (mes,)).fetchone()
     usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 240)
     if usados >= tope:
-        raise RutaInactiva(f"Tope mensual alcanzado ({usados} de {tope} créditos): súbelo en ⚙ Configuración → Presupuestos")
+        agotar("CreatorCrawl", f"Tope mensual alcanzado ({usados} de {tope} créditos)")
     url = "https://app.creatorcrawl.com/api" + ruta + "?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
     req = urllib.request.Request(url, headers={"x-api-key": os.environ["CREATORCRAWL_API_KEY"], "Accept": "application/json",
                                                "User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=90) as r:
+    try:
+        r = urllib.request.urlopen(req, timeout=90)
+    except urllib.error.HTTPError as e:
+        if e.code == 402:
+            agotar("CreatorCrawl", "Sin créditos en la cuenta")
+        raise
+    with r:
         d = json.loads(r.read(MAX_RESPUESTA))
         gastados = int(r.headers.get("X-Credits-Used") or 1)
         restantes = r.headers.get("X-Credits-Remaining")
@@ -1350,19 +1392,27 @@ def _cc_red(red, fuente, rango):
 
 def sb_google(consulta):
     """Una búsqueda en Google vía ScrapingBee (≈10 créditos). Respeta el tope mensual configurado."""
+    exigir_disponible("ScrapingBee")
     cfg = CONFIG.get("scrapingbee", {})
     mes = ahora().strftime("%Y-%m")
     with _db_lock, db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
         r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapingBee'", (mes,)).fetchone()
     usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 900)
-    if usados + 10 > tope:
-        raise RutaInactiva(f"Tope mensual alcanzado ({usados} de {tope} créditos): súbelo en ⚙ Configuración → Presupuestos")
+    if usados + 10 > tope or (ESTADO.get("scrapingbee", {}).get("restantes") is not None
+                              and ESTADO["scrapingbee"]["restantes"] < 10):
+        agotar("ScrapingBee", f"Tope mensual alcanzado ({usados} de {tope} créditos)")
     q = {"search": consulta, "country_code": "pe", "language": "es", "nb_results": cfg.get("resultados", 20),
          "extra_params": "tbs=qdr:" + cfg.get("periodo", "d")}  # qdr:d = últimas 24 h
     req = urllib.request.Request("https://app.scrapingbee.com/api/v1/google?" + urllib.parse.urlencode(q),
                                  headers={"Authorization": f"Bearer {os.environ['SCRAPINGBEE_API_KEY']}", "User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    try:
+        resp = urllib.request.urlopen(req, timeout=120)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 402) and "credit" in e.read(300).decode("utf-8", "ignore").lower():
+            agotar("ScrapingBee", "Sin créditos en la cuenta")
+        raise
+    with resp:
         d = json.loads(resp.read(MAX_RESPUESTA))
         costo = int(resp.headers.get("spb-cost") or 10)
     with _db_lock, db() as con:
@@ -1403,7 +1453,7 @@ def fuente_busqueda_web(rango=None):
 
 def saldo_scrapingbee():
     while True:
-        if os.environ.get("SCRAPINGBEE_API_KEY"):
+        if os.environ.get("SCRAPINGBEE_API_KEY") and not agotado("ScrapingBee"):
             try:
                 d = json.loads(http_get("https://app.scrapingbee.com/api/v1/usage?" + urllib.parse.urlencode(
                     {"api_key": os.environ["SCRAPINGBEE_API_KEY"]}), timeout=30))
@@ -1418,6 +1468,7 @@ def saldo_scrapingbee():
 # ---------------- RapidAPI · Facebook Scraper (plan con pocas llamadas: se administra con cuidado) ----------------
 
 def rapid_get(ruta, **q):
+    exigir_disponible("RapidAPI")
     cfg = CONFIG.get("rapidapi", {})
     mes = ahora().strftime("%Y-%m")
     with _db_lock, db() as con:
@@ -1426,7 +1477,7 @@ def rapid_get(ruta, **q):
     usados, tope = (r[0] if r else 0), cfg.get("max_llamadas_mes", 95)
     est = ESTADO.setdefault("rapidapi", {})
     if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 5)):
-        raise RutaInactiva(f"Cuota agotada ({usados} de {tope} llamadas este mes): súbela en ⚙ Configuración o espera al nuevo ciclo")
+        agotar("RapidAPI", f"Cuota agotada ({usados} de {tope} llamadas este mes)")
     host = os.environ.get("RAPIDAPI_FB_HOST", "facebook-scraper3.p.rapidapi.com")
     req = urllib.request.Request(f"https://{host}{ruta}?" + urllib.parse.urlencode({k: v for k, v in q.items() if v}),
                                  headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": host, "User-Agent": UA})
@@ -1626,6 +1677,94 @@ PAUSA["todo"] = False  # el monitor siempre arranca en vivo; la pausa general es
 ESTADO["pausa"] = PAUSA
 
 
+# Servicios de pago agotados: se apagan solos hasta su fecha de renovación y mientras tanto no se consultan
+# (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
+RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
+_CFG_PROV = {"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
+             "ScrapingBee": "scrapingbee", "RapidAPI": "rapidapi"}
+try:
+    with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
+        AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
+except (FileNotFoundError, ValueError):
+    AGOTADOS = {}
+_agot_lock = threading.Lock()
+
+
+def _guardar_agotados():
+    tmp = RUTA_AGOTADOS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(AGOTADOS, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, RUTA_AGOTADOS)
+
+
+def _hoy_lima():
+    return (ahora() - timedelta(hours=5)).date()
+
+
+def fecha_renovacion(prov):
+    """Próxima renovación de créditos: la que informa el proveedor, la fijada en config (dia_renovacion) o el día 1."""
+    hoy = _hoy_lima()
+    conocida = ESTADO.get(_CFG_PROV[prov], {}).get("renovacion")
+    if conocida:
+        try:
+            f = datetime.fromisoformat(str(conocida).replace("Z", "+00:00"))
+            f = (f - timedelta(hours=5)).date() if f.tzinfo else f.date()
+            if f > hoy:
+                return f
+        except ValueError:
+            pass
+    dia = CONFIG.get(_CFG_PROV[prov], {}).get("dia_renovacion", 1)
+    dia = dia if isinstance(dia, int) and 1 <= dia <= 28 else 1
+    f = hoy.replace(day=dia)
+    if f <= hoy:
+        f = (f.replace(day=1) + timedelta(days=32)).replace(day=dia)
+    return f
+
+
+def apagar_hasta_renovacion(prov, motivo):
+    with _agot_lock:
+        if prov in AGOTADOS:
+            return
+        hasta = fecha_renovacion(prov)
+        AGOTADOS[prov] = {"hasta": hasta.isoformat(), "motivo": motivo[:160], "desde": iso(ahora())}
+        _guardar_agotados()
+    print(f"[{datetime.now():%H:%M:%S}] {prov} apagado hasta {hasta:%d/%m/%Y} (renovación de créditos): {motivo}", flush=True)
+
+
+def agotado(prov):
+    """Fecha (date) hasta la que el servicio sigue apagado, o None. Al llegar la fecha se reactiva solo."""
+    a = AGOTADOS.get(prov)
+    if not a:
+        return None
+    try:
+        hasta = datetime.fromisoformat(a["hasta"]).date()
+    except (KeyError, ValueError):
+        hasta = _hoy_lima()
+    if _hoy_lima() >= hasta:
+        with _agot_lock:
+            AGOTADOS.pop(prov, None)
+            _guardar_agotados()
+        for rutas_ in SALUD.values():
+            if prov in rutas_ or any(n.startswith(prov) for n in rutas_):
+                for n, s_ in rutas_.items():
+                    if n.startswith(prov):
+                        s_["inactiva"] = False
+        return None
+    return hasta
+
+
+def exigir_disponible(prov):
+    """Corta antes de cualquier llamada de red si el servicio está apagado por créditos agotados."""
+    hasta = agotado(prov)
+    if hasta:
+        raise RutaInactiva(f"Apagado hasta el {hasta:%d/%m/%Y} (renovación de créditos); no se consulta")
+
+
+def agotar(prov, motivo):
+    apagar_hasta_renovacion(prov, motivo)
+    raise RutaInactiva(f"{motivo}. Apagado hasta el {fecha_renovacion(prov):%d/%m/%Y} (renovación de créditos)")
+
+
 def en_pausa(nombre=None):
     return PAUSA["todo"] or (nombre in PAUSA["fuentes"])
 
@@ -1728,13 +1867,21 @@ Para cada elemento devuelve:
 - "relevante": false si el texto no está en español, si es solo emojis o una exclamación sin contenido
   ("Ohhhh❤❤❤", "🔥🔥"), o si la entidad solo aparece de pasada y el texto no trata de ella (p. ej. el banco como medio
   de pago para donaciones, ventas o colectas; homónimos como Santander ciudad; política sin relación). Si no, true.
-- "sentimiento": "negativo", "neutro" o "positivo" hacia la entidad o el sistema bancario.
+- "atribuible": true solo si lo que se critica o reporta es responsabilidad de la entidad: sus apps y sistemas,
+  atención, cobros, comisiones, políticas, personal o seguridad de sus canales. Es false cuando el problema lo causan
+  terceros o no tiene que ver con la entidad, aunque se la nombre: estafas de delincuentes que usan su marca
+  (comprobantes o capturas falsas de Yape, suplantación, cuentas falsas), delitos comunes, la situación económica
+  personal del usuario ("me quedé con 20 soles en mi Yape"), noticias de política o economía general.
+- "sentimiento": "negativo", "neutro" o "positivo" HACIA LA ENTIDAD Y SUS SERVICIOS, no hacia el tema en general.
+  Si "atribuible" es false, el sentimiento es "neutro" salvo que el texto exprese una opinión explícita sobre la
+  entidad (p. ej. "Yape debería protegernos de estos estafadores" → negativo; "Yape me salvó" → positivo).
   Los comentarios suelen ser respuestas a una publicación o a una respuesta del banco: aunque sean cortos o no nombren
   el problema, la ironía, el reproche o la crítica ("cuando no…", "claro, la culpa es del usuario", "como siempre",
   "gracias por nada", emojis 🙃🙄) son NEGATIVOS. Ante la duda entre neutro y negativo en un comentario con tono
   crítico, elige negativo.
-- "queja": true si un usuario expresa un problema, reclamo o insatisfacción (también noticias de fallas, multas,
-  fraudes o sanciones contra la entidad). Las consultas de información y las respuestas de las propias cuentas
+- "queja": true si un usuario expresa un problema, reclamo o insatisfacción ATRIBUIBLE a la entidad (también
+  noticias de fallas, multas o sanciones contra la entidad, o fraudes por fallas de seguridad de la entidad).
+  Con "atribuible" false, "queja" es false. Las consultas de información y las respuestas de las propias cuentas
   oficiales ("Hola, lamentamos…") NO son quejas y son neutras.
 - "severidad": 0 si no es queja; 1 leve; 2 media; 3 grave (fraude, robo, dinero perdido o retenido, cuenta bloqueada,
   caída masiva, no poder retirar o pagar).
@@ -1845,15 +1992,16 @@ def _guardar_ia(filas, res):
             if not d:
                 continue
             sent = d.get("sentimiento") if d.get("sentimiento") in ("negativo", "neutro", "positivo") else "neutro"
-            queja = bool(d.get("queja"))
+            atribuible = d.get("atribuible") is not False
+            queja = bool(d.get("queja")) and atribuible  # lo que causan terceros no es queja contra la entidad
             sev = max(0, min(3, int(d.get("severidad") or 0))) if queja else 0
             if queja and not sev:
                 sev = 1
             cats = [c for c in (d.get("categorias") or []) if c in validas]
             con.execute("""UPDATE items SET ia_sentimiento=?, ia_queja=?, ia_severidad=?, ia_categorias=?,
-                           ia_relevante=?, ia_motivo=? WHERE id=? AND ia_sentimiento IS NULL""",
+                           ia_relevante=?, ia_motivo=?, ia_atribuible=? WHERE id=? AND ia_sentimiento IS NULL""",
                         (sent, int(queja), sev, json.dumps(cats, ensure_ascii=False),
-                         0 if d.get("relevante") is False else 1, str(d.get("motivo", ""))[:200], r["id"]))
+                         0 if d.get("relevante") is False else 1, str(d.get("motivo", ""))[:200], int(atribuible), r["id"]))
         _aplicar_ia(con)
 
 
@@ -1922,7 +2070,10 @@ def resumen_proveedores():
     """Misma ficha para todos los servicios de pago: clave, pausa, redes que cubren, saldo y consumo frente a su tope."""
     def ficha(nombre, clave, redes, saldo, uso, rutas):
         estado_rutas = {f"{f}": SALUD.get(f, {}).get(r, {}) for f, r in rutas}
+        hasta = agotado(nombre)
         return {"nombre": nombre, "clave": bool(os.environ.get(clave)) if isinstance(clave, str) else clave,
+                "apagado_hasta": hasta.isoformat() if hasta else None,
+                "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
     ap, sc, cc, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee", "rapidapi"))
     return [
@@ -2135,6 +2286,13 @@ def guardar_config(nueva):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(nueva, f, ensure_ascii=False, indent=2)
     os.replace(tmp, RUTA_CONFIG)
+    # Si el usuario cambió el presupuesto o la fecha de renovación de un servicio apagado, se le da otra oportunidad
+    viejo = json.loads(actual)
+    with _agot_lock:
+        for prov, clave in _CFG_PROV.items():
+            if prov in AGOTADOS and viejo.get(clave) != nueva.get(clave):
+                AGOTADOS.pop(prov)
+        _guardar_agotados()
 
 
 def reiniciar_servidor(retraso=1.0):
@@ -2481,10 +2639,38 @@ def trabajador_trends():
                                 list({f[0] for f in filas}))
                     con.executemany("INSERT INTO trends_rel VALUES (?,?,?,?)", filas)
                 ruta_ok("Google Trends", "Búsquedas relacionadas", f"{len({f[0] for f in filas})} términos actualizados")
-        for _ in range(cfg.get("rss_minutos", 15) * 6):  # espera, pero atenta a una pausa
+        # Alerta rápida: los grupos de fallas se piden también en "now 1-d" (puntos cada 8 min, casi en tiempo real).
+        # La serie de 7 días es horaria y Google la publica con horas de retraso: sola, avisaba tarde.
+        if time.time() >= _trends_op.get("proximo_rt", 0) and ruta_disponible("Google Trends", "Alerta rápida (8 min)"):
+            _trends_op["proximo_rt"] = time.time() + cfg.get("alerta_minutos", 10) * 60
+            n_rt = 0
+            for grupo in _grupos_alerta(cfg):
+                terminos = cfg.get("grupos", {}).get(grupo, [])
+                try:
+                    serie = trends_serie(terminos, "now 1-d")
+                    with _db_lock, db() as con:
+                        con.execute("CREATE TABLE IF NOT EXISTS trends_rt (grupo TEXT, termino TEXT, t TEXT, valor INTEGER)")
+                        con.execute("DELETE FROM trends_rt WHERE grupo = ?", (grupo,))
+                        con.executemany("INSERT INTO trends_rt VALUES (?,?,?,?)",
+                                        [(grupo, k, t, v[i]) for t, v in serie for i, k in enumerate(terminos[:5])])
+                    n_rt += 1
+                except Exception as e:
+                    ruta_fallo("Google Trends", "Alerta rápida (8 min)", e)
+                    _trends_opener(nuevo=True)
+                    _trends_op["proximo_rt"] = time.time() + 15 * 60
+                    break
+                time.sleep(15)
+            if n_rt:
+                ruta_ok("Google Trends", "Alerta rápida (8 min)", f"{n_rt} grupos de fallas al minuto")
+        for _ in range(min(cfg.get("rss_minutos", 15), cfg.get("alerta_minutos", 10)) * 6):  # espera, atenta a una pausa
             if en_pausa("Google Trends"):
                 break
             time.sleep(10)
+
+
+def _grupos_alerta(cfg):
+    g = cfg.get("grupo_alertas") or []
+    return [g] if isinstance(g, str) else g
 
 
 def datos_trends():
@@ -2497,14 +2683,23 @@ def datos_trends():
     for g, k, t, v in filas:
         grupos.setdefault(g, {}).setdefault(k, []).append([t, v])
     alertas = []
-    fallas = cfg.get("grupo_alertas") or []
-    fallas = [fallas] if isinstance(fallas, str) else fallas
-    hace = iso(ahora() - timedelta(hours=cfg.get("horas_alerta", 3)))
+    fallas = _grupos_alerta(cfg)
+    # Preferencia: la serie de 8 min (alerta rápida); si aún no existe, la horaria
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS trends_rt (grupo TEXT, termino TEXT, t TEXT, valor INTEGER)")
+        rt = {}
+        for g, k, t, v in con.execute("SELECT grupo, termino, t, valor FROM trends_rt ORDER BY t"):
+            rt.setdefault(g, {}).setdefault(k, []).append((t, v))
     for g in fallas:
-        for k, pts in grupos.get(g, {}).items():
-            recientes = [v for t, v in pts if t >= hace and v > 0]
+        rapida = g in rt
+        hace = iso(ahora() - (timedelta(minutes=cfg.get("minutos_alerta", 90)) if rapida
+                              else timedelta(hours=cfg.get("horas_alerta", 3))))
+        for k, pts in (rt.get(g) or grupos.get(g, {})).items():
+            recientes = [(t, v) for t, v in pts if t >= hace and v > 0]
             if recientes:
-                alertas.append({"termino": k, "max": max(recientes)})
+                t_max, v_max = max(recientes, key=lambda p: p[1])
+                alertas.append({"termino": k, "max": v_max, "desde": recientes[0][0], "pico": t_max,
+                                "resolucion": "8 min" if rapida else "1 h"})
     orden = {g: [k for k in cfg.get("grupos", {}).get(g, []) if k in series] for g, series in grupos.items()}
     with _db_lock, db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS trends_rel (termino TEXT, tipo TEXT, consulta TEXT, valor TEXT)")
