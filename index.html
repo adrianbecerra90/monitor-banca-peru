@@ -449,7 +449,9 @@ function ultimaAct(f){ // "Última actualización: 15:42 (hace 3 min)" en hora d
 function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponibilidad)
   if(!rs||!Object.keys(rs).length)return '';
   return '<div class="rutas">'+Object.entries(rs).map(([n,r])=>{const pausa=r.pausa_hasta*1000>Date.now();
-    return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?'OK':r.ok===false?'falló':'inactiva')}</div>`}).join('')+'</div>'}
+    // sin resultado todavía: "Pendiente" = iniciando; si el servidor explica el motivo (pausa, sin clave, tope…), se muestra
+    const sinRes=!r.msg||r.msg==='Pendiente'?'iniciando…':/clasificando|consultando|reanudando/i.test(r.msg)?r.msg:'inactiva · '+r.msg;
+    return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':/clasificando|iniciando/i.test(sinRes)?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?(/clasificando/i.test(r.msg||'')?r.msg:'OK'):r.ok===false?'falló':sinRes)}</div>`}).join('')+'</div>'}
 async function cargarEstado(){
   const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;ESTADO=es;
   if(primera){es.categorias.forEach(c=>$('#f-cat').add(new Option(c,c)));leerF();if(!es.categorias.includes(F.categoria))F.categoria='';pintarFiltros();

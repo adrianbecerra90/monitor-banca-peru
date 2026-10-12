@@ -1791,6 +1791,7 @@ def trabajador_ia(k):
                 time.sleep(20)
                 continue
             t0 = time.time()
+            _salud("IA", nombre)["msg"] = f"Clasificando {len(filas)}… · {modelo}"  # el panel muestra el trabajo en curso
             res, usado = _ia_lote(p, modelo, filas)
             _guardar_ia(filas, res)
             ruta_ok("IA", nombre, f"{len(res)} clasificados en {time.time() - t0:.0f}s · {usado}")
