@@ -380,12 +380,6 @@
       }
     ]
   },
-  "x_api": {
-    "_nota": "API oficial de X con pago por uso (US$0,005 por tweet leído). 'respaldo' = solo si Nitter falla; 'activo' = siempre en paralelo con Nitter. Solo pide tweets nuevos y respeta el tope diario.",
-    "modo": "respaldo",
-    "max_lecturas_dia": 300,
-    "max_por_consulta": 50
-  },
   "trends": {
     "_nota": "Google Trends Perú. Sin API oficial abierta (la oficial está en alfa cerrada). Interés relativo 0–100 por hora; cada grupo (máx. 5 términos) comparte escala.",
     "intervalo_minutos": 60,

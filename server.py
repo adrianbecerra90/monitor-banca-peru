@@ -16,7 +16,6 @@ Fuentes
                 YouTube (scraping de búsqueda), Bluesky.
   Con claves (.env):
                 YOUTUBE_API_KEY  -> búsqueda + comentarios de videos (API oficial, gratis)
-                X_BEARER_TOKEN   -> X vía API oficial
                 APIFY_TOKEN      -> X, Facebook, Instagram y TikTok vía scrapers de Apify
 
 Panel web en http://localhost:8765
@@ -947,67 +946,6 @@ def _comentarios_de_cuentas(red, fuente, actor_posts, actor_coment, url_post_key
     return out
 
 
-_x_bearer = {}
-
-
-def x_bearer():
-    """Bearer Token de X: el de .env o, si no hay, se obtiene con X_CONSUMER_KEY + X_CONSUMER_SECRET."""
-    if os.environ.get("X_BEARER_TOKEN"):
-        return os.environ["X_BEARER_TOKEN"]
-    ck, cs = os.environ.get("X_CONSUMER_KEY"), os.environ.get("X_CONSUMER_SECRET")
-    if not (ck and cs):
-        return None
-    if "token" not in _x_bearer:
-        cred = base64.b64encode(f"{urllib.parse.quote(ck)}:{urllib.parse.quote(cs)}".encode()).decode()
-        resp = json.loads(http_get("https://api.x.com/oauth2/token", {
-            "Authorization": f"Basic {cred}", "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
-            data=b"grant_type=client_credentials"))
-        _x_bearer["token"] = resp["access_token"]
-    return _x_bearer["token"]
-
-
-_x_uso = {"dia": "", "lecturas": 0, "since_id": None}
-
-
-def x_api_oficial(rango=None):
-    """API oficial de X (pago por uso: se cobra cada tweet leído). Solo pide tweets posteriores al último visto
-    (since_id) y respeta un tope diario de lecturas configurable."""
-    token = x_bearer()
-    if not token or rango:  # la búsqueda reciente solo cubre los últimos 7 días
-        return None
-    if en_pausa("API oficial de X"):
-        raise RutaInactiva("⏸ En pausa")
-    cfg = CONFIG.get("x_api", {})
-    hoy = ahora().date().isoformat()
-    if _x_uso["dia"] != hoy:
-        _x_uso.update(dia=hoy, lecturas=0)
-    tope = cfg.get("max_lecturas_dia", 300)
-    if _x_uso["lecturas"] >= tope:
-        raise RuntimeError(f"Tope diario de la API de X alcanzado ({tope} tweets); se reanuda mañana")
-    handles = cuentas("x")
-    terminos = " OR ".join([f'"{t}"' for t in todos_terminos()] + [f"@{h}" for h in handles])
-    params = {"query": f"({terminos}) lang:es -is:retweet"[:512],
-              "max_results": max(10, min(100, cfg.get("max_por_consulta", 50), tope - _x_uso["lecturas"])),
-              "tweet.fields": "created_at,author_id", "expansions": "author_id", "user.fields": "username"}
-    if _x_uso["since_id"]:
-        params["since_id"] = _x_uso["since_id"]
-    else:
-        with _db_lock, db() as con:  # arranca desde el tweet más reciente ya guardado
-            r = con.execute("SELECT MAX(CAST(substr(id, 3) AS INTEGER)) FROM items WHERE id LIKE 'x:%'").fetchone()
-        if r and r[0]:
-            params["since_id"] = str(r[0])
-    url = "https://api.x.com/2/tweets/search/recent?" + urllib.parse.urlencode(params)
-    data = json.loads(http_get(url, {"Authorization": f"Bearer {token}"}))
-    _x_uso["lecturas"] += len(data.get("data", []))
-    if data.get("meta", {}).get("newest_id"):
-        _x_uso["since_id"] = data["meta"]["newest_id"]
-    users = {u["id"]: u["username"] for u in data.get("includes", {}).get("users", [])}
-    return [{"id": "x:" + t["id"], "fuente": "X", "autor": "@" + users.get(t["author_id"], "i"),
-             "texto": t["text"], "fecha": t["created_at"],
-             "url": f"https://x.com/{users.get(t['author_id'], 'i')}/status/{t['id']}"}
-            for t in data.get("data", [])]
-
-
 def x_apify(rango=None):
     if not os.environ.get("APIFY_TOKEN"):
         return None
@@ -1033,7 +971,6 @@ def x_apify(rango=None):
 
 def fuente_x(rango=None):
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
-                                ("API oficial de X", x_api_oficial, CONFIG.get("x_api", {}).get("modo", "respaldo")),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
 
 
@@ -1551,7 +1488,7 @@ def bluesky_buscar(host, rango=None):
 
 
 FUENTES = {
-    "X": (fuente_x, "Nitter (varias instancias) + API oficial; Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
+    "X": (fuente_x, "Nitter (varias instancias); Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
     "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
     "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
     "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
@@ -1567,7 +1504,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "API oficial de X"]
+PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -1880,7 +1817,6 @@ def resumen_proveedores():
         return {"nombre": nombre, "clave": bool(os.environ.get(clave)) if isinstance(clave, str) else clave,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
     ap, sc, cc, sb = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee"))
-    xa = CONFIG.get("x_api", {})
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
@@ -1896,9 +1832,6 @@ def resumen_proveedores():
         ficha("ScrapingBee", "SCRAPINGBEE_API_KEY", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros",
               f"{sb['restantes']:,} créditos".replace(",", ".") if sb.get("restantes") is not None else None,
               f"{sb.get('usados_mes', 0)} de {sb.get('tope', CONFIG.get('scrapingbee', {}).get('max_creditos_mes', 0))} créditos este mes", []),
-        ficha("API oficial de X", bool(os.environ.get("X_BEARER_TOKEN") or os.environ.get("X_CONSUMER_KEY")),
-              f"X ({'respaldo de Nitter' if xa.get('modo', 'respaldo') == 'respaldo' else 'siempre activa'})", None,
-              f"{_x_uso['lecturas']} de {xa.get('max_lecturas_dia', 300)} tweets hoy", [("X", "API oficial de X")]),
     ]
 
 
@@ -1937,14 +1870,13 @@ def config_editable():
         "cuentas_oficiales": {k: v for k, v in c.get("cuentas_oficiales", {}).items() if not k.startswith("_")},
         "trends": {"grupos": c.get("trends", {}).get("grupos", {}), "intervalo_minutos": c.get("trends", {}).get("intervalo_minutos", 60)},
         "apify": {k: c.get("apify", {}).get(k) for k in ("presupuesto_usd_mes", "posts_por_cuenta", "comentarios_max_por_post")},
-        "x_api": {k: c.get("x_api", {}).get(k) for k in ("modo", "max_lecturas_dia")},
         "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
         "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "NVIDIA_API_KEY",
-                                                         "OPENROUTER_API_KEY", "YOUTUBE_API_KEY", "X_BEARER_TOKEN")},
+                                                         "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 
 
@@ -2058,12 +1990,6 @@ def validar_config(d):
         nueva.setdefault("scrapecreators", {}).update(
             max_creditos_mes=_entero(sc.get("max_creditos_mes", 3000), "Tope de ScrapeCreators", 0, 1_000_000),
             paginas_max_por_post=_entero(sc.get("paginas_max_por_post", 5), "Páginas de comentarios", 1, 50))
-    if "x_api" in d:
-        modo = d["x_api"].get("modo")
-        if modo not in ("respaldo", "activo"):
-            raise ValueError("API de X: modo debe ser 'respaldo' o 'activo'")
-        nueva.setdefault("x_api", {}).update(modo=modo, max_lecturas_dia=_entero(d["x_api"].get("max_lecturas_dia", 300),
-                                                                                 "Tope diario de X", 0, 100000))
     if "ia" in d:
         por_nombre = {p["nombre"]: p for p in d["ia"] if isinstance(p, dict)}
         for p in nueva.get("ia", {}).get("proveedores", []):
@@ -3175,7 +3101,7 @@ class Handler(BaseHTTPRequestHandler):
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
                                "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(),
                                "claves": {k: bool(os.environ.get(k)) for k in
-                                          ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY", "X_BEARER_TOKEN")}})
+                                          ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
             def celda(v):
                 v = "" if v is None else str(v)

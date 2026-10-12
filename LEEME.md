@@ -26,7 +26,7 @@ Abre http://localhost:8765 . No necesita instalar nada (Python 3.9+).
 |---|---|---|
 | Noticias | Google News Perú, Bing News, RSS de RPP, La República, Gestión, El Comercio, Correo, Infobae | — |
 | YouTube | API oficial: búsqueda + comentarios. Sin clave: scraping de resultados de búsqueda (solo títulos/descripciones) | `YOUTUBE_API_KEY` (gratis) |
-| X / Twitter | **Sin clave: Nitter** (espejo público de X; búsquedas, menciones y respuestas a las cuentas oficiales, tiempo real cada 3 min e histórico paginando hacia atrás). Con clave: API oficial o Apify (más robusto) | opcional: `X_BEARER_TOKEN` o `APIFY_TOKEN` |
+| X / Twitter | **Sin clave: Nitter** (espejo público de X; búsquedas, menciones y respuestas a las cuentas oficiales, tiempo real cada 3 min e histórico paginando hacia atrás). Respaldo de pago: Apify | opcional: `APIFY_TOKEN` |
 | Facebook | Comentarios de las últimas publicaciones de las páginas oficiales (Apify) | `APIFY_TOKEN` |
 | Instagram | Comentarios de las últimas publicaciones de las cuentas oficiales (Apify) | `APIFY_TOKEN` |
 | TikTok | Búsqueda por palabra clave + comentarios en las cuentas oficiales (Apify) | `APIFY_TOKEN` |
@@ -41,12 +41,9 @@ Copia `.env.example` como `.env` y pega las claves que tengas. Reinicia el servi
 2. **YouTube**: en https://console.cloud.google.com/ crea un proyecto → *APIs y servicios → Biblioteca* →
    activa **YouTube Data API v3** → *Credenciales → Crear credenciales → Clave de API*.
    Cuota gratuita: 10.000 unidades/día (el monitor usa ~2.500).
-3. **X (opcional)**: https://developer.x.com/en/portal/dashboard → tu app → *Keys and tokens* → *Bearer Token*.
-   Requiere plan de pago (Basic). Si no lo tienes, X funciona igual vía Apify.
 
 **Histórico por fuente:** Noticias (Google News, años hacia atrás), YouTube con clave, Bluesky,
-X/Facebook/Instagram/TikTok vía Apify (cuantos más meses, más coste). La API oficial de X solo
-cubre los últimos 7 días; para histórico de X se usa Apify.
+X (Nitter) y Facebook/Instagram/TikTok vía los proveedores de pago (cuantos más meses, más coste).
 
 **Por qué Apify:** Facebook, Instagram y TikTok no ofrecen búsqueda pública por API,
 y sin sesión iniciada bloquean el scraping directo. Apify mantiene scrapers que sí
@@ -121,7 +118,7 @@ El repositorio ya incluye un `Dockerfile`. Pasos:
 3. En **Variables**, añade como secretas:
    - `ADMIN_USUARIO` y `ADMIN_CLAVE` (tu primer administrador; mínimo 10 caracteres con letras y números),
    - las claves que uses: `APIFY_TOKEN`, `SCRAPECREATORS_API_KEY`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`,
-     `YOUTUBE_API_KEY`, `X_BEARER_TOKEN`.
+     `YOUTUBE_API_KEY`.
 4. **Settings → Networking → Generate Domain**. Railway te da una dirección `https://….up.railway.app`; ese es tu
    monitor en internet (con HTTPS y login).
 5. Cada vez que se suba un cambio al repositorio, Railway lo vuelve a publicar solo.
