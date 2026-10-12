@@ -2741,7 +2741,26 @@ def palabras(qs):
     return {"publicaciones": len(filas), "palabras": [{"palabra": k, **v} for k, v in top if v["total"] >= 2]}
 
 
+def _neto(qs):
+    """Sentimiento neto (% positivas − % negativas) con los mismos filtros, para comparar periodos."""
+    sql, args = _filtrar(qs)
+    with _db_lock, db() as con:
+        t, p, n = con.execute(f"SELECT COUNT(*), SUM(sentimiento='positivo'), SUM(sentimiento='negativo') FROM items{sql}",
+                              args).fetchone()
+    return (round(((p or 0) - (n or 0)) / t * 100) if t else None), t
+
+
 def estadisticas(qs):
+    resultado = _estadisticas(qs)
+    # mismo periodo inmediatamente anterior (p. ej. los 7 días previos) para mostrar si mejora o empeora
+    desde, hasta = datetime.fromisoformat(resultado["desde"]), min(datetime.fromisoformat(resultado["hasta"]), ahora())
+    previo = {k: v for k, v in qs.items() if k not in ("horas", "desde", "hasta")}
+    previo["desde"], previo["hasta"] = [iso(desde - (hasta - desde))], [iso(desde)]
+    resultado["neto_previo"], resultado["total_previo"] = _neto(previo)
+    return resultado
+
+
+def _estadisticas(qs):
     desde, hasta = _rango(qs)
     gran = qs.get("gran", ["auto"])[0]
     sql, args = _filtrar(qs, ignorar=("banco", "sentimiento", "solo_quejas", "categoria"))

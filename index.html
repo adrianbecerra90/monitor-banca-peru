@@ -153,7 +153,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <div class="card kpi"><div class="n" id="k-neg" style="color:var(--neg)">–</div><div class="l">Negativas</div></div>
     <div class="card kpi"><div class="n" id="k-neu">–</div><div class="l">Neutras</div></div>
     <div class="card kpi"><div class="n" id="k-pos" style="color:var(--pos)">–</div><div class="l">Positivas</div></div>
-    <div class="card kpi"><div class="n" id="k-net">–</div><div class="l">Sentimiento neto (pos − neg)</div></div>
+    <div class="card kpi"><div class="n" id="k-net">–</div><div class="l">Sentimiento neto (% positivas − % negativas)</div><div class="sub" id="k-net-var" style="margin-top:2px"></div><div id="k-net-spark" style="margin-top:4px"></div></div>
     <div class="card kpi"><div class="n" id="k-quejas">–</div><div class="l">Quejas · <b id="k-graves" style="color:var(--neg)">–</b> graves</div></div>
   </div>
 
@@ -435,6 +435,17 @@ async function cargarStats(){
   const pct=n=>st.total?Math.round(n/st.total*100)+'%':'–';
   $('#k-total').textContent=fmt(st.total);$('#k-neg').textContent=pct(st.negativo);$('#k-neu').textContent=pct(st.neutro);$('#k-pos').textContent=pct(st.positivo);
   const net=st.total?Math.round((st.positivo-st.negativo)/st.total*100):0;$('#k-net').textContent=st.total?(net>0?'+':'')+net:'–';$('#k-net').style.color=net<0?'var(--neg)':net>0?'var(--pos)':'';
+  // variación frente al periodo anterior equivalente
+  if(st.total&&st.neto_previo!=null&&st.total_previo>=5){const d=net-st.neto_previo;
+    $('#k-net-var').innerHTML=d===0?'= igual que el periodo anterior':`<span style="color:${d>0?'var(--pos)':'var(--neg)'};font-weight:600">${d>0?'▲':'▼'} ${Math.abs(d)}</span> vs. periodo anterior (${st.neto_previo>0?'+':''}${st.neto_previo})`}
+  else $('#k-net-var').textContent='Sin datos del periodo anterior';
+  // minigráfica: neto de cada intervalo del gráfico de evolución (solo intervalos con al menos 3 menciones)
+  const pts=(st.serie||[]).map(v=>{const t=v.positivo+v.neutro+v.negativo;return t>=3?Math.round((v.positivo-v.negativo)/t*100):null});
+  const val=pts.filter(v=>v!=null);
+  if(val.length>=3){const W=150,H=30,mn=Math.min(-100,...val),mx=Math.max(0,...val),x=i=>i*W/(pts.length-1||1),y=v=>H-(v-mn)/(mx-mn||1)*H;
+    let d='',ab=false;pts.forEach((v,i)=>{if(v==null){ab=false;return}d+=(ab?'L':'M')+x(i).toFixed(1)+','+y(v).toFixed(1);ab=true});
+    $('#k-net-spark').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="30" role="img" aria-label="Evolución del sentimiento neto"><line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-dasharray="2 2"/><path d="${d}" fill="none" stroke="var(--ink2)" stroke-width="1.5"/></svg><div class="sub" style="font-size:10px">Evolución por ${GRAN_TXT[st.granularidad]} (línea punteada = 0)</div>`}
+  else $('#k-net-spark').innerHTML='';
   $('#k-quejas').textContent=fmt(st.quejas);$('#k-graves').textContent=fmt(st.graves);
   $('#picos').innerHTML=st.picos.filter(p=>!alertaCerrada('pico:'+p.banco,p.ultima_hora,3)).map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en la última hora (promedio ${p.promedio}/h). Posible incidente o caída.<button class="cerrar" data-k="${esc('pico:'+p.banco)}" data-n="${p.ultima_hora}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
   serie(st);calor(st);entidades(st);
