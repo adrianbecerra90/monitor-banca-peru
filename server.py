@@ -521,11 +521,11 @@ def ruta_disponible(fuente, ruta):
 
 
 def ruta_ok(fuente, ruta, msg):
-    _salud(fuente, ruta).update(ok=True, msg=msg, fallos=0, pausa_hasta=0, ultima=iso(ahora()))
+    _salud(fuente, ruta).update(ok=True, msg=msg, fallos=0, pausa_hasta=0, ultima=iso(ahora()), inactiva=False)
 
 
 def ruta_inactiva(fuente, ruta, msg):
-    _salud(fuente, ruta).update(ok=None, msg=msg, fallos=0, pausa_hasta=0)
+    _salud(fuente, ruta).update(ok=None, msg=msg, fallos=0, pausa_hasta=0, inactiva=True)
 
 
 def ruta_fallo(fuente, ruta, error):
@@ -1127,19 +1127,29 @@ def x_nitter(rango=None):
 # Redes de Meta y TikTok: dos proveedores en activo-activo (Apify + ScrapeCreators) que se reparten las cuentas
 # --------------------------------------------------------------------------
 
-CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY"}
+CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY", "CreatorCrawl": "CREATORCRAWL_API_KEY"}
+SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"}, "ScrapeCreators": {"facebook", "instagram", "tiktok"},
+           "CreatorCrawl": {"instagram", "tiktok"}}  # CreatorCrawl no ofrece Facebook
+
+
+def _presupuesto_agotado(prov):
+    """Lo que ya se sabe sin gastar nada: presupuesto de Apify (consultado gratis) y topes mensuales locales."""
+    e = ESTADO.get({"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl"}[prov], {})
+    if prov == "Apify":
+        return e.get("usado") is not None and e.get("usado") >= e.get("tope", 1e9)
+    return e.get("usados_mes") is not None and e.get("usados_mes") >= e.get("tope", 1e9)
 
 
 def _proveedor_sano(fuente, prov):
     s = SALUD.get(fuente, {}).get(prov, {})
     return (bool(os.environ.get(CLAVE_PROVEEDOR[prov])) and not en_pausa(prov) and ruta_disponible(fuente, prov)
-            and s.get("ok") is not False)
+            and s.get("ok") is not False and not s.get("inactiva") and not _presupuesto_agotado(prov))
 
 
 def cuentas_asignadas(red, fuente, prov):
     """Reparte las cuentas oficiales entre los proveedores sanos; si el otro está caído, este las toma todas."""
     mapa = cuentas(red)
-    sanos = [p for p in CLAVE_PROVEEDOR if _proveedor_sano(fuente, p)]
+    sanos = [p for p in CLAVE_PROVEEDOR if red in SOPORTE[p] and _proveedor_sano(fuente, p)]
     if prov not in sanos or len(sanos) < 2:
         return mapa
     k, n = sanos.index(prov), len(sanos)
@@ -1166,6 +1176,16 @@ def sc_get(ruta, **q):
                     "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, int(d.get("credits_charged") or 1)))
     ESTADO.setdefault("scrapecreators", {}).update(restantes=d.get("credits_remaining"), usados_mes=usados + 1, tope=tope)
     return d
+
+
+def presupuesto_apify_inicial():
+    if os.environ.get("APIFY_TOKEN"):
+        try:
+            usado, limite = apify_consumo()
+            ESTADO["apify"] = {"usado": round(usado, 3), "tope": min(CONFIG["apify"].get("presupuesto_usd_mes", 4.5), limite or 1e9),
+                               "limite_plan": limite}
+        except Exception as e:
+            print(f"  Apify: no se pudo consultar el presupuesto ({type(e).__name__})", flush=True)
 
 
 def saldo_scrapecreators():
@@ -1284,6 +1304,94 @@ def _sc_comentarios_nuevos(red, fuente, conteo, post_banco, out):
     return out
 
 
+# ---------------- CreatorCrawl (Instagram y TikTok; formato de datos uniforme) ----------------
+
+def cc_get(ruta, **q):
+    cfg = CONFIG.get("creatorcrawl", {})
+    mes = ahora().strftime("%Y-%m")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='CreatorCrawl'", (mes,)).fetchone()
+    usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 240)
+    if usados >= tope:
+        raise RutaInactiva(f"Tope mensual alcanzado ({usados} de {tope} créditos): súbelo en ⚙ Configuración → Presupuestos")
+    url = "https://app.creatorcrawl.com/api" + ruta + "?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
+    req = urllib.request.Request(url, headers={"x-api-key": os.environ["CREATORCRAWL_API_KEY"], "Accept": "application/json",
+                                               "User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        d = json.loads(r.read(MAX_RESPUESTA))
+        gastados = int(r.headers.get("X-Credits-Used") or 1)
+        restantes = r.headers.get("X-Credits-Remaining")
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO uso_proveedores VALUES (?, 'CreatorCrawl', ?) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, gastados))
+    ESTADO.setdefault("creatorcrawl", {}).update(usados_mes=usados + gastados, tope=tope,
+                                                 restantes=int(restantes) if str(restantes).isdigit() else None)
+    return d
+
+
+def _cc_red(red, fuente, rango):
+    if not os.environ.get("CREATORCRAWL_API_KEY"):
+        raise RutaInactiva("Sin clave: añade CREATORCRAWL_API_KEY en .env")
+    if en_pausa("CreatorCrawl"):
+        raise RutaInactiva("⏸ En pausa (se reanuda a mano con su botón ▶)")
+    mapa = cuentas_asignadas(red, fuente, "CreatorCrawl")
+    out, conteo, post_banco, errores = [], {}, {}, []
+    for url_cuenta, banco in mapa.items():
+        usuario = url_cuenta.rstrip("/").rsplit("/", 1)[-1].lstrip("@")
+        try:
+            posts = cc_get(f"/{red}/user/posts" if red == "instagram" else "/tiktok/profile/videos", handle=usuario).get("data") or []
+        except RuntimeError:
+            raise
+        except Exception as e:
+            errores.append(f"{banco}: {type(e).__name__}")
+            continue
+        for p in posts[:CONFIG["apify"].get("posts_por_cuenta", 5)]:
+            purl = (p.get("url") or "").split("?")[0].rstrip("/")  # sin parámetros de seguimiento
+            if not purl:
+                continue
+            post_banco[purl] = banco
+            conteo[purl] = int(p.get("comment_count") or 0)
+            out.append({"id": f"{fuente.lower()}:post:{purl}", "fuente": fuente, "tipo": "post_oficial", "peru": True,
+                        "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "texto": p.get("text") or "(publicación sin texto)",
+                        "fecha": p.get("created_at"), "url": purl,
+                        "metricas": {"comentarios": p.get("comment_count"), "reacciones": p.get("like_count"), "compartidos": p.get("share_count")}})
+    if errores and len(errores) == len(mapa):
+        raise RuntimeError("Todas las cuentas fallaron: " + ", ".join(errores))
+    previos = _vistos(conteo)
+    tope = CONFIG["apify"].get("comentarios_max_por_post", 200)
+    paginas = CONFIG.get("creatorcrawl", {}).get("paginas_max_por_post", 2)
+    ruta_com = "/instagram/post/comments" if red == "instagram" else "/tiktok/video/comments"
+    for purl, n in conteo.items():
+        nuevos = min(n - previos.get(purl, 0), tope)
+        if nuevos <= 0:
+            continue
+        cursor, leidos = None, 0
+        try:
+            for _ in range(max(1, min(paginas, nuevos // 10 + 1))):
+                d = cc_get(ruta_com, url=purl, cursor=cursor)
+                for c in d.get("data") or []:
+                    if not (c.get("text") or "").strip() or c.get("is_author_reply"):
+                        continue
+                    autor = (c.get("author") or {})
+                    out.append({"id": f"{fuente.lower()}:{c.get('id')}", "fuente": fuente, "tipo": "comentario", "peru": True,
+                                "bancos_fijos": [post_banco[purl]], "cuenta": post_banco[purl],
+                                "autor": autor.get("handle") or autor.get("name") or "", "texto": c["text"],
+                                "fecha": c.get("created_at"), "url": purl})
+                    leidos += 1
+                pg = d.get("page") or {}
+                cursor = pg.get("cursor")
+                if not pg.get("has_more") or not cursor or leidos >= nuevos:
+                    break
+        except RuntimeError:
+            raise
+        except Exception as e:
+            conteo[purl] = previos.get(purl, 0)  # se reintenta en la próxima pasada
+            print(f"  {fuente} · CreatorCrawl: comentarios de {purl[:60]} fallaron ({type(e).__name__})", flush=True)
+    _marcar_vistos(conteo)
+    return out
+
+
 def fuente_facebook(rango=None):
     return ejecutar_rutas("Facebook", [
         ("Apify", lambda r: _comentarios_de_cuentas("facebook", "Facebook", "facebook_posts", "facebook_comentarios",
@@ -1297,12 +1405,14 @@ def fuente_instagram(rango=None):
         ("Apify", lambda r: _comentarios_de_cuentas("instagram", "Instagram", "instagram_posts", "instagram_comentarios",
                                                     ("url", "postUrl"), r)
          if os.environ.get("APIFY_TOKEN") else None, "activo"),
-        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), "activo")], rango)
+        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), "activo"),
+        ("CreatorCrawl", lambda r: _cc_red("instagram", "Instagram", r), "activo")], rango)
 
 
 def fuente_tiktok(rango=None):
     return ejecutar_rutas("TikTok", [("Apify", tiktok_apify, "activo"),
-                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "activo")], rango)
+                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "activo"),
+                                     ("CreatorCrawl", lambda r: _cc_red("tiktok", "TikTok", r), "activo")], rango)
 
 
 def tiktok_apify(rango=None):
@@ -1362,8 +1472,8 @@ def bluesky_buscar(host, rango=None):
 FUENTES = {
     "X": (fuente_x, "Nitter (varias instancias) + API oficial; Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
     "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
-    "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
-    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
+    "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
+    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) o scraping de búsqueda"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
@@ -1375,8 +1485,8 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "ScrapeCreators"]
-SIEMPRE_MANUAL = ["ScrapeCreators"]  # servicios de pago que solo se reanudan a mano, uno por uno
+PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "ScrapeCreators", "CreatorCrawl"]
+SIEMPRE_MANUAL = ["ScrapeCreators", "CreatorCrawl"]  # servicios de pago que solo se reanudan a mano, uno por uno
 try:
     with open(RUTA_PAUSA, encoding="utf-8") as _f:
         PAUSA = json.load(_f)
@@ -1413,6 +1523,11 @@ def cambiar_pausa(objetivo, pausar):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(PAUSA, f, ensure_ascii=False)
     os.replace(tmp, RUTA_PAUSA)
+    if not pausar and objetivo in ("todo", "ScrapeCreators", "CreatorCrawl"):
+        for rutas_ in SALUD.values():
+            for nombre_, s_ in rutas_.items():
+                if objetivo == "todo" or nombre_ == objetivo:
+                    s_["inactiva"] = False
     if not pausar:  # al reanudar, consulta de inmediato
         for n in (FUENTES if objetivo == "todo" else [objetivo] if objetivo in FUENTES else []):
             _proxima[n] = 0.0
@@ -1713,9 +1828,10 @@ def config_editable():
         "apify": {k: c.get("apify", {}).get(k) for k in ("presupuesto_usd_mes", "posts_por_cuenta", "comentarios_max_por_post")},
         "x_api": {k: c.get("x_api", {}).get(k) for k in ("modo", "max_lecturas_dia")},
         "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
+        "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY", "X_BEARER_TOKEN")},
     }
 
@@ -1819,6 +1935,11 @@ def validar_config(d):
         nueva["apify"].update(presupuesto_usd_mes=round(pres, 2),
                               posts_por_cuenta=_entero(a.get("posts_por_cuenta", 5), "Publicaciones por cuenta", 1, 20),
                               comentarios_max_por_post=_entero(a.get("comentarios_max_por_post", 200), "Comentarios por publicación", 10, 1000))
+    if "creatorcrawl" in d:
+        cc = d["creatorcrawl"]
+        nueva.setdefault("creatorcrawl", {}).update(
+            max_creditos_mes=_entero(cc.get("max_creditos_mes", 240), "Tope de CreatorCrawl", 0, 1_000_000),
+            paginas_max_por_post=_entero(cc.get("paginas_max_por_post", 2), "Páginas de comentarios (CreatorCrawl)", 1, 50))
     if "scrapecreators" in d:
         sc = d["scrapecreators"]
         nueva.setdefault("scrapecreators", {}).update(
@@ -3086,6 +3207,7 @@ def main():
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()
     threading.Thread(target=saldo_scrapecreators, daemon=True).start()
+    presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)

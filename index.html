@@ -459,6 +459,8 @@ async function cargarEstado(){
   const ia=es.ia_estado||{};
   $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('IA')?'var(--warn)':ia.activo?(ia.pendientes?'var(--warn)':'var(--good)'):'var(--neg)'}"></span><b>Clasificación IA</b>${es.pausa.todo?'':`<button data-p="IA">${pausada('IA')?'▶':'⏸'}</button>`}<br>${ultimaAct(ia.ultima)}<br><span class="sub">${esc(pausada('IA')?'⏸ En pausa':ia.msg||'')}</span>${rutasHTML(es.rutas.IA)}</div>`);
   $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('Google Trends')?'var(--warn)':'var(--good)'}"></span><b>Google Trends</b>${es.pausa.todo?'':`<button data-p="Google Trends">${pausada('Google Trends')?'▶':'⏸'}</button>`}<br>${ultimaAct(es.trends_estado?.actualizado)}<br><span class="sub">${pausada('Google Trends')?'⏸ En pausa':'Interés cada hora · tendencias cada 15 min'}</span>${rutasHTML(es.rutas['Google Trends'])}</div>`);
+  const cc=es.creatorcrawl||{};
+  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('CreatorCrawl')?'var(--warn)':'var(--good)'}"></span><b>CreatorCrawl</b> <span class="sub">(pago por uso)</span>${es.pausa.todo?'':`<button data-p="CreatorCrawl">${pausada('CreatorCrawl')?'▶':'⏸'}</button>`}<br><span class="sub">${pausada('CreatorCrawl')?'⏸ En pausa · se reanuda solo a mano':'Activo para Instagram y TikTok'}</span>${cc.restantes!=null||cc.usados_mes!=null?`<br><span class="sub" style="${cc.restantes!=null&&cc.restantes<20?'color:var(--neg);font-weight:600':''}">${cc.restantes!=null?`Saldo: ${fmt(cc.restantes)} créditos${cc.restantes<20?' · ⚠ casi agotado':''} · `:''}tope del monitor: ${fmt(cc.usados_mes||0)}/${fmt(cc.tope||0)} este mes</span>`:''}${rutasHTML({...(es.rutas.Instagram?.CreatorCrawl?{Instagram:es.rutas.Instagram.CreatorCrawl}:{}),...(es.rutas.TikTok?.CreatorCrawl?{TikTok:es.rutas.TikTok.CreatorCrawl}:{})})}</div>`);
   const sc=es.scrapecreators||{};
   $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('ScrapeCreators')?'var(--warn)':'var(--good)'}"></span><b>ScrapeCreators</b> <span class="sub">(pago por uso)</span>${es.pausa.todo?'':`<button data-p="ScrapeCreators">${pausada('ScrapeCreators')?'▶':'⏸'}</button>`}<br><span class="sub">${pausada('ScrapeCreators')?'⏸ En pausa · se reanuda solo a mano (no con «Reanudar monitoreo»)':'Activo para Facebook, Instagram y TikTok'}</span>${sc.restantes!=null?`<br><span class="sub" style="${sc.restantes<50?'color:var(--neg);font-weight:600':''}">Saldo: ${fmt(sc.restantes)} créditos${sc.restantes<50?' · ⚠ casi agotado, recarga en scrapecreators.com':''} · tope del monitor: ${fmt(sc.usados_mes||0)}/${fmt(sc.tope||0)} este mes</span>`:''}${rutasHTML({...(es.rutas.Facebook?.ScrapeCreators?{Facebook:es.rutas.Facebook.ScrapeCreators}:{}),...(es.rutas.Instagram?.ScrapeCreators?{Instagram:es.rutas.Instagram.ScrapeCreators}:{}),...(es.rutas.TikTok?.ScrapeCreators?{TikTok:es.rutas.TikTok.ScrapeCreators}:{})})}</div>`);
   $('#fuentes').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
@@ -557,8 +559,8 @@ function pintarConfig(){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','ScrapeCreators']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
-      <div class="sub" style="margin-top:6px">ScrapeCreators (de pago) no se reanuda con «Reanudar todo»: se activa solo con su propio botón.</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','ScrapeCreators','CreatorCrawl']).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      <div class="sub" style="margin-top:6px">ScrapeCreators y CreatorCrawl (de pago) no se reanudan con «Reanudar todo»: se activan solo con su propio botón.</div>
       <label class="sub" style="display:block;margin-top:8px"><input type="checkbox" id="cfg-ini-pausa" ${CFG.iniciar_en_pausa?'checked':''}> Iniciar el monitor en pausa (se guarda con "Guardar y aplicar")</label></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
     <div class="bloque"><b>Frecuencia de consulta (minutos)</b><div class="rej" style="margin-top:8px">${CFG.fuentes.map(f=>`<label class="campo">${esc(f)}<input type="number" min="1" max="1440" data-int="${esc(f)}" value="${CFG.intervalos_minutos[f]??30}"></label>`).join('')}</div></div>`;
@@ -602,6 +604,9 @@ function pintarConfig(){
     <div class="bloque"><b>ScrapeCreators</b> (Facebook, Instagram, TikTok · se reparte las cuentas con Apify)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de créditos al mes (1 crédito ≈ 1 consulta)<input type="number" min="0" max="1000000" data-s="max_creditos_mes" value="${CFG.scrapecreators.max_creditos_mes??3000}"></label>
       <label class="campo">Máx. páginas de comentarios por publicación (~12 comentarios c/u)<input type="number" min="1" max="50" data-s="paginas_max_por_post" value="${CFG.scrapecreators.paginas_max_por_post??5}"></label></div></div>
+    <div class="bloque"><b>CreatorCrawl</b> (Instagram y TikTok · se reparte las cuentas con los demás)<div class="rej" style="margin-top:8px">
+      <label class="campo">Tope de créditos al mes<input type="number" min="0" max="1000000" data-c="max_creditos_mes" value="${CFG.creatorcrawl?.max_creditos_mes??240}"></label>
+      <label class="campo">Máx. páginas de comentarios por publicación<input type="number" min="1" max="50" data-c="paginas_max_por_post" value="${CFG.creatorcrawl?.paginas_max_por_post??2}"></label></div></div>
     <div class="bloque"><b>API oficial de X</b> (pago por uso)<div class="rej" style="margin-top:8px">
       <label class="campo">Modo<select data-x="modo"><option value="respaldo" ${CFG.x_api.modo==='respaldo'?'selected':''}>Respaldo (solo si Nitter falla)</option><option value="activo" ${CFG.x_api.modo==='activo'?'selected':''}>Activo (siempre, más gasto)</option></select></label>
       <label class="campo">Tope diario de tweets leídos<input type="number" min="0" max="100000" data-x="max_lecturas_dia" value="${CFG.x_api.max_lecturas_dia}"></label></div></div>
@@ -612,6 +617,7 @@ function pintarConfig(){
     c.querySelectorAll('[data-a]').forEach(x=>x.oninput=()=>CFG.apify[x.dataset.a]=x.value);
     c.querySelectorAll('[data-x]').forEach(x=>x.oninput=x.onchange=()=>CFG.x_api[x.dataset.x]=x.value);
     c.querySelectorAll('[data-s]').forEach(x=>x.oninput=()=>CFG.scrapecreators[x.dataset.s]=x.value);
+    CFG.creatorcrawl=CFG.creatorcrawl||{};c.querySelectorAll('[data-c]').forEach(x=>x.oninput=()=>CFG.creatorcrawl[x.dataset.c]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value})}
   if(cfgTab==='accesos'){
     c.innerHTML=`<p class="ayuda"><b>Administrador</b>: todo (configuración, pausas, archivo, accesos). <b>Lector</b>: ver el panel, filtrar y descargar. Las contraseñas deben tener al menos 10 caracteres con letras y números. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
@@ -679,7 +685,7 @@ async function guardarConfig(){
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={iniciar_en_pausa:CFG.iniciar_en_pausa,retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
-    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,x_api:CFG.x_api,ia:CFG.ia};
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,x_api:CFG.x_api,ia:CFG.ia};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});

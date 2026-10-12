@@ -458,5 +458,10 @@
     "max_creditos_mes": 90,
     "paginas_max_por_post": 2
   },
-  "iniciar_en_pausa": true
+  "iniciar_en_pausa": true,
+  "creatorcrawl": {
+    "_nota": "Tercera ruta para Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify y ScrapeCreators. El tope está ajustado al saldo gratuito; súbelo al recargar.",
+    "max_creditos_mes": 45,
+    "paginas_max_por_post": 2
+  }
 }
