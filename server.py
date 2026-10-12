@@ -2361,7 +2361,7 @@ pasa paso poder usar uso tener tienes tengo hacen hacer realizar voy vas fui fue
 vez mil millones miles gente alguien nadie persona personas posible bancos banco clientes cliente usuarios usuario
 empresa empresas sector publico programa informacion datos financiera financieras entidad entidades peruanos lima
 nino varita senor senora amigo amigos favor buen buena dios lp retail canalb altavoz""".split() + [
-    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion"]
+    "sin embargo", "pasion por el derecho", "peru retail", "la republica", "el comercio", "agencia andina", "lp pasion", "nota de prensa", "lee la nota", "bimestre setiembre octubre", "correspondiente al bimestre"]
 
 
 def nube_excluidas():
@@ -2397,6 +2397,8 @@ def palabras(qs):
     sql, args = _filtrar(qs)
     if not g("tipo"):  # salvo que se pida explícitamente, la nube refleja lo que dicen los usuarios, no los bancos
         sql += """ AND meta NOT LIKE '%"tipo": "oficial"%' AND meta NOT LIKE '%"tipo": "post_oficial"%'"""
+        if g("noticias") != "1":  # los titulares de prensa tapan la voz de los clientes
+            sql += """ AND meta NOT LIKE '%"tipo": "noticia"%' AND fuente <> 'Noticias'"""
     with _db_lock, db() as con:
         filas = con.execute(f"SELECT texto, sentimiento FROM items{sql} ORDER BY fecha DESC LIMIT 6000", args).fetchall()
     excluir = {normalizar(x.strip()) for x in g("excluir").split(",") if x.strip()} | {normalizar(x) for x in nube_excluidas()}
@@ -2414,7 +2416,7 @@ def palabras(qs):
     frases_excluidas = {normalizar(x) for x in nube_excluidas() if " " in x}
     conteo = {}
     for texto, sent in filas:
-        texto = re.sub(r"https?://\S+|@\w+", " ", texto or "")
+        texto = re.sub(r"https?://\S+|@\w+|#\w+|\b[\w-]+\.(ly|com|pe|co|net|org|gl|me|io|gob|info)(/\S*)?", " ", texto or "")
         claves = set()
         for oracion in re.split(r"[.!?¿¡;:\n,()]+", texto.lower()):  # las frases no cruzan signos de puntuación
             tokens = re.findall(r"[a-záéíóúüñ]{2,}", oracion)

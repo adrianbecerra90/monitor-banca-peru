@@ -166,8 +166,9 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <h2>Nube de palabras <span class="sub" id="nb-info" style="text-transform:none;letter-spacing:0"></span></h2>
         <div class="frow" style="margin-bottom:8px">
           <select id="nb-max" aria-label="Cantidad de palabras"><option value="30">30 palabras</option><option value="60" selected>60 palabras</option><option value="100">100 palabras</option></select>
-          <select id="nb-n" aria-label="Palabras o frases"><option value="1">Palabras sueltas</option><option value="2-4">Frases cortas (2 a 4 palabras)</option><option value="2">Frases de 2 palabras</option><option value="3">Frases de 3 palabras</option><option value="4">Frases de 4 palabras</option></select>
+          <select id="nb-n" aria-label="Palabras o frases"><option value="2-4" selected>Frases cortas (2 a 4 palabras)</option><option value="1">Palabras sueltas</option><option value="2">Frases de 2 palabras</option><option value="3">Frases de 3 palabras</option><option value="4">Frases de 4 palabras</option></select>
           <label class="sub"><input type="checkbox" id="nb-ent"> Incluir nombres de entidades</label>
+          <label class="sub"><input type="checkbox" id="nb-not"> Incluir noticias</label>
           <input id="nb-excluir" placeholder="Excluir palabra y Enter…" style="min-width:170px">
         </div>
         <div id="nb-excl" class="frow" style="margin-bottom:6px"></div>
@@ -493,7 +494,7 @@ async function excluirPalabras(lista){
   const r=await fetch('/api/nube/agregar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({palabras:lista})}).then(r=>r.json());
   if(r.error)alert(r.error);cargarNube()}
 async function cargarNube(){
-  const p=params({max:$('#nb-max').value,n:$('#nb-n').value,entidades:$('#nb-ent').checked?'1':'0',excluir:NB.excluir.join(',')});
+  const p=params({max:$('#nb-max').value,n:$('#nb-n').value,noticias:$('#nb-not').checked?'1':'0',entidades:$('#nb-ent').checked?'1':'0',excluir:NB.excluir.join(',')});
   let d;try{d=await fetch('/api/palabras?'+p).then(r=>r.json())}catch(e){return}
   $('#nb-excl').innerHTML='<span class="sub">Las palabras sin valor se filtran según la lista de <a href="#" id="nb-config">⚙ Configuración → Nube de palabras</a>.</span>';
   $('#nb-config').onclick=e=>{e.preventDefault();cfgTab='nube';abrirConfig()};
@@ -531,7 +532,7 @@ function dibujarNube(ws){
     el.onclick=e=>{tip.style.display='none';
       if(e.altKey){excluirPalabras([w.palabra]);return}
       F.q=w.palabra;pintarFiltros();recargar();document.querySelector('#lista').scrollIntoView({behavior:'smooth',block:'start'})}})}
-$('#nb-max').onchange=$('#nb-n').onchange=$('#nb-ent').onchange=cargarNube;
+$('#nb-max').onchange=$('#nb-n').onchange=$('#nb-ent').onchange=$('#nb-not').onchange=cargarNube;
 $('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim().toLowerCase().slice(0,40);if(w)excluirPalabras([w]);e.target.value=''}};
 
 // ---------- Panel de configuración ----------
