@@ -314,6 +314,9 @@ function pintarFiltros(){
   toggles($('#f-gran'),[['auto','Automático'],['5min','5 min'],['15min','15 min'],['hora','Hora'],['dia','Día'],['semana','Semana']],'gran',false);
   $('#zoom-back').style.display=zoomPila.length?'inline-block':'none';
   toggles($('#f-sent'),SENT.map(([v,l,c])=>[v,l,c]),'sentimiento');
+  // botón «Quejas»: atajo del filtro de gravedad (solo quejas de cualquier gravedad); se combina con el sentimiento
+  $('#f-sent').insertAdjacentHTML('beforeend',`<button class="tg ${F.sev?'on':''}" id="f-quejas" title="Mostrar solo quejas${F.sev>1?' (con la gravedad elegida)':''}"><span class="sw" style="background:transparent;border:2px solid var(--neg);box-sizing:border-box"></span>Quejas</button>`);
+  $('#f-quejas').onclick=()=>{F.sev=F.sev?'':'1';pintarFiltros();recargar()};
   $('#f-tipo').value=F.tipo;$('#f-cat').value=F.categoria;$('#f-sev').value=F.sev;$('#f-orden').value=F.orden;$('#f-q').value=F.q;$('#f-desde').value=F.desde;$('#f-hasta').value=F.hasta;
   guardarF()}
 
