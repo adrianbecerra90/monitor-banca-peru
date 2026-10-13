@@ -156,8 +156,8 @@ NEGATIVO = [r"\bqueja", r"\breclamo", r"\bpesim", r"\bterrible", r"\bhorrible", 
             r"\babusiv", r"\babuso", r"\brateros?\b", r"\bladrones\b", r"\broban\b|\brobando\b", r"que tal raza",
             r"\bsinverguenza", r"\bincompetent", r"\bineptos?\b", r"nunca mas", r"me (voy a )?cambi(o|ar) de banco",
             r"cerrare mi cuenta", r"\bdesastre", r"\blamentable", r"\bbasura\b", r"\bporqueria", r"\bmierda",
-            r"\bmaldit", r"no sirve", r"no funciona", r"\bexijo\b", r"\burgente", r"hasta cuando", r"otra vez",
-            r"de nuevo", r"siempre lo mismo", r"\bmalograd", r"\bcolgad", r"\bpesimo servicio", r"\bdecepcion",
+            r"\bmaldit", r"no sirve", r"no funciona", r"\bexijo\b", r"\burgente", r"hasta cuando",
+            r"siempre lo mismo", r"\bmalograd", r"\bcolgad", r"\bpesimo servicio", r"\bdecepcion",
             r"\bfastidi", r"\bcriminal", r"\binutil", r"\bpaltead", r"\bjodid", r"solucionen", r"respondan",
             r"no me ayudan", r"\bque mal\b", r"\bproblemas?\b", r"\binconvenientes?\b", r"brilla por su ausencia",
             r"\bque (esta |estan )?pas(a|o|ando)\b", r"pasa lo mismo", r"mismo problema", r"\bpersiste", r"no (dan|hay|tienen) solucion",
@@ -170,7 +170,7 @@ NEGATIVO = [r"\bqueja", r"\breclamo", r"\bpesim", r"\bterrible", r"\bhorrible", 
             r"sin (darme |dar )?(una )?(respuesta|solucion)", r"no (he )?(recibido|tengo|obtengo) (ninguna )?respuesta",
             r"(me|nos) (pasa|ocurre) (exactamente )?lo mismo", r"\bpaciencia\b", r"\bincidencias?\b", r"\bse cae\b",
             r"\bhackeo", r"(me|le|nos) (robaron|hackearon)", r"y nada\b", r"hace (mas de )?(\w+ )?(horas?|dias|rato) (y nada|que)", r"\bmolest",
-            r"\bperjudic", r"\bsiempre (dan|hay|es lo mismo)", r"no es (la )?primera vez", r"\bnuevamente\b", r"[😒😰😩😫😞🙄]",r"tengo (dias|semanas|meses) ", r"gracias por nada", r"\bpayasos?\b",
+            r"\bperjudic", r"\bsiempre (dan|hay|es lo mismo)", r"no es (la )?primera vez", r"[😒😰😩😫😞🙄]",r"tengo (dias|semanas|meses) ", r"gracias por nada", r"\bpayasos?\b",
             r"\bcorrupt", r"\bcomplice", r"no hacen nada", r"no sirven", r"[😡🤬👎😤💩😠]"]
 
 POSITIVO = [r"\bgracias\b", r"\bagradezco", r"\bagradecid", r"\bexcelente", r"\bbuen(a|isim[oa])? (servicio|atencion|app|banco)",
@@ -236,10 +236,29 @@ _pos_re = [re.compile(p) for p in POSITIVO]
 _grave_re = [re.compile(p) for p in GRAVE]
 
 
+# Nombres de instituciones que contienen palabras del léxico ("Superintendencia de Banca, Seguros y AFP",
+# "Comisión de Defensa del Consumidor"): se reducen antes de clasificar para que no parezcan seguros, AFP, cobros
+# o un cliente afectado. ("otra vez", "de nuevo" o "nuevamente" solo cuentan junto a un problema concreto.)
+INSTITUCIONES = [
+    (re.compile(r"superintendencia de banca,? seguros y (afp|administradoras privadas de fondos de pensiones)"), "sbs"),
+    (re.compile(r"\bcomision (de|del) (economia|defensa|fiscalizacion|presupuesto|constitucion|justicia|trabajo|salud|"
+                r"educacion|energia|produccion|transportes|relaciones exteriores)[a-z ,]*?(?=\b(del|de la) "
+                r"(senado|congreso|camara|republica)\b|[.;]|$)"), "comite"),
+    (re.compile(r"\bcomision (parlamentaria|congresal|especial|investigadora|multipartidaria|de alto nivel)\b"), "comite"),
+    (re.compile(r"\b(defensa|proteccion) del consumidor\b"), "proteccion al consumo"),
+]
+
+
+def _sin_instituciones(t):
+    for patron, reemplazo in INSTITUCIONES:
+        t = patron.sub(reemplazo, t)
+    return t
+
+
 def clasificar(texto, tipo=""):
     """Devuelve (es_queja, categorias, severidad, sentimiento).
     tipo: 'noticia', 'comentario' (en una cuenta oficial) o '' (publicación social)."""
-    t = normalizar(texto)
+    t = _sin_instituciones(normalizar(texto))
     cats = [k for k, pats in _cat_re.items() if any(p.search(t) for p in pats)]
     if tipo in ("oficial", "post_oficial") or RESPUESTA_OFICIAL.search(t):  # respuesta de la propia cuenta del banco/SBS
         return False, cats, 0, "neutro"
@@ -267,7 +286,7 @@ def clasificar(texto, tipo=""):
     else:
         es_queja = (neg > 0 and (personal or len(cats) > 0)) or (
             len(cats) > 0 and personal and not CONSULTA.search(t) and (grave or re.search(
-                r"\b(no|nunca)\s+(me\s+)?(puedo|pude|funciona|sirve|carga|llega|llego|deja|permite|responden|atienden|"
+                r"\b(no|nunca)\s+(me\s+)?((lo|la|los|las)\s+)?(puedo|pude|funciona|sirve|carga|llega|llego|deja|permite|responden|atienden|"
                 r"devuelven|solucionan|reconoce|abre|aparece|procesa)|\bsin (respuesta|solucion|servicio|sistema)|"
                 r"\b(otra vez|de nuevo)\b", t) is not None))
 
@@ -301,10 +320,14 @@ _ctx_peru = [normalizar(c) for c in CONFIG.get("contexto_peru", [])]
 _ctx_excluir = [normalizar(c) for c in CONFIG.get("contexto_excluir", [])]
 
 
+# "Plin" que no es la billetera: el payaso Plin Plin y las onomatopeyas ("plin plin plon", "plin plan")
+HOMONIMOS = re.compile(r"\bpayas\w*([\s-]+plin\w*)+|\bplin+[\s-]*pl[ioa]+n+\w*|\bplin+[\s-]+plin+\w*")
+
+
 def detectar_bancos(texto, es_peru=False):
     """Entidades mencionadas. Los alias ambiguos (p.ej. 'BBVA' o 'SBS' a secas) solo
     cuentan si la fuente es peruana o el texto tiene contexto de Perú."""
-    t = normalizar(texto)
+    t = HOMONIMOS.sub(" ", normalizar(texto))
     peru = (es_peru or any(c in t for c in _ctx_peru)) and not any(c in t for c in _ctx_excluir)
     out = []
     for b, seguros, dudosos in _bancos_re:
@@ -2303,7 +2326,10 @@ Para cada elemento devuelve:
 - "id": el mismo id recibido
 - "relevante": false si el texto no está en español, si es solo emojis o una exclamación sin contenido
   ("Ohhhh❤❤❤", "🔥🔥"), o si la entidad solo aparece de pasada y el texto no trata de ella (p. ej. el banco como medio
-  de pago para donaciones, ventas o colectas; homónimos como Santander ciudad; política sin relación). Si no, true.
+  de pago para donaciones, ventas o colectas; homónimos como Santander ciudad; política sin relación). También false
+  si no trata del sistema financiero peruano (bancos, billeteras, pagos, seguros, AFP, SBS) aunque se repita el nombre:
+  el payaso "Plin Plin", onomatopeyas ("plin plin plon"), "yape"/"plin" con otro sentido, política o farándula de otros
+  países. Si no, true.
 - "relevante": false también si el texto no dice nada sobre la entidad: fragmentos o muletillas que solo la
   nombran ("y mi yape", "el bcp pues", "Interbank?") sin queja, pregunta, opinión ni hecho concreto.
 - "atribuible": true solo si lo que se critica o reporta es responsabilidad de la entidad: sus apps y sistemas,
