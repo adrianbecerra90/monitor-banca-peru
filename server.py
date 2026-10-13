@@ -1825,9 +1825,11 @@ def _bd_sumar(n):
 def bd_scrape(dataset, entradas, **params):
     """Una consulta a un scraper de Bright Data. Si tarda, Bright Data devuelve un snapshot y se espera el resultado."""
     exigir_disponible("BrightData")
-    usados_mes, _, tope, _ = _bd_uso()
+    usados_mes, usados_hoy, tope, cuota_hoy = _bd_uso()
     if usados_mes >= tope:
         agotar("BrightData", f"Tope mensual alcanzado ({usados_mes} de {tope} registros)")
+    if usados_hoy >= cuota_hoy:  # límite diario estricto: nada más hasta mañana (ni consultas manuales)
+        raise RutaInactiva(f"Límite diario alcanzado ({usados_hoy} de {cuota_hoy} registros); sigue mañana")
     h = {"Authorization": f"Bearer {os.environ['BRIGHTDATA_API_KEY']}", "Content-Type": "application/json"}
     url = ("https://api.brightdata.com/datasets/v3/scrape?" +
            urllib.parse.urlencode({"dataset_id": dataset, "format": "json", **params}))
@@ -1859,6 +1861,11 @@ def _url_clave(u):
     return re.sub(r"^https?://(www\.|m\.)?", "", (u or "").split("?")[0]).rstrip("/").lower()
 
 
+def bd_restante_hoy():
+    usados_mes, usados_hoy, tope, cuota_hoy = _bd_uso()
+    return max(0, min(cuota_hoy - usados_hoy, tope - usados_mes))
+
+
 def _bd_red(red, fuente, rango=None):
     """Publicaciones recientes de las cuentas oficiales y solo sus comentarios nuevos, en dos consultas por pasada."""
     if not os.environ.get("BRIGHTDATA_API_KEY"):
@@ -1869,14 +1876,19 @@ def _bd_red(red, fuente, rango=None):
     exigir_disponible("BrightData")
     if not rango and time.time() - _BD["ultima"].get(red, 0) < cfg.get("intervalo_minutos", 480) * 60:
         return []  # entre pasadas: ruta sana, sin gasto
-    _, usados_hoy, _, cuota_hoy = _bd_uso()
-    if not rango and usados_hoy >= cuota_hoy:
-        return []  # ritmo diario cumplido: mañana sigue
+    restante = bd_restante_hoy()
+    if restante <= 0:
+        _, usados_hoy, _, cuota_hoy = _bd_uso()
+        raise RutaInactiva(f"Límite diario alcanzado ({usados_hoy} de {cuota_hoy} registros); sigue mañana")
     _BD["ultima"][red] = time.time()
     mapa = cuentas_asignadas(red, fuente, "BrightData")
+    # cada publicación cuesta un registro: si no alcanza para todas las cuentas, se piden menos (en orden)
+    if len(mapa) > restante:
+        mapa = dict(list(mapa.items())[:restante])
     por_url = {_url_clave(u): b for u, b in mapa.items()}
     ds_posts, ds_coment = BD_DATASETS[red]
     n = cfg.get("posts_por_cuenta_historico" if rango else "posts_por_cuenta", 10 if rango else 2)
+    n = max(1, min(n, restante // max(1, len(mapa))))
     entradas = []
     for u in mapa:
         e = {"url": u, "num_of_posts": n}
@@ -1905,9 +1917,21 @@ def _bd_red(red, fuente, rango=None):
     previos = _vistos(conteo)
     pendientes = sorted(((u, c - previos.get(u, 0)) for u, c in conteo.items() if c > previos.get(u, 0)),
                         key=lambda x: -x[1])[:cfg.get("posts_comentarios_por_pasada", 8)]
+    restante = bd_restante_hoy()
+    pendientes_ok, pedidos = [], []
+    for u, nuevos in pendientes:  # reparte lo que queda del día; lo que no entra queda para la próxima pasada
+        lim = min(nuevos, cfg.get("comentarios_max_por_post", 30), restante)
+        if lim <= 0:
+            break
+        pedidos.append({"url": u, "limit_records": lim})
+        pendientes_ok.append((u, nuevos))
+        if lim < nuevos:
+            conteo[u] = previos.get(u, 0) + lim  # el resto de comentarios nuevos se pide en la próxima pasada
+        restante -= lim
+    for u, _ in pendientes[len(pendientes_ok):]:
+        conteo[u] = previos.get(u, 0)
+    pendientes = pendientes_ok
     if pendientes:
-        maximo = cfg.get("comentarios_max_por_post", 30)
-        pedidos = [{"url": u, "limit_records": min(nuevos, maximo)} for u, nuevos in pendientes]
         try:
             for c in bd_scrape(ds_coment, pedidos):
                 purl = c.get("post_url") or (c.get("input") or {}).get("url") or c.get("url")
