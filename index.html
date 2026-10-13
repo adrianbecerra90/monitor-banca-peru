@@ -217,6 +217,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div class="sub" id="h-msg" style="margin-top:8px"></div>
         <div class="sub" id="h-base" style="margin-top:4px"></div>
       </div>
+      <div class="card"><h2>Clasificación IA</h2><div class="src" id="ia-card"></div></div>
       <div class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
     </div>
   </div>
@@ -479,7 +480,13 @@ async function cargarEstado(){
   $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br>${ultimaAct(f.ultima)}<br><span class="sub">${esc(f.ejecutando?'Consultando…':f.msg)}</span>${n==='Búsqueda Google'&&es.scrapingbee?.restantes!=null?`<br><span class="sub" style="${es.scrapingbee.restantes<100?'color:var(--neg);font-weight:600':''}">Saldo ScrapingBee: ${fmt(es.scrapingbee.restantes)} créditos · tope ${fmt(es.scrapingbee.usados_mes||0)}/${fmt(es.scrapingbee.tope||0)} este mes</span>`:''}${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
   $('#fuentes').querySelectorAll('button[data-f]').forEach(b=>b.onclick=async()=>{await post('/api/refresh?fuente='+encodeURIComponent(b.dataset.f));setTimeout(cargarEstado,800)});
   const ia=es.ia_estado||{};
-  $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('IA')?'var(--warn)':ia.activo?(ia.pendientes?'var(--warn)':'var(--good)'):'var(--neg)'}"></span><b>Clasificación IA</b>${es.pausa.todo?'':`<button data-p="IA">${pausada('IA')?'▶':'⏸'}</button>`}<br>${ultimaAct(ia.ultima)}<br><span class="sub">${esc(pausada('IA')?'⏸ En pausa':ia.msg||'')}</span>${rutasHTML(es.rutas.IA)}</div>`);
+  // tarjeta propia de la clasificación con IA: estado, cola pendiente y cada proveedor (activo-activo)
+  const pend=ia.pendientes||0,colaMax=Math.max(pend,+(sessionStorage.getItem('ia.cola')||0));try{sessionStorage.setItem('ia.cola',pend?colaMax:0)}catch(e){}
+  $('#ia-card').innerHTML=`<div><span class="d" style="background:${pausada('IA')?'var(--warn)':ia.activo?(pend?'var(--warn)':'var(--good)'):'var(--neg)'}"></span><b>${pausada('IA')?'⏸ En pausa':ia.activo?(pend?'Clasificando':'Al día'):'Sin proveedores activos'}</b>${es.pausa.todo?'':`<button data-p="IA" title="${pausada('IA')?'Reanudar':'Pausar'} la clasificación">${pausada('IA')?'▶':'⏸'}</button>`}<br>${ultimaAct(ia.ultima)}<br><span class="sub">${esc(ia.msg||'')}</span></div>
+    ${pend&&colaMax?`<div><span class="sub">${fmt(pend)} por revisar</span><div style="height:6px;border-radius:3px;background:var(--chip);margin-top:4px;overflow:hidden"><div style="height:100%;width:${Math.round((1-pend/colaMax)*100)}%;background:var(--acc)"></div></div></div>`:''}
+    <div><b style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Proveedores</b>${rutasHTML(es.rutas.IA)}</div>
+    <div class="sub">Clasifica sentimiento, si es queja, gravedad, categoría y si es atribuible a la entidad. Lo que no trata del sistema financiero peruano se oculta.</div>`;
+  $('#ia-card').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
   $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('Google Trends')?'var(--warn)':'var(--good)'}"></span><b>Google Trends</b>${es.pausa.todo?'':`<button data-p="Google Trends">${pausada('Google Trends')?'▶':'⏸'}</button>`}<br>${ultimaAct(es.trends_estado?.actualizado)}<br><span class="sub">${pausada('Google Trends')?'⏸ En pausa':'Interés cada hora · tendencias cada 15 min'}</span>${rutasHTML(es.rutas['Google Trends'])}</div>`);
   // proveedores de pago: misma ficha para todos
   $('#fuentes').insertAdjacentHTML('beforeend','<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:8px"><b style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Proveedores de pago</b></div>');
