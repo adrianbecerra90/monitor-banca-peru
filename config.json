@@ -501,5 +501,15 @@
     "posts_por_cuenta": 3,
     "comentarios_max_por_post": 50,
     "pausa_seg": 8
+  },
+  "brightdata": {
+    "_nota": "Bright Data Web Scraper API (Facebook e Instagram). Cobra por registro (publicación o comentario). Tope mensual con ritmo diario; consulta cada 'intervalo_minutos' y solo pide comentarios nuevos.",
+    "max_registros_mes": 4500,
+    "intervalo_minutos": 360,
+    "posts_por_cuenta": 2,
+    "posts_por_cuenta_historico": 10,
+    "posts_comentarios_por_pasada": 8,
+    "comentarios_max_por_post": 30,
+    "dia_renovacion": 1
   }
 }
