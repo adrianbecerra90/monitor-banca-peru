@@ -160,8 +160,15 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
   <div class="grid">
     <div class="col">
       <div class="card">
-        <h2 id="t-serie">Evolución del sentimiento</h2>
-        <div class="legend"><span style="--c:var(--neg)">Negativo</span><span style="--c:var(--neu)">Neutro</span><span style="--c:var(--pos)">Positivo</span><i class="lin">Promedio</i><i class="lin umb">Umbral de alerta (prom. + 2σ)</i><i class="noche">Noche (22:00–6:00)</i><i class="mk">Por encima del umbral</i></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <h2 id="t-serie">Evolución del sentimiento</h2>
+          <label class="sub" style="display:flex;gap:6px;align-items:center">Monitorear
+            <select id="serie-medida" aria-label="Qué medir en el gráfico">
+              <option value="negativo">Menciones negativas</option><option value="quejas">Quejas</option>
+              <option value="todas">Todas las menciones</option><option value="positivo">Menciones positivas</option>
+              <option value="neutro">Menciones neutras</option></select></label>
+        </div>
+        <div class="legend"><span id="ley-serie" style="display:contents"></span><i class="lin">Promedio</i><i class="lin umb">Umbral de alerta (prom. + 2σ)</i><i class="noche">Noche (22:00–6:00)</i><i class="mk">Por encima del umbral</i></div>
         <div id="chart"><div class="tip" id="tip"></div></div>
         <div id="serie-nota"></div><div class="hint">Clic en una barra para ver ese intervalo en detalle.</div>
       </div>
@@ -342,17 +349,25 @@ function notaRefs(R,unidad){
   const n=R.altos.filter(Boolean).length;
   return partes.join(' · ')+` ${unidad}. `+(n?`<b>${n}</b> ${n===1?'intervalo supera':'intervalos superan'} su umbral (▲).`:'Ningún intervalo supera su umbral.')}
 
+// Qué se monitorea en el gráfico: las barras, el promedio, el umbral y los ▲ se calculan sobre esa medida
+const MEDIDAS={negativo:['menciones negativas','var(--neg)'],quejas:['quejas','var(--neg)'],todas:['todas las menciones',null],
+  positivo:['menciones positivas','var(--pos)'],neutro:['menciones neutras','var(--neu)']};
+let MEDIDA='negativo';try{const m=localStorage.getItem('monitor.serie.medida');if(MEDIDAS[m])MEDIDA=m}catch(e){}
+const valMedida=v=>MEDIDA==='todas'?v.negativo+v.neutro+v.positivo:v[MEDIDA]||0;
 function serie(st){
-  const gran=st.granularidad,pts=st.serie;
-  $('#t-serie').textContent=`Evolución del sentimiento · cada ${GRAN_TXT[gran]} · hora de Lima`;
+  const gran=st.granularidad,pts=st.serie,[nomMed,colMed]=MEDIDAS[MEDIDA];
+  $('#serie-medida').value=MEDIDA;
+  $('#serie-medida').onchange=e=>{MEDIDA=e.target.value;try{localStorage.setItem('monitor.serie.medida',MEDIDA)}catch(x){}serie(st)};
+  $('#t-serie').textContent=`Evolución de ${MEDIDA==='todas'?'el sentimiento':nomMed} · cada ${GRAN_TXT[gran]} · hora de Lima`;
+  $('#ley-serie').innerHTML=MEDIDA==='todas'?SENT.map(([,l,c])=>`<span style="--c:${c}">${l}</span>`).join(''):`<span style="--c:${colMed}">${nomMed[0].toUpperCase()+nomMed.slice(1)}</span>`;
   const W=900,H=230,L=36,R=92,B=24,T=12,iw=W-L-R,ih=H-B-T;
   $('#serie-nota').textContent='';
-  if(!pts.length||!pts.some(p=>p.negativo+p.neutro+p.positivo)){$('#chart').innerHTML='<div class="empty">Sin datos en este periodo</div><div class="tip" id="tip"></div>';return}
-  const tots=pts.map(v=>v.negativo+v.neutro+v.positivo);
+  if(!pts.length||!pts.some(p=>valMedida(p))){$('#chart').innerHTML=`<div class="empty">Sin ${nomMed} en este periodo</div><div class="tip" id="tip"></div>`;return}
+  const tots=pts.map(valMedida);
   // Promedio y umbral de alerta (promedio + 2σ). En granularidad intradía, uno para el día y otro para la noche
   const intradia=!['dia','semana'].includes(gran);
   // Promedio y umbral solo con las fuentes disponibles ahora: una fuente apagada inflaría la base frente al presente
-  const refTots=st.serie_ref?st.serie_ref.map(v=>v.negativo+v.neutro+v.positivo):tots;
+  const refTots=st.serie_ref?st.serie_ref.map(valMedida):tots;
   const Rs=referencias(refTots,pts.map(p=>+p.t.slice(11,13)),intradia);
   const max=Math.max(1,...tots,...Rs.umbAt.filter((_,i)=>Rs.valAt[i]));
   const nice=Math.ceil(max/4)*4||4, bw=iw/pts.length, gap=bw>6?2:bw>3?1:0;
@@ -360,7 +375,7 @@ function serie(st){
   let g='';
   for(let i=0;i<=4;i++){const y=T+ih-ih*i/4;g+=`<line x1="${L}" x2="${L+iw}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${y+3}" text-anchor="end">${fmt(nice*i/4)}</text>`}
   pts.forEach((v,i)=>{let y=T+ih;const x=L+i*bw+gap/2,w=Math.max(1,bw-gap);
-    const capas=SENT.filter(([s])=>v[s]>0);
+    const capas=MEDIDA==='todas'?SENT.filter(([s])=>v[s]>0):(tots[i]?[[MEDIDA,'',colMed]]:[]);
     capas.forEach(([s,,c],j)=>{const h=v[s]/nice*ih;y-=h;
       g+=`<rect x="${x}" y="${y+(j?1:0)}" width="${w}" height="${Math.max(0,h-(j?1:0))}" fill="${c}" ${j===capas.length-1&&w>4?'rx="2"':''}/>`});
     if(Rs.altos[i])g+=`<text x="${x+w/2}" y="${yv(tots[i])-3}" text-anchor="middle" style="fill:var(--ink);font-size:${bw>8?9:7}px">▲</text>`;
@@ -374,7 +389,7 @@ function serie(st){
   const ult=pts.length-1,yp=yv(Rs.promAt[ult]),yu=yv(Rs.umbAt[ult]);
   g+=`<text x="${L+iw+6}" y="${yp+3}" style="fill:var(--ink2);font-size:10px">Prom. ${fmt(Math.round(Rs.promAt[ult]*10)/10)}</text>`;
   if(Rs.valAt[ult])g+=`<text x="${L+iw+6}" y="${Math.abs(yu-yp)<12?yu-4:yu+3}" style="fill:var(--ink2);font-size:10px">Alerta ${fmt(Math.round(Rs.umbAt[ult]*10)/10)}</text>`;
-  $('#serie-nota').innerHTML=notaRefs(Rs,'menciones por '+GRAN_TXT[gran])+(Rs.porFranja?' Las franjas sombreadas son la noche.':'')+
+  $('#serie-nota').innerHTML=notaRefs(Rs,nomMed+' por '+GRAN_TXT[gran])+(Rs.porFranja?' Las franjas sombreadas son la noche.':'')+
     (st.fuentes_fuera?.length?` Promedio, umbral y ▲ se calculan solo con las fuentes disponibles ahora; quedan fuera: <b>${st.fuentes_fuera.map(esc).join(', ')}</b> (las barras sí muestran todo).`:'');
   // etiquetas del eje: ~8, marcando el cambio de día cuando la granularidad es intradía
   const nl=Math.min(8,pts.length),pasoL=Math.max(1,Math.round(pts.length/nl));let diaPrev='';
@@ -386,7 +401,7 @@ function serie(st){
   $('#chart svg').querySelectorAll('.hit').forEach(r=>{const v=pts[+r.dataset.i];
     r.onmousemove=e=>{const tot=v.negativo+v.neutro+v.positivo;
       const rango=['dia','semana'].includes(gran)?etiqueta(v.t,gran,true)+(gran==='semana'?' (semana)':''):etiqueta(v.t,gran,true)+' – '+v.fin.slice(11);
-      tip.innerHTML=`<b>${esc(rango)}</b>${SENT.map(([s,l,c])=>`<span style="--c:${c}">${l}: ${fmt(v[s])}</span>`).join('<br>')}<br><span style="--c:transparent">Total ${fmt(tot)} · quejas ${fmt(v.quejas)}</span><br><span style="--c:transparent">${(()=>{const i=+r.dataset.i,p=Rs.promAt[i],fr=Rs.porFranja?(Rs.grupo(i)==='dia'?' de día':' de noche'):'';const tc=refTots[i];return p?`${tc>=p?'+':''}${fmt(Math.round((tc-p)/p*100))}% vs. promedio${fr}${st.serie_ref?' (fuentes disponibles: '+fmt(tc)+')':''}${Rs.altos[i]?' · <b>por encima del umbral</b>':''}`:''})()}</span><div class="hint">Clic para ampliar</div>`;
+      tip.innerHTML=`<b>${esc(rango)}</b>${SENT.map(([s,l,c])=>`<span style="--c:${c}">${l}: ${fmt(v[s])}</span>`).join('<br>')}<br><span style="--c:transparent">Total ${fmt(tot)} · quejas ${fmt(v.quejas)}</span><br><span style="--c:transparent">${(()=>{const i=+r.dataset.i,p=Rs.promAt[i],fr=Rs.porFranja?(Rs.grupo(i)==='dia'?' de día':' de noche'):'';const tc=refTots[i];return p?`${tc>=p?'+':''}${fmt(Math.round((tc-p)/p*100))}% ${MEDIDA==='todas'?'':nomMed+' '}vs. promedio${fr}${st.serie_ref?' (fuentes disponibles: '+fmt(tc)+')':''}${Rs.altos[i]?' · <b>por encima del umbral</b>':''}`:''})()}</span><div class="hint">Clic para ampliar</div>`;
       const box=$('#chart').getBoundingClientRect();tip.style.display='block';let x=e.clientX-box.left+12;if(x+tip.offsetWidth>box.width)x-=tip.offsetWidth+24;tip.style.left=x+'px';tip.style.top=Math.max(0,e.clientY-box.top-50)+'px';r.setAttribute('fill','color-mix(in srgb,var(--ink) 6%,transparent)')};
     r.onmouseleave=()=>{tip.style.display='none';r.setAttribute('fill','transparent')};
     r.onclick=()=>{ // zoom: el intervalo pasa a ser el periodo y el detalle se afina solo
