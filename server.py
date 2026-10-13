@@ -1299,8 +1299,9 @@ def x_nitter(rango=None):
 # --------------------------------------------------------------------------
 
 CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY", "CreatorCrawl": "CREATORCRAWL_API_KEY",
-                   "RapidAPI": "RAPIDAPI_KEY"}
+                   "RapidAPI": "RAPIDAPI_KEY", "BrightData": "BRIGHTDATA_API_KEY"}
 SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"}, "ScrapeCreators": {"facebook", "instagram", "tiktok"},
+           "BrightData": {"facebook", "instagram"},
            "CreatorCrawl": {"instagram", "tiktok"},  # CreatorCrawl no ofrece Facebook
            "RapidAPI": {"facebook"}}                 # Facebook Scraper (krasnoludkolo) en RapidAPI
 
@@ -1309,8 +1310,7 @@ def _presupuesto_agotado(prov):
     """Lo que ya se sabe sin gastar nada: presupuesto de Apify (consultado gratis) y topes mensuales locales."""
     if agotado(prov):
         return True
-    e = ESTADO.get({"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
-                    "RapidAPI": "rapidapi"}[prov], {})
+    e = ESTADO.get(_CFG_PROV[prov], {})
     if prov == "Apify":
         return e.get("usado") is not None and e.get("usado") >= e.get("tope", 1e9)
     if prov == "RapidAPI":
@@ -1770,6 +1770,7 @@ def _rapid_facebook(rango):
 
 def fuente_facebook(rango=None):
     return ejecutar_rutas("Facebook", [
+        ("BrightData", lambda r: _bd_red("facebook", "Facebook", r), "activo"),
         ("Apify", lambda r: _comentarios_de_cuentas("facebook", "Facebook", "facebook_posts", "facebook_comentarios",
                                                     ("url", "postUrl", "topLevelUrl"), r)
          if os.environ.get("APIFY_TOKEN") else None, "activo"),
@@ -1782,11 +1783,150 @@ def fuente_instagram(rango=None):
     pago = "respaldo" if _ig_archivo_sesion() else "activo"
     return ejecutar_rutas("Instagram", [
         ("Instaloader (sesión)", instagram_instaloader, "activo"),
+        ("BrightData", lambda r: _bd_red("instagram", "Instagram", r), pago),
         ("Apify", lambda r: _comentarios_de_cuentas("instagram", "Instagram", "instagram_posts", "instagram_comentarios",
                                                     ("url", "postUrl"), r)
          if os.environ.get("APIFY_TOKEN") else None, pago),
         ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), pago),
         ("CreatorCrawl", lambda r: _cc_red("instagram", "Instagram", r), pago)], rango)
+
+
+# ---------------- Bright Data · Web Scraper API (Facebook e Instagram) ----------------
+# Se cobra por registro devuelto (publicación o comentario). Además del tope mensual hay un ritmo diario: el saldo del
+# mes se reparte entre los días que faltan, para que no se agote a mitad de mes.
+BD_DATASETS = {"facebook": ("gd_lkaxegm826bjpoo9m5", "gd_lkay758p1eanlolqw8"),   # publicaciones por página, comentarios
+               "instagram": ("gd_lk5ns7kz21pck8jpis", "gd_ltppn085pokosxh13")}
+_BD = {"ultima": {}}
+
+
+def _bd_uso():
+    hoy, mes = _hoy_lima().isoformat(), ahora().strftime("%Y-%m")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r_mes = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='BrightData'", (mes,)).fetchone()
+        r_dia = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='BrightData·día'", (hoy,)).fetchone()
+    usados_mes, usados_hoy = (r_mes[0] if r_mes else 0), (r_dia[0] if r_dia else 0)
+    tope = CONFIG.get("brightdata", {}).get("max_registros_mes", 3000)
+    fin = fecha_renovacion("BrightData")
+    dias = max(1, (fin - _hoy_lima()).days)
+    cuota_hoy = max(0, (tope - usados_mes + usados_hoy) // dias)  # lo que queda del mes (contando hoy) / días restantes
+    ESTADO.setdefault("brightdata", {}).update(usados_mes=usados_mes, usados_hoy=usados_hoy, tope=tope, cuota_hoy=cuota_hoy)
+    return usados_mes, usados_hoy, tope, cuota_hoy
+
+
+def _bd_sumar(n):
+    with _db_lock, db() as con:
+        for clave, prov in ((ahora().strftime("%Y-%m"), "BrightData"), (_hoy_lima().isoformat(), "BrightData·día")):
+            con.execute("INSERT INTO uso_proveedores VALUES (?, ?, ?) ON CONFLICT(mes, proveedor) "
+                        "DO UPDATE SET creditos = creditos + excluded.creditos", (clave, prov, n))
+    _bd_uso()
+
+
+def bd_scrape(dataset, entradas, **params):
+    """Una consulta a un scraper de Bright Data. Si tarda, Bright Data devuelve un snapshot y se espera el resultado."""
+    exigir_disponible("BrightData")
+    usados_mes, _, tope, _ = _bd_uso()
+    if usados_mes >= tope:
+        agotar("BrightData", f"Tope mensual alcanzado ({usados_mes} de {tope} registros)")
+    h = {"Authorization": f"Bearer {os.environ['BRIGHTDATA_API_KEY']}", "Content-Type": "application/json"}
+    url = ("https://api.brightdata.com/datasets/v3/scrape?" +
+           urllib.parse.urlencode({"dataset_id": dataset, "format": "json", **params}))
+    try:
+        d = json.loads(http_get(url, h, data=json.dumps(entradas).encode(), timeout=300))
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(300).decode("utf-8", "ignore").lower()
+        if e.code == 402 or "balance" in cuerpo or "not active" in cuerpo:
+            agotar("BrightData", "Sin saldo o cuenta inactiva en Bright Data")
+        raise
+    if isinstance(d, dict) and d.get("snapshot_id"):  # trabajo largo: esperar el snapshot (máx. ~8 min)
+        sid = d["snapshot_id"]
+        for _ in range(48):
+            time.sleep(10)
+            st = json.loads(http_get(f"https://api.brightdata.com/datasets/v3/progress/{sid}", h, timeout=60))
+            if st.get("status") == "ready":
+                d = json.loads(http_get(f"https://api.brightdata.com/datasets/v3/snapshot/{sid}?format=json", h, timeout=120))
+                break
+            if st.get("status") == "failed":
+                raise RuntimeError("Bright Data: el trabajo falló")
+        else:
+            raise TimeoutError("Bright Data tardó demasiado")
+    filas = [x for x in (d if isinstance(d, list) else [d]) if isinstance(x, dict) and not x.get("error")]
+    _bd_sumar(max(1, len(filas)))
+    return filas
+
+
+def _url_clave(u):
+    return re.sub(r"^https?://(www\.|m\.)?", "", (u or "").split("?")[0]).rstrip("/").lower()
+
+
+def _bd_red(red, fuente, rango=None):
+    """Publicaciones recientes de las cuentas oficiales y solo sus comentarios nuevos, en dos consultas por pasada."""
+    if not os.environ.get("BRIGHTDATA_API_KEY"):
+        return None
+    if en_pausa("BrightData"):
+        raise RutaInactiva("⏸ En pausa")
+    cfg = CONFIG.get("brightdata", {})
+    exigir_disponible("BrightData")
+    if not rango and time.time() - _BD["ultima"].get(red, 0) < cfg.get("intervalo_minutos", 480) * 60:
+        return []  # entre pasadas: ruta sana, sin gasto
+    _, usados_hoy, _, cuota_hoy = _bd_uso()
+    if not rango and usados_hoy >= cuota_hoy:
+        return []  # ritmo diario cumplido: mañana sigue
+    _BD["ultima"][red] = time.time()
+    mapa = cuentas_asignadas(red, fuente, "BrightData")
+    por_url = {_url_clave(u): b for u, b in mapa.items()}
+    ds_posts, ds_coment = BD_DATASETS[red]
+    n = cfg.get("posts_por_cuenta_historico" if rango else "posts_por_cuenta", 10 if rango else 2)
+    entradas = []
+    for u in mapa:
+        e = {"url": u, "num_of_posts": n}
+        if rango:
+            e.update(start_date=rango[0], end_date=rango[1])
+        entradas.append(e)
+    extra = {"type": "discover_new", "discover_by": "url"} if red == "instagram" else {}
+    out, post_banco, conteo = [], {}, {}
+    for p in bd_scrape(ds_posts, entradas, **extra):
+        purl = p.get("url")
+        # la cuenta de origen: la URL pedida (discovery_input), el perfil o la página; nunca la URL de la publicación
+        candidatos = [(p.get("discovery_input") or {}).get("url"), p.get("profile_url"), p.get("page_url"),
+                      p.get("user_url"), (p.get("input") or {}).get("url")]
+        banco = next((por_url[_url_clave(c)] for c in candidatos if c and _url_clave(c) in por_url), None)
+        if not banco:
+            usuario = (p.get("user_posted") or p.get("profile_handle") or "").lower()
+            banco = next((b for k, b in por_url.items() if usuario and k.split("/")[-1] == usuario), None)
+        if not purl or not banco:
+            continue
+        post_banco[purl], conteo[purl] = banco, int(p.get("num_comments") or 0)
+        out.append({"id": f"{fuente.lower()}:post:{purl}", "fuente": fuente, "tipo": "post_oficial", "peru": True,
+                    "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "url": purl, "fecha": p.get("date_posted"),
+                    "texto": p.get("description") or p.get("content") or p.get("post_content") or "(publicación sin texto)",
+                    "metricas": {"comentarios": p.get("num_comments"), "reacciones": p.get("likes"),
+                                 "compartidos": p.get("num_shares")}})
+    previos = _vistos(conteo)
+    pendientes = sorted(((u, c - previos.get(u, 0)) for u, c in conteo.items() if c > previos.get(u, 0)),
+                        key=lambda x: -x[1])[:cfg.get("posts_comentarios_por_pasada", 8)]
+    if pendientes:
+        maximo = cfg.get("comentarios_max_por_post", 30)
+        pedidos = [{"url": u, "limit_records": min(nuevos, maximo)} for u, nuevos in pendientes]
+        try:
+            for c in bd_scrape(ds_coment, pedidos):
+                purl = c.get("post_url") or (c.get("input") or {}).get("url") or c.get("url")
+                banco = post_banco.get(purl) or next((b for u, b in post_banco.items() if _url_clave(u) == _url_clave(purl)), None)
+                texto = c.get("comment_text") if red == "facebook" else c.get("comment")
+                if not banco or not (texto or "").strip() or not c.get("comment_id"):
+                    continue
+                out.append({"id": f"{fuente.lower()}:{c['comment_id']}", "fuente": fuente, "tipo": "comentario", "peru": True,
+                            "bancos_fijos": [banco], "cuenta": banco, "texto": texto, "url": purl,
+                            "autor": c.get("user_name") or c.get("comment_user") or "",
+                            "fecha": c.get("date_created") or c.get("comment_date")})
+        except RuntimeError:
+            raise
+        except Exception as e:
+            for u, _ in pendientes:
+                conteo[u] = previos.get(u, 0)  # se reintentan en la próxima pasada
+            print(f"  {fuente} · BrightData: comentarios fallaron ({type(e).__name__})", flush=True)
+    _marcar_vistos(conteo)
+    return out
 
 
 # ---------------- Instaloader: Instagram con la sesión de una cuenta secundaria del usuario ----------------
@@ -2053,7 +2193,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "RapidAPI"]
+PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "RapidAPI", "BrightData"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -2072,7 +2212,7 @@ ESTADO["pausa"] = PAUSA
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
-             "ScrapingBee": "scrapingbee", "RapidAPI": "rapidapi"}
+             "ScrapingBee": "scrapingbee", "RapidAPI": "rapidapi", "BrightData": "brightdata"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
         AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
@@ -2164,7 +2304,7 @@ def _tope_alcanzado(prov):
         if e.get("usado") is not None and e["usado"] >= CONFIG.get("apify", {}).get("presupuesto_usd_mes", 4.5):
             return f"el presupuesto del mes ya se alcanzó (US${e['usado']:.2f})"
         return None
-    campo = "max_llamadas_mes" if prov == "RapidAPI" else "max_creditos_mes"
+    campo = {"RapidAPI": "max_llamadas_mes", "BrightData": "max_registros_mes"}.get(prov, "max_creditos_mes")
     tope = CONFIG.get(clave, {}).get(campo)
     with _db_lock, db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
@@ -2540,7 +2680,8 @@ def resumen_proveedores():
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
-    ap, sc, cc, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee", "rapidapi"))
+    ap, sc, cc, sb, ra, bd = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee",
+                                                           "rapidapi", "brightdata"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
@@ -2560,6 +2701,10 @@ def resumen_proveedores():
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
               f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
               [("Facebook", "RapidAPI")]),
+        ficha("BrightData", "BRIGHTDATA_API_KEY", "Facebook, Instagram (Web Scraper API)", None,
+              f"{bd.get('usados_mes', 0)} de {bd.get('tope', CONFIG.get('brightdata', {}).get('max_registros_mes', 0))} registros "
+              f"este mes · hoy {bd.get('usados_hoy', 0)} de {bd.get('cuota_hoy', '?')}",
+              [("Facebook", "BrightData"), ("Instagram", "BrightData")]),
     ]
 
 
@@ -2602,9 +2747,10 @@ def config_editable():
         "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
+        "brightdata": {k: c.get("brightdata", {}).get(k) for k in ("max_registros_mes", "intervalo_minutos", "posts_por_cuenta")},
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "BRIGHTDATA_API_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 
@@ -2710,6 +2856,12 @@ def validar_config(d):
         nueva.setdefault("rapidapi", {}).update(
             max_llamadas_mes=_entero(d["rapidapi"].get("max_llamadas_mes", 95), "Tope de RapidAPI", 0, 10_000_000),
             comentarios_por_pasada=_entero(d["rapidapi"].get("comentarios_por_pasada", 5), "Comentarios por pasada (RapidAPI)", 0, 500))
+    if "brightdata" in d:
+        bdc = d["brightdata"]
+        nueva.setdefault("brightdata", {}).update(
+            max_registros_mes=_entero(bdc.get("max_registros_mes", 3000), "Tope de Bright Data", 0, 10_000_000),
+            intervalo_minutos=_entero(bdc.get("intervalo_minutos", 480), "Frecuencia de Bright Data", 60, 10_080),
+            posts_por_cuenta=_entero(bdc.get("posts_por_cuenta", 2), "Publicaciones por cuenta (Bright Data)", 1, 20))
     if "scrapingbee" in d:
         nueva.setdefault("scrapingbee", {})["max_creditos_mes"] = _entero(
             d["scrapingbee"].get("max_creditos_mes", 900), "Tope de ScrapingBee", 0, 10_000_000)
