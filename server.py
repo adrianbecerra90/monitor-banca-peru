@@ -1796,7 +1796,15 @@ def fuente_instagram(rango=None):
 # mes se reparte entre los días que faltan, para que no se agote a mitad de mes.
 BD_DATASETS = {"facebook": ("gd_lkaxegm826bjpoo9m5", "gd_lkay758p1eanlolqw8"),   # publicaciones por página, comentarios
                "instagram": ("gd_lk5ns7kz21pck8jpis", "gd_ltppn085pokosxh13")}
-_BD = {"ultima": {}}
+def _bd_ultima(red, marcar=False):
+    """Hora de la última pasada por red, guardada en la base: un reinicio del monitor no provoca una pasada extra."""
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS bd_ultima (red TEXT PRIMARY KEY, t REAL)")
+        if marcar:
+            con.execute("INSERT OR REPLACE INTO bd_ultima VALUES (?, ?)", (red, time.time()))
+            return time.time()
+        r = con.execute("SELECT t FROM bd_ultima WHERE red = ?", (red,)).fetchone()
+    return r[0] if r else 0.0
 
 
 def _bd_uso():
@@ -1874,13 +1882,13 @@ def _bd_red(red, fuente, rango=None):
         raise RutaInactiva("⏸ En pausa")
     cfg = CONFIG.get("brightdata", {})
     exigir_disponible("BrightData")
-    if not rango and time.time() - _BD["ultima"].get(red, 0) < cfg.get("intervalo_minutos", 480) * 60:
+    if not rango and time.time() - _bd_ultima(red) < cfg.get("intervalo_minutos", 480) * 60:
         return []  # entre pasadas: ruta sana, sin gasto
     restante = bd_restante_hoy()
     if restante <= 0:
         _, usados_hoy, _, cuota_hoy = _bd_uso()
         raise RutaInactiva(f"Límite diario alcanzado ({usados_hoy} de {cuota_hoy} registros); sigue mañana")
-    _BD["ultima"][red] = time.time()
+    _bd_ultima(red, marcar=True)
     mapa = cuentas_asignadas(red, fuente, "BrightData")
     # cada publicación cuesta un registro: si no alcanza para todas las cuentas, se piden menos (en orden)
     if len(mapa) > restante:
@@ -2704,6 +2712,11 @@ def resumen_proveedores():
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
+    if os.environ.get("BRIGHTDATA_API_KEY"):
+        try:
+            _bd_uso()  # contador local (sin consultar a Bright Data): la ficha muestra el consumo real desde el arranque
+        except Exception:
+            pass
     ap, sc, cc, sb, ra, bd = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee",
                                                            "rapidapi", "brightdata"))
     return [
