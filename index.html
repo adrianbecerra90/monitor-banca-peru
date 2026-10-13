@@ -129,7 +129,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
 
 <div class="wrap">
   <div id="aviso-pausa"></div>
-  <div id="picos"></div>
+  <div id="picos"></div><div id="alerta-x"></div>
 
   <div class="card filters">
     <div class="frow"><span class="lbl">Periodo</span><span id="f-periodo"></span>
@@ -490,6 +490,7 @@ async function cargarEstado(){
   const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;
   if(!primera&&es.version&&ESTADO.version&&es.version!==ESTADO.version&&!$('#cfg').classList.contains('on')){location.reload();return} // el monitor se actualizó
   ESTADO=es;
+  $('#alerta-x').innerHTML=(es.alerta_x||[]).filter(a=>!alertaCerrada('x:'+a.banco,a.quejas,2)).map(a=>`<div class="alerta">🚨 <b>Alerta en X: ${esc(a.banco)}</b> — ${a.quejas} quejas en ${a.minutos} min (lo normal: ${a.promedio}). ${a.revisado?'Se lanzó una revisión inmediata de sus cuentas en Facebook e Instagram.':'Revisión de Facebook e Instagram ya hecha hace poco; se repetirá si continúa.'}<button class="cerrar" data-k="${esc('x:'+a.banco)}" data-n="${a.quejas}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
   if(primera){es.categorias.forEach(c=>$('#f-cat').add(new Option(c,c)));leerF();if(!es.categorias.includes(F.categoria))F.categoria='';pintarFiltros();
     $('#h-fuentes').innerHTML=es.fuentes_lista.filter(f=>f!=='Google Trends').map(f=>`<label><input type="checkbox" value="${esc(f)}" checked> ${esc(f)}</label>`).join('');
     const hoy=new Date(),min=new Date(hoy-89*864e5).toISOString().slice(0,10);$('#h-hasta').value=hoy.toISOString().slice(0,10);$('#h-desde').value=new Date(hoy-30*864e5).toISOString().slice(0,10);$('#h-desde').min=min;$('#h-hasta').min=min;$('#h-hasta').max=$('#h-hasta').value}

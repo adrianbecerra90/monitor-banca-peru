@@ -511,5 +511,14 @@
     "posts_comentarios_por_pasada": 8,
     "comentarios_max_por_post": 30,
     "dia_renovacion": 1
+  },
+  "alerta_x": {
+    "_nota": "Alerta temprana: si en X una entidad suma 'min_quejas' quejas en 'ventana_minutos' y triplica ('factor') su promedio de 48 h, se revisan de inmediato sus cuentas de Facebook e Instagram (Bright Data). Se reserva 'reserva_diaria_pct' de la cuota diaria para esto.",
+    "activa": true,
+    "ventana_minutos": 30,
+    "min_quejas": 5,
+    "factor": 3,
+    "enfriamiento_minutos": 120,
+    "reserva_diaria_pct": 25
   }
 }

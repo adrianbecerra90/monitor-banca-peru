@@ -1869,9 +1869,15 @@ def _url_clave(u):
     return re.sub(r"^https?://(www\.|m\.)?", "", (u or "").split("?")[0]).rstrip("/").lower()
 
 
-def bd_restante_hoy():
+def bd_restante_hoy(incidente=False):
+    """Registros que aún se pueden pedir hoy. Las pasadas normales no tocan la reserva para incidentes (por defecto
+    25 % de la cuota del día); una revisión disparada por una alerta de X sí puede usarla."""
     usados_mes, usados_hoy, tope, cuota_hoy = _bd_uso()
-    return max(0, min(cuota_hoy - usados_hoy, tope - usados_mes))
+    libre = min(cuota_hoy - usados_hoy, tope - usados_mes)
+    if not incidente:
+        reserva = CONFIG.get("alerta_x", {}).get("reserva_diaria_pct", 25) / 100
+        libre = min(libre, int(cuota_hoy * (1 - reserva)) - usados_hoy)
+    return max(0, libre)
 
 
 def _bd_red(red, fuente, rango=None):
@@ -1882,14 +1888,22 @@ def _bd_red(red, fuente, rango=None):
         raise RutaInactiva("⏸ En pausa")
     cfg = CONFIG.get("brightdata", {})
     exigir_disponible("BrightData")
-    if not rango and time.time() - _bd_ultima(red) < cfg.get("intervalo_minutos", 480) * 60:
+    forzados = set() if rango else _incidente_pendiente(red)  # entidades con alerta en X: revisión inmediata
+    incidente = bool(forzados)
+    if not rango and not incidente and time.time() - _bd_ultima(red) < cfg.get("intervalo_minutos", 480) * 60:
         return []  # entre pasadas: ruta sana, sin gasto
-    restante = bd_restante_hoy()
+    restante = bd_restante_hoy(incidente)
     if restante <= 0:
         _, usados_hoy, _, cuota_hoy = _bd_uso()
-        raise RutaInactiva(f"Límite diario alcanzado ({usados_hoy} de {cuota_hoy} registros); sigue mañana")
-    _bd_ultima(red, marcar=True)
+        raise RutaInactiva(f"Límite diario alcanzado ({usados_hoy} de {cuota_hoy} registros); sigue mañana"
+                           if usados_hoy >= cuota_hoy else
+                           f"Cuota normal del día usada ({usados_hoy} de {cuota_hoy}); queda la reserva para alertas")
+    if not incidente:
+        _bd_ultima(red, marcar=True)  # una revisión por alerta no reemplaza la pasada normal de todas las cuentas
     mapa = cuentas_asignadas(red, fuente, "BrightData")
+    if incidente:
+        mapa = {u: b for u, b in cuentas(red).items() if b in forzados}
+        print(f"  {fuente} · BrightData: revisión por alerta en X ({', '.join(sorted(forzados))})", flush=True)
     # cada publicación cuesta un registro: si no alcanza para todas las cuentas, se piden menos (en orden)
     if len(mapa) > restante:
         mapa = dict(list(mapa.items())[:restante])
@@ -1925,7 +1939,7 @@ def _bd_red(red, fuente, rango=None):
     previos = _vistos(conteo)
     pendientes = sorted(((u, c - previos.get(u, 0)) for u, c in conteo.items() if c > previos.get(u, 0)),
                         key=lambda x: -x[1])[:cfg.get("posts_comentarios_por_pasada", 8)]
-    restante = bd_restante_hoy()
+    restante = bd_restante_hoy(incidente)
     pendientes_ok, pedidos = [], []
     for u, nuevos in pendientes:  # reparte lo que queda del día; lo que no entra queda para la próxima pasada
         lim = min(nuevos, cfg.get("comentarios_max_por_post", 30), restante)
@@ -2449,6 +2463,11 @@ def escanear_fuente(nombre):
         else:
             n = guardar(items)
             est.update(ok=True, msg=f"{len(items)} leídos, {n} nuevos ({time.time() - t0:.0f}s)", ultima=iso(ahora()))
+            if nombre == "X":
+                try:
+                    revisar_alerta_x()
+                except Exception as e:
+                    print(f"  Alerta X: {type(e).__name__}: {e}", flush=True)
     except RutaInactiva as e:
         est.update(ok=None, msg=str(e)[:220])
     except Exception as e:
@@ -2457,6 +2476,59 @@ def escanear_fuente(nombre):
         est["ejecutando"] = False
         _locks[nombre].release()
         print(f"[{datetime.now():%H:%M:%S}] {nombre}: {est['msg']}", flush=True)
+
+
+# ---------------- Alerta temprana en X: dispara Facebook e Instagram ----------------
+# X se revisa gratis cada pocos minutos. Si una entidad acumula quejas fuera de lo normal en poco tiempo, se revisan
+# de inmediato sus cuentas en Facebook e Instagram (Bright Data), sin esperar la pasada programada.
+_ALERTA_X = {"ultima": {}, "pendiente": {}, "lock": threading.Lock()}
+
+
+def _incidente_pendiente(red):
+    """Entidades con una revisión por alerta pendiente para esta red (se consumen al usarlas)."""
+    with _ALERTA_X["lock"]:
+        bancos = _ALERTA_X["pendiente"].pop(red, set())
+    return bancos
+
+
+def revisar_alerta_x():
+    cfg = CONFIG.get("alerta_x", {})
+    if not cfg.get("activa", True):
+        return
+    ventana = cfg.get("ventana_minutos", 30)
+    desde_v, desde_b = ahora() - timedelta(minutes=ventana), ahora() - timedelta(hours=48)
+    with _db_lock, db() as con:
+        filas = con.execute("SELECT bancos, fecha FROM items WHERE fuente = 'X' AND es_queja = 1 AND oculto = 0 "
+                            "AND fecha >= ? AND meta NOT LIKE '%\"tipo\": \"oficial\"%'", (iso(desde_b),)).fetchall()
+    ahora_n, base_n = {}, {}
+    for r in filas:
+        destino = ahora_n if r["fecha"] >= iso(desde_v) else base_n
+        for b in json.loads(r["bancos"]):
+            destino[b] = destino.get(b, 0) + 1
+    ventanas_base = (48 * 60 - ventana) / ventana
+    activas = []
+    for b, n in ahora_n.items():
+        promedio = base_n.get(b, 0) / ventanas_base
+        if n >= cfg.get("min_quejas", 5) and n >= cfg.get("factor", 3) * max(promedio, 1):
+            activas.append({"banco": b, "quejas": n, "promedio": round(promedio, 1), "minutos": ventana,
+                            "desde": iso(ahora())})
+    disparar = []
+    with _ALERTA_X["lock"]:
+        for a in activas:
+            if time.time() - _ALERTA_X["ultima"].get(a["banco"], 0) >= cfg.get("enfriamiento_minutos", 120) * 60:
+                _ALERTA_X["ultima"][a["banco"]] = time.time()
+                for red in ("facebook", "instagram"):
+                    _ALERTA_X["pendiente"].setdefault(red, set()).add(a["banco"])
+                disparar.append(a)
+    viejas = {a["banco"]: a for a in ESTADO.get("alerta_x", []) if a.get("revisado")}
+    ESTADO["alerta_x"] = [{**a, "revisado": bool(disparar and a in disparar) or a["banco"] in viejas} for a in activas]
+    if disparar:
+        print(f"[{datetime.now():%H:%M:%S}] Alerta en X: " + ", ".join(f"{a['banco']} {a['quejas']} quejas en "
+              f"{ventana} min (prom. {a['promedio']})" for a in disparar) + " → revisión inmediata de Facebook e Instagram",
+              flush=True)
+        for fuente in ("Facebook", "Instagram"):
+            if not en_pausa(fuente):
+                threading.Thread(target=escanear_fuente, args=(fuente,), daemon=True).start()
 
 
 def cargar_historico(desde, hasta, fuentes):
@@ -4141,6 +4213,7 @@ class Handler(BaseHTTPRequestHandler):
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
                                "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
+                               "alerta_x": ESTADO.get("alerta_x", []),
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
