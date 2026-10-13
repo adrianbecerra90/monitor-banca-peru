@@ -321,7 +321,7 @@ _ctx_excluir = [normalizar(c) for c in CONFIG.get("contexto_excluir", [])]
 
 
 # "Plin" que no es la billetera: el payaso Plin Plin y las onomatopeyas ("plin plin plon", "plin plan")
-HOMONIMOS = re.compile(r"\bpayas\w*([\s-]+plin\w*)+|\bplin+[\s-]*pl[ioa]+n+\w*|\bplin+[\s-]+plin+\w*")
+HOMONIMOS = re.compile(r"\bplim+[\s-]*pli[mn]\w*|\bpayas\w*([\s-]+plin\w*)+|\bplin+[\s-]*pl[ioa]+n+\w*|\bplin+[\s-]+plin+\w*")
 
 
 def detectar_bancos(texto, es_peru=False):
@@ -3005,9 +3005,22 @@ def _trends_json(url):
     return json.loads(raw[raw.index("{"):])  # Google antepone ")]}'" a sus respuestas
 
 
+# Términos que en Google comparten nombre con otra cosa: se consultan excluyendo lo que no es bancario
+# (el término se sigue mostrando con su nombre corto). Configurable en config.json → trends.consultas.
+CONSULTAS_TRENDS = {"plin": "plin -payaso -colorear -cancion -dibujo -plon"}
+# Búsquedas relacionadas que no son del sistema financiero (homónimos)
+TRENDS_RUIDO = re.compile(r"payas|colorear|cancion|dibujo|plinko|karaoke|\bletra\b|plin+[\s-]*pl[ioa]n|plin+[\s-]+plin|"
+                          r"\bplim+[\s-]*pli[mn]")  # "Plim Plim", el payaso
+
+
+def _consulta_trends(termino):
+    propias = {normalizar(k): v for k, v in CONFIG.get("trends", {}).get("consultas", {}).items()}
+    return propias.get(normalizar(termino)) or CONSULTAS_TRENDS.get(normalizar(termino), termino)
+
+
 def trends_serie(terminos, periodo="now 7-d"):
     """Interés relativo (0–100) por hora en Perú para hasta 5 términos, en la misma escala entre sí."""
-    req = {"comparisonItem": [{"keyword": k, "geo": "PE", "time": periodo} for k in terminos[:5]],
+    req = {"comparisonItem": [{"keyword": _consulta_trends(k), "geo": "PE", "time": periodo} for k in terminos[:5]],
            "category": 0, "property": ""}
     exp = _trends_json("https://trends.google.com/trends/api/explore?" + urllib.parse.urlencode(
         {"hl": "es-PE", "tz": "300", "req": json.dumps(req)}))
@@ -3019,15 +3032,17 @@ def trends_serie(terminos, periodo="now 7-d"):
 
 def trends_relacionadas(termino):
     """Búsquedas relacionadas en Perú (últimos 3 meses): las principales y las que más están subiendo."""
-    req = {"comparisonItem": [{"keyword": termino, "geo": "PE", "time": "today 3-m"}], "category": 0, "property": ""}
+    req = {"comparisonItem": [{"keyword": _consulta_trends(termino), "geo": "PE", "time": "today 3-m"}],
+           "category": 0, "property": ""}
     exp = _trends_json("https://trends.google.com/trends/api/explore?" + urllib.parse.urlencode(
         {"hl": "es-PE", "tz": "300", "req": json.dumps(req)}))
     w = next(x for x in exp["widgets"] if x["id"] == "RELATED_QUERIES")
     d = _trends_json("https://trends.google.com/trends/api/widgetdata/relatedsearches?" + urllib.parse.urlencode(
         {"hl": "es-PE", "tz": "300", "req": json.dumps(w["request"]), "token": w["token"]}))
     listas = d["default"]["rankedList"]
-    principales = [(q["query"], q.get("value", 0)) for q in listas[0].get("rankedKeyword", [])][:15]
-    en_aumento = [(q["query"], q.get("formattedValue", "")) for q in listas[1].get("rankedKeyword", [])][:10]
+    limpio = lambda q: not TRENDS_RUIDO.search(normalizar(q["query"]))
+    principales = [(q["query"], q.get("value", 0)) for q in listas[0].get("rankedKeyword", []) if limpio(q)][:15]
+    en_aumento = [(q["query"], q.get("formattedValue", "")) for q in listas[1].get("rankedKeyword", []) if limpio(q)][:10]
     return principales, en_aumento
 
 
@@ -3170,6 +3185,8 @@ def datos_trends():
         con.execute("CREATE TABLE IF NOT EXISTS trends_rel (termino TEXT, tipo TEXT, consulta TEXT, valor TEXT)")
         rel = {}
         for t, tipo, q, v in con.execute("SELECT termino, tipo, consulta, valor FROM trends_rel"):
+            if TRENDS_RUIDO.search(normalizar(q)):
+                continue  # también limpia lo ya guardado
             rel.setdefault(t, {"principal": [], "aumento": []})[tipo].append({"consulta": q, "valor": v})
     return {"relacionadas": rel,
             # en el orden de la configuración (no en el de llegada de los datos)
