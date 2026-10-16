@@ -176,6 +176,10 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
           <h2 id="t-ent">Quejas por entidad</h2>
           <span class="frow" style="gap:8px">
+            <label class="sub" style="display:flex;gap:6px;align-items:center">Rango
+              <select id="ent-rango" aria-label="Rango de tiempo del gráfico"><option value="panel">Como el panel</option><option value="6">Últimas 6 h</option><option value="24">Últimas 24 h</option><option value="72">Últimos 3 días</option><option value="168">Últimos 7 días</option><option value="720">Últimos 30 días</option><option value="2160">Últimos 90 días</option></select></label>
+            <label class="sub" style="display:flex;gap:6px;align-items:center">Detalle
+              <select id="ent-gran" aria-label="Detalle del gráfico"><option value="auto">Automático</option><option value="15min">Cada 15 min</option><option value="hora">Por hora</option><option value="dia">Por día</option><option value="semana">Por semana</option></select></label>
             <label class="sub" style="display:flex;gap:6px;align-items:center">Medir
               <select id="ent-medida" aria-label="Qué comparar entre entidades"><option value="quejas">Quejas</option><option value="negativas">Menciones negativas</option></select></label>
             <button class="tg" id="ent-tabla-btn" aria-pressed="false">Ver tabla</button></span>
@@ -426,20 +430,34 @@ function serie(st){
 
 // ---------- quejas por entidad en el tiempo (líneas, una escala; color fijo por entidad) ----------
 const ENT_COL=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)','var(--c7)','var(--c8)'];
-let ENT_MED='quejas',ENT_OCULTAS=[],ENT_TABLA=false;
-try{const m=localStorage.getItem('monitor.ent.medida');if(m==='negativas')ENT_MED=m;ENT_OCULTAS=JSON.parse(localStorage.getItem('monitor.ent.ocultas')||'[]')}catch(e){}
+let ENT_MED='quejas',ENT_OCULTAS=[],ENT_TABLA=false,ENT_RANGO='panel',ENT_GRAN='auto',ENT_ST=null;
+try{const m=localStorage.getItem('monitor.ent.medida');if(m==='negativas')ENT_MED=m;ENT_OCULTAS=JSON.parse(localStorage.getItem('monitor.ent.ocultas')||'[]');
+  const r=localStorage.getItem('monitor.ent.rango'),g=localStorage.getItem('monitor.ent.gran');
+  if(['panel','6','24','72','168','720','2160'].includes(r))ENT_RANGO=r;if(['auto','15min','hora','dia','semana'].includes(g))ENT_GRAN=g}catch(e){}
+// Rango y detalle propios del gráfico: si difieren del panel, pide sus propios datos (con los demás filtros iguales)
+async function entidadesTiempo(stPanel){
+  $('#ent-rango').value=ENT_RANGO;$('#ent-gran').value=ENT_GRAN;
+  const guardar=()=>{try{localStorage.setItem('monitor.ent.rango',ENT_RANGO);localStorage.setItem('monitor.ent.gran',ENT_GRAN)}catch(x){}};
+  $('#ent-rango').onchange=e=>{ENT_RANGO=e.target.value;guardar();entidadesTiempo(stPanel)};
+  $('#ent-gran').onchange=e=>{ENT_GRAN=e.target.value;guardar();entidadesTiempo(stPanel)};
+  if(ENT_RANGO==='panel'&&ENT_GRAN==='auto'){ENT_ST=stPanel;return dibujarEnt(stPanel)}
+  const p=params({gran:ENT_GRAN==='auto'?(ENT_RANGO==='panel'?(F.gran||'auto'):'auto'):ENT_GRAN});
+  if(ENT_RANGO!=='panel'){p.delete('desde');p.delete('hasta');p.set('horas',ENT_RANGO)}
+  try{ENT_ST=await fetch('/api/stats?'+p).then(r=>r.json())}catch(e){return}
+  dibujarEnt(ENT_ST)}
 const colorEntidad=b=>{const i=(ESTADO?.bancos||[]).indexOf(b);return i>=0&&i<8?ENT_COL[i]:'var(--muted)'};
-function entidadesTiempo(st){
+function dibujarEnt(st){
   const gran=st.granularidad,pts=st.serie,ES=st.entidades_serie||{},nom=ENT_MED==='quejas'?'Quejas':'Menciones negativas';
-  $('#t-ent').textContent=`${nom} por entidad · cada ${GRAN_TXT[gran]} · hora de Lima`;
+  const rangoTxt={'6':'últimas 6 h','24':'últimas 24 h','72':'últimos 3 días','168':'últimos 7 días','720':'últimos 30 días','2160':'últimos 90 días'}[ENT_RANGO];
+  $('#t-ent').textContent=`${nom} por entidad · ${rangoTxt?rangoTxt+' · ':''}cada ${GRAN_TXT[gran]} · hora de Lima`;
   $('#ent-medida').value=ENT_MED;
-  $('#ent-medida').onchange=e=>{ENT_MED=e.target.value;try{localStorage.setItem('monitor.ent.medida',ENT_MED)}catch(x){}entidadesTiempo(st)};
-  $('#ent-tabla-btn').onclick=()=>{ENT_TABLA=!ENT_TABLA;entidadesTiempo(st)};
+  $('#ent-medida').onchange=e=>{ENT_MED=e.target.value;try{localStorage.setItem('monitor.ent.medida',ENT_MED)}catch(x){}dibujarEnt(st)};
+  $('#ent-tabla-btn').onclick=()=>{ENT_TABLA=!ENT_TABLA;dibujarEnt(st)};
   $('#ent-tabla-btn').classList.toggle('on',ENT_TABLA);$('#ent-tabla-btn').setAttribute('aria-pressed',ENT_TABLA);
   const todas=Object.keys(ES),vis=todas.filter(b=>!ENT_OCULTAS.includes(b));
   $('#ent-leyenda').innerHTML=todas.map(b=>`<button class="tg ${vis.includes(b)?'on':''}" data-b="${esc(b)}" aria-pressed="${vis.includes(b)}"><span class="sw" style="background:${colorEntidad(b)}"></span>${esc(b)}</button>`).join('')+
     (todas.length>1?`<button class="tg" id="ent-todas">${vis.length===todas.length?'Ocultar todas':'Mostrar todas'}</button>`:'');
-  const guardar=()=>{try{localStorage.setItem('monitor.ent.ocultas',JSON.stringify(ENT_OCULTAS))}catch(x){}entidadesTiempo(st)};
+  const guardar=()=>{try{localStorage.setItem('monitor.ent.ocultas',JSON.stringify(ENT_OCULTAS))}catch(x){}dibujarEnt(st)};
   $('#ent-leyenda').querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const v=b.dataset.b;ENT_OCULTAS=ENT_OCULTAS.includes(v)?ENT_OCULTAS.filter(x=>x!==v):[...ENT_OCULTAS,v];guardar()});
   if($('#ent-todas'))$('#ent-todas').onclick=()=>{ENT_OCULTAS=vis.length===todas.length?[...todas]:[];guardar()};
   const serieDe=b=>ES[b][ENT_MED]||[];
