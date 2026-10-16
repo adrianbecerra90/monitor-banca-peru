@@ -504,10 +504,10 @@ def init_db():
             capturado TEXT, meta TEXT, sentimiento TEXT)""")
         cols = [r[1] for r in con.execute("PRAGMA table_info(items)")]
         tipos = {"oculto": "INTEGER DEFAULT 0", "ia_queja": "INTEGER", "ia_severidad": "INTEGER", "ia_relevante": "INTEGER",
-                 "ia_atribuible": "INTEGER", "corregido": "INTEGER DEFAULT 0",
+                 "ia_atribuible": "INTEGER", "corregido": "INTEGER DEFAULT 0", "auditado": "INTEGER DEFAULT 0",
                  "restaurado": "INTEGER DEFAULT 0"}
         for col in ("meta", "sentimiento", "oculto", "ia_sentimiento", "ia_queja", "ia_severidad", "ia_categorias",
-                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible", "corregido"):
+                    "ia_relevante", "ia_motivo", "restaurado", "ia_atribuible", "corregido", "auditado"):
             if col not in cols:
                 con.execute(f"ALTER TABLE items ADD COLUMN {col} {tipos.get(col, 'TEXT')}")
         con.execute("CREATE INDEX IF NOT EXISTS idx_fecha ON items(fecha)")
@@ -2954,9 +2954,49 @@ def exportar_mensajes(offset=0, limite=500):
     return {"items": filas, "total": total}
 
 
+def _clave_ia(d):
+    """Lo que define una clasificación, para comparar dos versiones del mismo mensaje."""
+    cats = d.get("ia_categorias")
+    cats = json.loads(cats) if isinstance(cats, str) else (cats or [])
+    return (d.get("ia_sentimiento"), int(d.get("ia_queja") or 0),
+            1 if d.get("ia_relevante") is None else int(d.get("ia_relevante")), tuple(sorted(cats)))
+
+
+def elegir_mejor(local, remoto):
+    """Árbitro para dos clasificaciones de IA distintas del mismo mensaje (ninguna revisada a mano):
+    1) la que coincide con el ejemplo corregido más parecido; 2) la que coincide con las reglas; 3) empate: la local."""
+    texto = local.get("texto") or remoto.get("texto") or ""
+    puntos = {"local": 0, "remoto": 0}
+    cands = {"local": _clave_ia(local), "remoto": _clave_ia(remoto)}
+    p = _palabras_ej(texto)
+    if p:
+        mejor, sim = None, 0.0
+        for e in ejemplos():
+            b = _palabras_ej(e["texto"])
+            s_ = len(p & b) / len(p | b) if b else 0
+            if s_ > sim:
+                mejor, sim = e, s_
+        if mejor and sim >= 0.5:
+            ref = (mejor["sentimiento"], int(bool(mejor["queja"])), int(mejor["relevante"] is not False))
+            for k, c in cands.items():
+                puntos[k] += 3 * sum(a == b for a, b in zip(c[:3], ref))
+    meta = json.loads(local.get("meta") or "{}") if isinstance(local.get("meta"), str) else {}
+    fila = _fila({"texto": texto, **meta})
+    if fila is None:
+        reglas = ("neutro", 0, 0)
+    else:
+        _, q, _, _, sent = fila
+        reglas = (sent, int(q), 1)
+    if ajeno_a_la_entidad(texto):
+        reglas = ("neutro", 0, reglas[2])
+    for k, c in cands.items():
+        puntos[k] += sum(a == b for a, b in zip(c[:3], reglas))
+    return "remoto" if puntos["remoto"] > puntos["local"] else "local"
+
+
 def importar_mensajes(lista):
-    """Agrega los mensajes que faltan y completa los existentes: manda la corrección manual; si aquí no hay
-    clasificación de la IA y allá sí, se copia. Nunca borra ni pisa una corrección local."""
+    """Agrega los mensajes que faltan y completa los existentes. Orden de autoridad: corrección manual >
+    auditoría > versión forzada por el árbitro (_forzar) > lo que ya hay. Nunca borra ni pisa una corrección local."""
     nuevos = completados = 0
     with _db_lock, db() as con:
         cols = [r[1] for r in con.execute("PRAGMA table_info(items)")]
@@ -2964,15 +3004,18 @@ def importar_mensajes(lista):
             if not isinstance(it, dict) or not it.get("id") or not isinstance(it.get("texto"), str):
                 continue
             datos = {c: it.get(c) for c in cols if c in it}
-            actual = con.execute("SELECT corregido, ia_sentimiento FROM items WHERE id = ?", (it["id"],)).fetchone()
+            actual = con.execute("SELECT corregido, auditado, ia_sentimiento FROM items WHERE id = ?", (it["id"],)).fetchone()
             if actual is None:
                 con.execute(f"INSERT INTO items ({','.join(datos)}) VALUES ({','.join('?' * len(datos))})", list(datos.values()))
                 nuevos += 1
                 continue
             if actual["corregido"] == 1:
                 continue  # la corrección de aquí manda
-            if it.get("corregido") == 1 or (actual["ia_sentimiento"] is None and it.get("ia_sentimiento")):
-                campos = [c for c in CAMPOS_IA + ("corregido",) if c in cols]
+            tomar = (it.get("corregido") == 1 or it.get("_forzar")
+                     or (it.get("auditado") == 1 and actual["auditado"] != 1)
+                     or (actual["ia_sentimiento"] is None and it.get("ia_sentimiento")))
+            if tomar:
+                campos = [c for c in CAMPOS_IA + ("corregido", "auditado") if c in cols]
                 con.execute(f"UPDATE items SET {', '.join(c + ' = ?' for c in campos)} WHERE id = ?",
                             [it.get(c) for c in campos] + [it["id"]])
                 completados += 1
@@ -2985,24 +3028,51 @@ def compatibilizar_mensajes(url, token):
     url = url.rstrip("/")
     h = {"X-Sync-Token": token, "X-Monitor": "1", "Content-Type": "application/json", "User-Agent": "monitor-banca-sync"}
     traidos = {"nuevos": 0, "completados": 0}
-    offset = 0
+    remotos, offset = {}, 0
     while True:
         d = json.loads(http_get(f"{url}/api/sync/mensajes?offset={offset}&limite=500", h, timeout=120))
         r = importar_mensajes(d["items"])
         traidos = {k: traidos[k] + r[k] for k in traidos}
+        remotos.update({it["id"]: it for it in d["items"]})
         offset += len(d["items"])
         if not d["items"] or offset >= d["total"]:
             break
+    # Desacuerdos: la mejor versión queda en los dos lados (y siempre en producción)
+    forzar, arbitrados = set(), {"local": 0, "remoto": 0}
+    with _db_lock, db() as con:
+        locales = {r["id"]: dict(r) for r in con.execute("SELECT * FROM items WHERE ia_sentimiento IS NOT NULL")}
+    for id_, loc in locales.items():
+        rem = remotos.get(id_)
+        if not rem or rem.get("ia_sentimiento") is None or rem.get("corregido") == 1 or _clave_ia(loc) == _clave_ia(rem):
+            continue
+        if loc.get("corregido") == 1 or loc.get("auditado") == 1:
+            forzar.add(id_)  # lo revisado aquí manda
+            continue
+        if rem.get("auditado") == 1:
+            continue  # ya se tomó al importar
+        gana = elegir_mejor(loc, rem)
+        arbitrados[gana] += 1
+        if gana == "local":
+            forzar.add(id_)
+        else:
+            with _db_lock, db() as con:
+                con.execute(f"UPDATE items SET {', '.join(c + ' = ?' for c in CAMPOS_IA)} WHERE id = ?",
+                            [rem.get(c) for c in CAMPOS_IA] + [id_])
+                _aplicar_ia(con)
     enviados = {"nuevos": 0, "completados": 0}
     offset = 0
     while True:
         d = exportar_mensajes(offset, 500)
+        for it in d["items"]:
+            if it["id"] in forzar:
+                it["_forzar"] = True
         if not d["items"]:
             break
         r = json.loads(http_get(f"{url}/api/sync/mensajes", h, data=json.dumps({"items": d["items"]}).encode(), timeout=180))
         enviados = {k: enviados[k] + r.get(k, 0) for k in enviados}
         offset += len(d["items"])
-    return {"traidos": traidos, "enviados": enviados}
+    return {"traidos": traidos, "enviados": enviados, "desacuerdos_arbitrados": arbitrados,
+            "impuestos_en_produccion": len(forzar)}
 
 
 def trabajador_sync():
