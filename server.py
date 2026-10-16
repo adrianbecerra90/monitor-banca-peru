@@ -232,15 +232,23 @@ TERCEROS = re.compile(r"\b((falso|falsa|falsos|falsas|fake|trucad[oa]s?|adultera
                       r"constancias?|pagos?|transferencias?)\s+(falso|falsa|falsos|falsas|fake|trucad[oa]s?|adulterad[oa]s?|"
                       r"editad[oa]s?|inexistente)|supuesto pago|sujetos|delincuentes|malhechores|detenid[oa]s?|capturad[oa]s?|"
                       r"intervenid[oa]s?|pnp|policia|comisaria|atencion comerciantes|cuidado comerciantes|"
-                      r"estafador(es|as)?|hampones|banda criminal|se hacen pasar)\b")
+                      r"estafador(es|as)?|hampones|banda criminal|se hacen pasar|"
+                      r"falsos? (cobradores?|trabajadores?|tecnicos?|funcionarios?|asesores?|personal|empleados?|"
+                      r"representantes?|operadores?))\b")
 # La entidad sí es responsable: fallas de sus canales, seguridad o atención
-CULPA_ENTIDAD = re.compile(r"\b(no (me )?(devuelven|responden|reconocen|solucionan|bloquearon|protege)|el banco no|"
+CULPA_ENTIDAD = re.compile(r"\b(no (me )?(devuelven|responden|reconocen|solucionan|bloquearon|protege|explicaron|avisaron)|"
+                           r"el banco no|me (cobra|cobran|cobraron|cobro|descontaron|descuentan)|abusiv\w*|indebid\w*|"
                            r"(app|aplicativo|sistema|plataforma) (falla|fallo|vulnerable)|hackearon|filtracion|"
                            r"(deberia|deben) (proteger|bloquear|devolver|responder))\b")
 # Situación económica personal del usuario ("me quedé con 20 soles en mi Yape"): no habla de la entidad
 SITUACION_PERSONAL = re.compile(r"\b(me (quede|queda|quedan|quedaron) (con|sin)|sobrevivir|fin de mes|todo el mes|"
-                                r"(estoy|ando|quede) (pobre|misio|quebrad[oa]|seco|sin plata)|no me alcanza|"
-                                r"revis(e|ar|o) mi (yape|plin|saldo|cuenta))\b")
+                                r"(estoy|ando|quede|me quede) (pobre|misi[oa]|quebrad[oa]|sec[oa]|sin plata|pelad[oa])|"
+                                r"no me alcanza|(tuve|tengo) que pedir (mi |un )?prestamo|"
+                                r"revis(e|ar|o) mi (yape|plin|saldo|cuenta)|"
+                                r"(pobre|misio|quebrad[oa]|seco|pelad[oa]|en cero|vacio) en (el |mi )?(yape|plin)|"
+                                r"(mi )?(yape|plin) (esta |anda )?(vacio|en cero|pelado|seco|llorando)|"
+                                r"no tengo (plata|saldo|nada|ni un sol) en (el |mi )?(yape|plin)|"
+                                r"lo que tengo en efectivo|no (agarre|saque|retire) (efectivo|plata))\b")
 
 _cat_re = {k: [re.compile(p) for p in v] for k, v in CATEGORIAS.items()}
 _neg_re = [re.compile(p) for p in NEGATIVO]
@@ -273,6 +281,34 @@ def _sin_instituciones(t):
 FUERA_DEL_SERVICIO = {"Marketing / publicidad", "Experiencia / diseño de la app"}
 
 
+# La billetera aparece como la alternativa a la que alguien se cambió, y la queja es contra otro banco (sin nombrar)
+ALTERNATIVA = re.compile(r"\b(solo|solamente|ahora|mejor|prefiero) (manejo|uso|utilizo|tengo|me quedo con|pago con|trabajo con)"
+                         r"( el| la)? (yape|plin)\b|\bme (pase|cambie|mude) a (yape|plin)\b|\b(yape|plin) (nomas|nada mas)\b")
+OTRO_BANCO = re.compile(r"\b(mi|el otro|otro|los|del) bancos?\b|\bnada de bancos\b")
+
+
+def entidad_como_alternativa(texto):
+    t = normalizar(texto)
+    return ALTERNATIVA.search(t) is not None and OTRO_BANCO.search(t) is not None
+
+
+# Humor y ficción: parodias, memes, sketches. "El Yape está caído" dentro de un chiste no es un reporte real
+HUMOR = re.compile(r"\b(parodia|sketch|comedia|stand ?up|capitulo|episodio|cortometraje|animacion|videojuego|"
+                   r"half-?life)\b")  # no "chiste" ni "broma": "el servicio es un chiste" sí es queja
+# Comentarios sobre las ofertas que recibe ("Yape me sigue ofreciendo créditos"): no reportan un problema
+OFERTAS = re.compile(r"\b(me )?(sigue|siguen|vive|viven)? ?ofrec\w* (un |unos |mas )?(creditos?|prestamos?|tarjetas?|"
+                     r"adelantos?|linea)\b")
+
+
+def ajeno_a_la_entidad(texto):
+    """Casos que nunca son queja contra la entidad, decida lo que decida la IA: la entidad como alternativa a otro
+    banco, la situación económica del usuario o un delito de terceros, salvo que el texto culpe a la entidad."""
+    t = normalizar(texto)
+    if entidad_como_alternativa(texto):
+        return True
+    return not CULPA_ENTIDAD.search(t) and any(p.search(t) for p in (SITUACION_PERSONAL, TERCEROS, HUMOR, OFERTAS))
+
+
 def fuera_del_servicio(cats, atribuible=True):
     return atribuible is False or (bool(cats) and set(cats) <= FUERA_DEL_SERVICIO)
 
@@ -284,7 +320,7 @@ def clasificar(texto, tipo=""):
     cats = [k for k, pats in _cat_re.items() if any(p.search(t) for p in pats)]
     if tipo in ("oficial", "post_oficial") or RESPUESTA_OFICIAL.search(t):  # respuesta de la propia cuenta del banco/SBS
         return False, cats, 0, "neutro"
-    if not CULPA_ENTIDAD.search(t) and (TERCEROS.search(t) or SITUACION_PERSONAL.search(t)):
+    if ajeno_a_la_entidad(texto):
         return False, cats, 0, "neutro"  # no es atribuible a la entidad ni a sus servicios
     neg = sum(1 for p in _neg_re if p.search(t))
     pos = sum(1 for p in _pos_re if p.search(t)) if not NEGACION_POS.search(t) else 0
@@ -315,8 +351,8 @@ def clasificar(texto, tipo=""):
     if tipo == "noticia":
         # Los titulares usan muletillas ("¿hasta cuándo…?", "otra vez") sin carga negativa: solo cuenta la queja
         neg = neg if es_queja else 0
-    if fuera_del_servicio(cats):  # solo marketing o diseño: para el monitor no es negativo ni queja
-        es_queja, neg = False, 0
+    if fuera_del_servicio(cats) or entidad_como_alternativa(texto):
+        es_queja, neg = False, 0  # solo marketing/diseño, o la entidad es la alternativa: no es negativo ni queja
     if es_queja or neg > pos:
         sentimiento = "negativo"
     elif pos > 0 and neg == 0:
@@ -474,9 +510,9 @@ def _aplicar_ia(con):
                    oculto = CASE WHEN ia_relevante = 0 THEN 1 ELSE oculto END
                    WHERE ia_sentimiento IS NOT NULL""")
     # Lo no atribuible a la entidad, o que solo trata de marketing o diseño, no cuenta como negativo ni como queja
-    for r in con.execute("SELECT id, categorias, ia_atribuible FROM items WHERE (sentimiento = 'negativo' OR es_queja = 1) "
+    for r in con.execute("SELECT id, categorias, ia_atribuible, texto FROM items WHERE (sentimiento = 'negativo' OR es_queja = 1) "
                          "AND oculto = 0").fetchall():
-        if fuera_del_servicio(json.loads(r[1] or "[]"), False if r[2] == 0 else True):
+        if fuera_del_servicio(json.loads(r[1] or "[]"), False if r[2] == 0 else True) or ajeno_a_la_entidad(r[3]):
             con.execute("UPDATE items SET sentimiento = CASE WHEN sentimiento = 'negativo' THEN 'neutro' ELSE sentimiento END, "
                         "es_queja = 0, severidad = 0 WHERE id = ?", (r[0],))
 
@@ -2644,6 +2680,14 @@ Para cada elemento devuelve:
   anteriores, opinar de los actores o personajes: "la de Susy Díaz con Yape POS fue mejor"). Las dudas sobre cómo
   funciona un producto o lo que explica un anuncio ("no entendí qué se guarda ni por qué una vez al mes") son
   consultas: neutras, no quejas, y nunca "App / canales caídos".
+  Noticias de otras empresas (luz, agua, telefonía, municipios) sobre estafadores que piden pagos por Yape, Plin o
+  transferencia no tratan de la entidad: "relevante" false.
+  Comentar las ofertas que la entidad le hace al usuario ("ya paguen, me da vergüenza que Yape me siga ofreciendo
+  créditos") no es queja: neutro.
+  Parodias, memes, sketches y ficción ("Yape está caído" dentro de un chiste o una historia) no son quejas: neutro.
+  Una queja cuenta solo para la entidad a la que se dirige. Si el texto se queja de otro banco (sin nombrarlo: "mi
+  banco", "los bancos") y la entidad mencionada aparece como la alternativa a la que se cambió ("mi banco me congeló
+  la cuenta, ahora solo manejo el Yape"), para esa entidad no es queja: es neutro o positivo y "atribuible" es false.
   Para este monitor, una crítica que solo trata de marketing o de diseño (sin una falla del servicio) es NEUTRA y
   no es queja; los elogios sí pueden ser positivos.
 - "motivo": máximo 12 palabras explicando la clasificación.
@@ -2758,7 +2802,8 @@ def _guardar_ia(filas, res):
             if queja and not sev:
                 sev = 1
             cats = [c for c in (d.get("categorias") or []) if c in validas]
-            if fuera_del_servicio(cats, atribuible):  # no atribuible, o solo marketing/diseño: nunca negativo ni queja
+            if fuera_del_servicio(cats, atribuible) or ajeno_a_la_entidad(r["texto"]):
+                # no atribuible, solo marketing/diseño, o la entidad es la alternativa: nunca negativo ni queja
                 queja, sev = False, 0
                 if sent == "negativo":
                     sent = "neutro"
