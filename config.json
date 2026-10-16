@@ -144,6 +144,28 @@
       "ambiguos": [
         "SBS"
       ]
+    },
+    "Banco Pichincha": {
+      "buscar": [
+        "Banco Pichincha",
+        "Pibank"
+      ],
+      "alias": [
+        "Pibank",
+        "Pichincha Perú",
+        "Pichincha Peru",
+        "@BancoPichinchaPeru",
+        "BancoPichinchaPeru",
+        "bancopichincha.pe",
+        "bancopichinchaperu",
+        "#BancoPichincha",
+        "Banco Pichincha",
+        "Pichincha"
+      ],
+      "ambiguos": [
+        "Banco Pichincha",
+        "Pichincha"
+      ]
     }
   },
   "contexto_peru": [
@@ -193,7 +215,13 @@
     "korea",
     "kpop",
     "k-pop",
-    "drama"
+    "drama",
+    "ecuador",
+    "ecuatoriano",
+    "ecuatoriana",
+    "quito",
+    "guayaquil",
+    "cuenca ecuador"
   ],
   "intervalos_minutos": {
     "X": 5,
@@ -259,6 +287,11 @@
       "facebook": "https://www.facebook.com/sbsperu",
       "instagram": "https://www.instagram.com/sbsperu/",
       "tiktok": "https://www.tiktok.com/@sbsperu"
+    },
+    "Banco Pichincha": {
+      "facebook": "https://www.facebook.com/BancoPichinchaPeru/",
+      "instagram": "https://www.instagram.com/bancopichincha.pe/",
+      "tiktok": "https://www.tiktok.com/@bancopichinchaperu"
     }
   },
   "apify": {

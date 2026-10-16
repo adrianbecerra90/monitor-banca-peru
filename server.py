@@ -4882,6 +4882,30 @@ class Handler(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(u.query)
         ip = self._ip()
+        if u.path == "/api/sync/entidades":
+            # suma o actualiza entidades sin tocar el resto de la configuración de este monitor (luego se reinicia)
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            try:
+                d = self._json_cuerpo(200_000)
+                with open(RUTA_CONFIG, encoding="utf-8") as f:
+                    nueva = json.load(f)
+                for nombre, b in (d.get("bancos") or {}).items():
+                    if not NOMBRE_OK.match(str(nombre)) or not isinstance(b, dict):
+                        raise ValueError(f"Entidad no válida: {nombre}")
+                    nueva.setdefault("bancos", {})[nombre] = {k: [str(x)[:60] for x in b.get(k, [])][:20]
+                                                              for k in ("buscar", "alias", "ambiguos")}
+                for nombre, cu in (d.get("cuentas") or {}).items():
+                    nueva.setdefault("cuentas_oficiales", {})[nombre] = {
+                        red: str(url)[:200] for red, url in (cu or {}).items()
+                        if red == "x" and HANDLE_X_OK.match(str(url)) or red in URL_RED_OK and URL_RED_OK[red].match(str(url))}
+                excl = nueva.setdefault("contexto_excluir", [])
+                excl += [str(x)[:40] for x in d.get("contexto_excluir") or [] if str(x)[:40] not in excl]
+                guardar_config(nueva)
+                reiniciar_servidor()
+                return self._send({"ok": True, "entidades": list(nueva["bancos"])})
+            except (ValueError, OSError) as e:
+                return self._send({"error": str(e)[:200]}, code=400)
         if u.path == "/api/sync/mensajes":
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
