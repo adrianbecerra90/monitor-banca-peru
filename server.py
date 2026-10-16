@@ -2909,6 +2909,68 @@ def sincronizar_ejemplos():
     return {"traidos": traidos, "enviados": r.get("importados", 0), "total": len(locales)}
 
 
+# ---------------- Compatibilizar la base de mensajes con la nube (solo cuando se lanza a mano) ----------------
+CAMPOS_IA = ("ia_sentimiento", "ia_queja", "ia_severidad", "ia_categorias", "ia_relevante", "ia_motivo", "ia_atribuible")
+
+
+def exportar_mensajes(offset=0, limite=500):
+    with _db_lock, db() as con:
+        filas = [dict(r) for r in con.execute("SELECT * FROM items ORDER BY id LIMIT ? OFFSET ?", (limite, offset))]
+        total = con.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    return {"items": filas, "total": total}
+
+
+def importar_mensajes(lista):
+    """Agrega los mensajes que faltan y completa los existentes: manda la corrección manual; si aquí no hay
+    clasificación de la IA y allá sí, se copia. Nunca borra ni pisa una corrección local."""
+    nuevos = completados = 0
+    with _db_lock, db() as con:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(items)")]
+        for it in lista[:2000]:
+            if not isinstance(it, dict) or not it.get("id") or not isinstance(it.get("texto"), str):
+                continue
+            datos = {c: it.get(c) for c in cols if c in it}
+            actual = con.execute("SELECT corregido, ia_sentimiento FROM items WHERE id = ?", (it["id"],)).fetchone()
+            if actual is None:
+                con.execute(f"INSERT INTO items ({','.join(datos)}) VALUES ({','.join('?' * len(datos))})", list(datos.values()))
+                nuevos += 1
+                continue
+            if actual["corregido"] == 1:
+                continue  # la corrección de aquí manda
+            if it.get("corregido") == 1 or (actual["ia_sentimiento"] is None and it.get("ia_sentimiento")):
+                campos = [c for c in CAMPOS_IA + ("corregido",) if c in cols]
+                con.execute(f"UPDATE items SET {', '.join(c + ' = ?' for c in campos)} WHERE id = ?",
+                            [it.get(c) for c in campos] + [it["id"]])
+                completados += 1
+        _aplicar_ia(con)
+    return {"nuevos": nuevos, "completados": completados}
+
+
+def compatibilizar_mensajes(url, token):
+    """Una sola pasada en ambos sentidos con el monitor de la nube."""
+    url = url.rstrip("/")
+    h = {"X-Sync-Token": token, "X-Monitor": "1", "Content-Type": "application/json", "User-Agent": "monitor-banca-sync"}
+    traidos = {"nuevos": 0, "completados": 0}
+    offset = 0
+    while True:
+        d = json.loads(http_get(f"{url}/api/sync/mensajes?offset={offset}&limite=500", h, timeout=120))
+        r = importar_mensajes(d["items"])
+        traidos = {k: traidos[k] + r[k] for k in traidos}
+        offset += len(d["items"])
+        if not d["items"] or offset >= d["total"]:
+            break
+    enviados = {"nuevos": 0, "completados": 0}
+    offset = 0
+    while True:
+        d = exportar_mensajes(offset, 500)
+        if not d["items"]:
+            break
+        r = json.loads(http_get(f"{url}/api/sync/mensajes", h, data=json.dumps({"items": d["items"]}).encode(), timeout=180))
+        enviados = {k: enviados[k] + r.get(k, 0) for k in enviados}
+        offset += len(d["items"])
+    return {"traidos": traidos, "enviados": enviados}
+
+
 def trabajador_sync():
     while True:
         try:
@@ -4453,6 +4515,12 @@ class Handler(BaseHTTPRequestHandler):
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
             return self._send({"ejemplos": ejemplos()})
+        if u.path == "/api/sync/mensajes":
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            q = urllib.parse.parse_qs(u.query)
+            return self._send(exportar_mensajes(max(0, int(q.get("offset", ["0"])[0])),
+                                                max(1, min(int(q.get("limite", ["500"])[0]), 1000))))
         self.yo = usuario_de_token(self._token())
         if not self.yo:  # todo lo demás exige sesión
             if u.path.startswith("/api/"):
@@ -4554,6 +4622,13 @@ class Handler(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(u.query)
         ip = self._ip()
+        if u.path == "/api/sync/mensajes":
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            try:
+                return self._send({"ok": True, **importar_mensajes(self._json_cuerpo(20_000_000).get("items") or [])})
+            except ValueError as e:
+                return self._send({"error": str(e)[:200]}, code=400)
         if u.path == "/api/sync/ejemplos":  # servidor a servidor: clave compartida, sin sesión
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
