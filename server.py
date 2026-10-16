@@ -2646,13 +2646,23 @@ def revisar_umbral_notificar():
     disp = fuentes_disponibles()
     hace1h = iso(ahora() - timedelta(hours=1))
     with _db_lock, db() as con:
-        recientes = con.execute("SELECT id, fuente, bancos FROM items WHERE oculto = 0 AND sentimiento = 'negativo' "
-                                "AND fecha >= ?", (hace1h,)).fetchall()
-    ahora_n = {}
+        recientes = con.execute("SELECT id, fuente, bancos, sentimiento, es_queja, categorias FROM items "
+                                "WHERE oculto = 0 AND fecha >= ? AND fecha <= ? "
+                                "AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (hace1h, iso(ahora()))).fetchall()
+    ahora_n, contexto = {}, {}
     for r in recientes:
-        if _origen(r["id"], r["fuente"]) in disp:
-            for k in clave_fn(r):
+        if _origen(r["id"], r["fuente"]) not in disp:
+            continue
+        for k in clave_fn(r):
+            c = contexto.setdefault(k, {"total": 0, "quejas": 0, "foco": {}})
+            c["total"] += 1
+            if r["sentimiento"] == "negativo":
                 ahora_n[k] = ahora_n.get(k, 0) + 1
+            if r["es_queja"]:
+                c["quejas"] += 1
+                for cat in json.loads(r["categorias"] or "[]"):
+                    if cat in FOCO:
+                        c["foco"][cat] = c["foco"].get(cat, 0) + 1
     franja = "dia" if 6 <= ahora().astimezone(LIMA).hour < 22 else "noche"
     enviadas = []
     for k, n in sorted(ahora_n.items(), key=lambda x: -x[1]):
@@ -2663,9 +2673,17 @@ def revisar_umbral_notificar():
         if time.time() - _NOTIF["ultima"].get(k, 0) < cfg.get("enfriamiento_minutos", 120) * 60:
             continue
         _NOTIF["ultima"][k] = time.time()
+        _NOTIF.setdefault("enviadas", []).append(time.time())
+        alertas_hora = sum(1 for t in _NOTIF["enviadas"] if time.time() - t < 3600)
         quien = "todas las entidades" if k == "Total" else k
-        texto = (f"{n} menciones negativas en la última hora sobre {quien} (umbral {umbral:.1f}; "
-                 f"lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora).")
+        c = contexto.get(k, {"total": n, "quejas": 0, "foco": {}})
+        nombres = {"App / canales caídos": "caídas", "Errores operativos": "errores operativos",
+                   "Fraude / seguridad": "fraude", "Ciberseguridad / hackeos": "ciberseguridad"}
+        foco = ", ".join(f"{v} {nombres[cat]}" for cat, v in sorted(c["foco"].items(), key=lambda x: -x[1]))
+        texto = (f"{n} negativas en la última hora sobre {quien} (de {c['total']} menciones; {c['quejas']} quejas"
+                 f"{': ' + foco if foco else ''}). Umbral {umbral:.1f} · lo normal de "
+                 f"{'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora · "
+                 f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
         try:
             enviar_notificacion(f"Alerta: {quien}", texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None)
             enviadas.append({"clave": k, "n": n, "umbral": round(umbral, 1)})
