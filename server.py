@@ -437,6 +437,11 @@ def _sin_contenido(texto):
     return all(p in _RELLENO or p in entidad for p in palabras)
 
 
+# "Yape"/"Plin" como apodo o insulto a una persona que pide dinero ("señor yape", "deja de pedir plata como mendigo")
+APODO = re.compile(r"\bse(n|ñ)or(a|ita)? (yape|plin)\b|\b(don|doña|dona|tio|tia) (yape|plin)\b|"
+                   r"\b(pidiendo|pide|pedir|pidan) (plata|limosna|yapes?|plines?) como\b|\bcomo mendig")
+
+
 def es_relevante(texto, tipo=""):
     """Descarta lo que no habla de la entidad: solo emojis o exclamaciones ("Ohhhh❤❤❤") y textos en otro idioma
     (p.ej. "plin" significa "lleno" en rumano)."""
@@ -444,7 +449,7 @@ def es_relevante(texto, tipo=""):
     palabras = re.findall(r"[a-zñ]{2,}", t)
     if tipo == "noticia":
         return True
-    if _sin_contenido(texto):
+    if _sin_contenido(texto) or APODO.search(normalizar(texto)):
         return False
     if len(palabras) < 2:
         # emojis, "ohhhh", "jaja"…: solo cuenta si nombra a la entidad ("Interbank 👎👎")
@@ -2680,6 +2685,8 @@ Para cada elemento devuelve:
   anteriores, opinar de los actores o personajes: "la de Susy Díaz con Yape POS fue mejor"). Las dudas sobre cómo
   funciona un producto o lo que explica un anuncio ("no entendí qué se guarda ni por qué una vez al mes") son
   consultas: neutras, no quejas, y nunca "App / canales caídos".
+  "Yape" o "Plin" usados como apodo o insulto a una persona ("señor yape, deje de pedir plata como mendigo"): no
+  tratan de la entidad, "relevante" false.
   Noticias de otras empresas (luz, agua, telefonía, municipios) sobre estafadores que piden pagos por Yape, Plin o
   transferencia no tratan de la entidad: "relevante" false.
   Comentar las ofertas que la entidad le hace al usuario ("ya paguen, me da vergüenza que Yape me siga ofreciendo

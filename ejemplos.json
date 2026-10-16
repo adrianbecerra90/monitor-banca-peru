@@ -1,5 +1,19 @@
 [
  {
+  "id": "ejemplo:0ad31ded0c202a8f",
+  "texto": "Es q a ti el orden la disciplina y la limpieza no te gusta, señor yape. busque un trabajo decente y deje de estar pidiendo plata como mendigo",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "'señor yape' es un apodo para insultar a una persona que pide plata; no habla de Yape",
+  "fecha": "2026-10-16T22:13:24.056697+00:00"
+ },
+ {
   "id": "instagram:17973355293093932",
   "texto": "No está funcionando la app",
   "entidades": [
