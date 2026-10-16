@@ -88,7 +88,7 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 #calor td{height:18px;border-radius:3px;min-width:14px;text-align:center}#calor th{font-weight:400;padding:0 3px;text-align:right}
 .hint{font-size:11px;color:var(--muted);margin-top:4px}
 .tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap;z-index:5}
-.tip b{display:block;margin-bottom:3px}.tip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
+.tip b{display:block;margin-bottom:3px}.tip .sin-cuadro::before{display:none}.tip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
 .hist{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .hist label{font-size:12px;color:var(--ink2)}
 #cfg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
@@ -450,7 +450,22 @@ async function entidadesTiempo(stPanel){
   if(ENT_RANGO!=='panel'){p.delete('desde');p.delete('hasta');p.set('horas',ENT_RANGO)}
   try{ENT_ST=await fetch('/api/stats?'+p).then(r=>r.json())}catch(e){return}
   dibujarEnt(ENT_ST)}
-const colorEntidad=b=>{const i=(ESTADO?.bancos||[]).indexOf(b);return i>=0&&i<8?ENT_COL[i]:'var(--muted)'};
+// Estilo estable por entidad: 8 tonos validados con línea continua y, de la 9.ª a la 16.ª, los mismos tonos con
+// línea punteada (codificación compuesta: nunca se inventa un 9.º color). Cada entidad conserva su estilo mientras esté visible.
+let ENT_SLOTS={};try{ENT_SLOTS=JSON.parse(localStorage.getItem('monitor.ent.colores')||'{}')}catch(e){}
+function asignarColores(visibles){
+  for(const b in ENT_SLOTS)if(!visibles.includes(b))delete ENT_SLOTS[b];
+  const usados=new Set(Object.values(ENT_SLOTS));
+  for(const b of visibles){if(ENT_SLOTS[b]!==undefined&&ENT_SLOTS[b]<ENT_MAX)continue;
+    const pref=(ESTADO?.bancos||[]).indexOf(b);   // si su posición en la configuración está libre, la usa
+    const libre=pref>=0&&pref<ENT_MAX&&!usados.has(pref)?pref:[...Array(ENT_MAX).keys()].find(k=>!usados.has(k));
+    if(libre!==undefined){ENT_SLOTS[b]=libre;usados.add(libre)}}
+  try{localStorage.setItem('monitor.ent.colores',JSON.stringify(ENT_SLOTS))}catch(e){}}
+const ENT_MAX=16;
+const colorEntidad=b=>ENT_SLOTS[b]!==undefined?ENT_COL[ENT_SLOTS[b]%8]:'var(--line)';
+const punteada=b=>ENT_SLOTS[b]!==undefined&&ENT_SLOTS[b]>=8;
+// muestra de la línea (color + continua/punteada) para leyenda, tabla y detalle
+const muestraEnt=b=>`<svg width="18" height="8" aria-hidden="true" style="margin-right:5px;vertical-align:0"><line x1="1" y1="4" x2="17" y2="4" stroke="${colorEntidad(b)}" stroke-width="2.5" stroke-linecap="round" ${punteada(b)?'stroke-dasharray="3 3"':''}/></svg>`;
 function dibujarEnt(st){
   const gran=st.granularidad,pts=st.serie,ES=st.entidades_serie||{},nom=ENT_MED==='quejas'?'Quejas':'Menciones negativas';
   const rangoTxt={'1':'última hora','2':'últimas 2 h','3':'últimas 3 h','4':'últimas 4 h','5':'últimas 5 h','6':'últimas 6 h','24':'últimas 24 h','72':'últimos 3 días','168':'últimos 7 días','720':'últimos 30 días','2160':'últimos 90 días'}[ENT_RANGO];
@@ -459,17 +474,27 @@ function dibujarEnt(st){
   $('#ent-medida').onchange=e=>{ENT_MED=e.target.value;try{localStorage.setItem('monitor.ent.medida',ENT_MED)}catch(x){}dibujarEnt(st)};
   $('#ent-tabla-btn').onclick=()=>{ENT_TABLA=!ENT_TABLA;dibujarEnt(st)};
   $('#ent-tabla-btn').classList.toggle('on',ENT_TABLA);$('#ent-tabla-btn').setAttribute('aria-pressed',ENT_TABLA);
-  const todas=Object.keys(ES),vis=todas.filter(b=>!ENT_OCULTAS.includes(b));
-  $('#ent-leyenda').innerHTML=todas.map(b=>`<button class="tg ${vis.includes(b)?'on':''}" data-b="${esc(b)}" aria-pressed="${vis.includes(b)}"><span class="sw" style="background:${colorEntidad(b)}"></span>${esc(b)}</button>`).join('')+
-    (todas.length>1?`<button class="tg" id="ent-todas">${vis.length===todas.length?'Ocultar todas':'Mostrar todas'}</button>`:'');
+  const todas=Object.keys(ES),total=b=>(ES[b][ENT_MED]||[]).reduce((a,x)=>a+x,0);
+  // visibles: las no ocultas, como máximo 16 (si hay más, quedan las de más menciones en el rango)
+  let vis=todas.filter(b=>!ENT_OCULTAS.includes(b));
+  if(vis.length>ENT_MAX){const top=[...vis].sort((a,c)=>total(c)-total(a)).slice(0,ENT_MAX);ENT_OCULTAS=[...ENT_OCULTAS,...vis.filter(b=>!top.includes(b))];vis=vis.filter(b=>top.includes(b))}
+  asignarColores(vis);
+  $('#ent-leyenda').innerHTML=todas.map(b=>`<button class="tg ${vis.includes(b)?'on':''}" data-b="${esc(b)}" aria-pressed="${vis.includes(b)}" title="${fmt(total(b))} en el rango">${muestraEnt(b)}${esc(b)}</button>`).join('')+
+    (todas.length>1?`<button class="tg" id="ent-todas">${vis.length?'Ocultar todas':(todas.length>ENT_MAX?'Mostrar las '+ENT_MAX+' principales':'Mostrar todas')}</button>`:'')+
+    `<span class="sub" id="ent-aviso" style="align-self:center"></span>`;
   const guardar=()=>{try{localStorage.setItem('monitor.ent.ocultas',JSON.stringify(ENT_OCULTAS))}catch(x){}dibujarEnt(st)};
-  $('#ent-leyenda').querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const v=b.dataset.b;ENT_OCULTAS=ENT_OCULTAS.includes(v)?ENT_OCULTAS.filter(x=>x!==v):[...ENT_OCULTAS,v];guardar()});
-  if($('#ent-todas'))$('#ent-todas').onclick=()=>{ENT_OCULTAS=vis.length===todas.length?[...todas]:[];guardar()};
+  $('#ent-leyenda').querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const v=b.dataset.b;
+    if(!vis.includes(v)&&vis.length>=ENT_MAX){$('#ent-aviso').textContent=`Máximo ${ENT_MAX} entidades a la vez: oculta una para comparar esta.`;return}
+    ENT_OCULTAS=vis.includes(v)?[...ENT_OCULTAS,v]:ENT_OCULTAS.filter(x=>x!==v);guardar()});
+  if($('#ent-todas'))$('#ent-todas').onclick=()=>{
+    if(vis.length)ENT_OCULTAS=[...todas];
+    else{const top=[...todas].sort((a,c)=>total(c)-total(a)).slice(0,ENT_MAX);ENT_OCULTAS=todas.filter(b=>!top.includes(b))}
+    guardar()};
   const serieDe=b=>ES[b][ENT_MED]||[];
   // tabla (alternativa accesible): total del periodo, pico y cuándo
   $('#ent-tabla').hidden=!ENT_TABLA;
   if(ENT_TABLA){const filas=todas.map(b=>{const v=serieDe(b),tot=v.reduce((a,x)=>a+x,0),mx=Math.max(0,...v),i=v.indexOf(mx);return{b,tot,mx,cuando:mx?pts[i]?.t:null}}).sort((a,b)=>b.tot-a.tot);
-    $('#ent-tabla').innerHTML=`<table class="tabla-ent" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><thead><tr><th style="text-align:left">Entidad</th><th style="text-align:right">${esc(nom)} en el periodo</th><th style="text-align:right">Máximo por ${esc(GRAN_TXT[gran])}</th><th style="text-align:left;padding-left:12px">Cuándo</th></tr></thead><tbody>${filas.map(f=>`<tr style="border-top:1px solid var(--line)"><td><span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:${colorEntidad(f.b)}"></span>${esc(f.b)}</td><td style="text-align:right">${fmt(f.tot)}</td><td style="text-align:right">${fmt(f.mx)}</td><td style="padding-left:12px">${f.cuando?esc(etiqueta(f.cuando,gran,true)):'—'}</td></tr>`).join('')}</tbody></table>`}
+    $('#ent-tabla').innerHTML=`<table class="tabla-ent" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><thead><tr><th style="text-align:left">Entidad</th><th style="text-align:right">${esc(nom)} en el periodo</th><th style="text-align:right">Máximo por ${esc(GRAN_TXT[gran])}</th><th style="text-align:left;padding-left:12px">Cuándo</th></tr></thead><tbody>${filas.map(f=>`<tr style="border-top:1px solid var(--line)"><td>${muestraEnt(f.b)}${esc(f.b)}</td><td style="text-align:right">${fmt(f.tot)}</td><td style="text-align:right">${fmt(f.mx)}</td><td style="padding-left:12px">${f.cuando?esc(etiqueta(f.cuando,gran,true)):'—'}</td></tr>`).join('')}</tbody></table>`}
   const W=900,H=230,L=36,R=118,B=24,T=12,iw=W-L-R,ih=H-B-T,n=pts.length;
   if(!n||!vis.length||!vis.some(b=>serieDe(b).some(x=>x))){$('#ent-chart').innerHTML=`<div class="empty">${vis.length?'Sin '+nom.toLowerCase()+' en este periodo':'Elige al menos una entidad en la leyenda'}</div>`;return}
   const max=Math.max(1,...vis.flatMap(serieDe)),nice=Math.ceil(max/4)*4||4;
@@ -479,7 +504,7 @@ function dibujarEnt(st){
   const nl=Math.min(8,n),paso=Math.max(1,Math.round(n/nl)),intradia=!['dia','semana'].includes(gran);let diaPrev='';
   for(let i=0;i<n;i+=paso){const t=pts[i].t,dia=t.slice(0,10),lab=intradia&&dia!==diaPrev?etiqueta(t,'dia')+' '+t.slice(11):etiqueta(t,gran);diaPrev=dia;
     g+=`<text x="${x(i)}" y="${H-7}" text-anchor="middle">${esc(lab)}</text>`}
-  vis.forEach(b=>{const v=serieDe(b);g+=`<polyline fill="none" stroke="${colorEntidad(b)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${v.map((p,i)=>x(i).toFixed(1)+','+y(p).toFixed(1)).join(' ')}"/>`});
+  vis.forEach(b=>{const v=serieDe(b);g+=`<polyline fill="none" stroke="${colorEntidad(b)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${punteada(b)?'stroke-dasharray="6 4"':''} points="${v.map((p,i)=>x(i).toFixed(1)+','+y(p).toFixed(1)).join(' ')}"/>`});
   if(vis.length<=4){ // etiquetas directas al final, separadas para que no se encimen
     const fin=vis.map(b=>({b,y:y(serieDe(b).at(-1))})).sort((a,c)=>a.y-c.y);
     for(let k=1;k<fin.length;k++)if(fin[k].y-fin[k-1].y<12)fin[k].y=fin[k-1].y+12;
@@ -491,7 +516,7 @@ function dibujarEnt(st){
   $('#ent-hit').onmousemove=e=>{const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)*W/r.width,j=Math.max(0,Math.min(n-1,Math.round((px-L)/iw*Math.max(1,n-1))));
     cruz.setAttribute('x1',x(j));cruz.setAttribute('x2',x(j));cruz.style.display='';
     const rango=['dia','semana'].includes(gran)?etiqueta(pts[j].t,gran,true):etiqueta(pts[j].t,gran,true)+' – '+pts[j].fin.slice(11);
-    tip.innerHTML=`<b>${esc(rango)}</b>`+vis.map(b=>({b,v:serieDe(b)[j]})).sort((a,c)=>c.v-a.v).map(o=>`<span style="--c:${colorEntidad(o.b)}">${esc(o.b)}: ${fmt(o.v)}</span>`).join('<br>');
+    tip.innerHTML=`<b>${esc(rango)}</b>`+vis.map(b=>({b,v:serieDe(b)[j]})).sort((a,c)=>c.v-a.v).map(o=>`<span class="sin-cuadro">${muestraEnt(o.b)}${esc(o.b)}: ${fmt(o.v)}</span>`).join('<br>');
     const box=$('#ent-chart').getBoundingClientRect();tip.style.display='block';let tx=e.clientX-box.left+12;if(tx+tip.offsetWidth>box.width)tx-=tip.offsetWidth+24;tip.style.left=tx+'px';tip.style.top='4px'};
   $('#ent-hit').onmouseleave=()=>{tip.style.display='none';cruz.style.display='none'}}
 

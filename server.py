@@ -4203,9 +4203,10 @@ def _series_entidades(por_entidad, ini, fin, gran):
     while t <= fin_c and len(cubetas) < 3000:
         cubetas.append(t)
         t += GRANOS[gran]
-    orden = [b for b in BANCOS if b in por_entidad] + [b for b in por_entidad if b not in BANCOS]
-    return {b: {"quejas": [por_entidad[b].get(c, [0, 0])[0] for c in cubetas],
-                "negativas": [por_entidad[b].get(c, [0, 0])[1] for c in cubetas]} for b in orden}
+    # todas las entidades configuradas (también las que no tienen datos en el rango), en el orden de la configuración
+    orden = list(BANCOS) + [b for b in por_entidad if b not in BANCOS]
+    return {b: {"quejas": [por_entidad.get(b, {}).get(c, [0, 0])[0] for c in cubetas],
+                "negativas": [por_entidad.get(b, {}).get(c, [0, 0])[1] for c in cubetas]} for b in orden}
 
 
 def _serie_continua(serie, ini, fin, gran):
