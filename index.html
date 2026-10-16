@@ -53,6 +53,11 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .bar .tr{height:8px;background:var(--chip);border-radius:4px;overflow:hidden}.bar .fl{height:100%;background:var(--acc);border-radius:0 4px 4px 0}
 .bar .v{text-align:right;color:var(--ink2);font-variant-numeric:tabular-nums}.bar.sel{font-weight:650}
 .item{padding:11px 2px;border-bottom:1px solid var(--line)}.item:last-child{border:0}
+.corr{font:inherit;font-size:11px;padding:1px 7px;margin-left:4px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink2);cursor:pointer}
+.corr:hover{border-color:var(--acc);color:var(--ink)}
+#corr-form{position:absolute;z-index:50;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:12px;width:min(360px,calc(100vw - 32px));font-size:13px}
+#corr-form .fila{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}#corr-form .fila>b{width:100%;font-size:12px;color:var(--muted)}
+#corr-form textarea{width:100%;font:inherit;min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);padding:6px}
 .item.nuevo{animation:fl 3s}@keyframes fl{0%{background:color-mix(in srgb,var(--acc) 18%,transparent)}100%{background:transparent}}
 .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:3px}
 .chip{background:var(--chip);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--ink2)}
@@ -513,9 +518,36 @@ function barras(el,datos,sel,onclick){const max=Math.max(1,...datos.map(d=>d[1])
 
 // ---------- lista ----------
 function hace(f){const m=(Date.now()-new Date(f))/6e4;if(m<1)return 'ahora';if(m<60)return Math.round(m)+' min';if(m<1440)return Math.round(m/60)+' h';if(m<43200)return Math.round(m/1440)+' d';return new Date(f).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'})}
+// ---------- corregir una clasificación (la IA aprende de estas correcciones) ----------
+let CATS_LISTA=null;
+async function abrirCorreccion(b){
+  if(!CATS_LISTA){try{CATS_LISTA=(await fetch('/api/ejemplos').then(r=>r.json())).categorias}catch(e){CATS_LISTA=[]}}
+  document.getElementById('corr-form')?.remove();
+  const cats=JSON.parse(b.dataset.cats||'[]'),st={s:b.dataset.s,q:b.dataset.q==='1',rel:true,atr:b.dataset.q==='1'};
+  const f=document.createElement('div');f.id='corr-form';f.setAttribute('role','dialog');f.setAttribute('aria-label','Corregir clasificación');
+  const tg=(grupo,ops,actual)=>ops.map(([v,l])=>`<button type="button" class="tg ${String(actual)===String(v)?'on':''}" data-g="${grupo}" data-v="${v}">${l}</button>`).join('');
+  f.innerHTML=`<div class="fila"><b>Sentimiento hacia la entidad</b>${tg('s',[['negativo','Negativo'],['neutro','Neutro'],['positivo','Positivo']],st.s)}</div>
+    <div class="fila"><b>¿Es una queja contra la entidad?</b>${tg('q',[[true,'Sí'],[false,'No']],st.q)}</div>
+    <div class="fila"><b>¿Trata del sistema financiero / de la entidad?</b>${tg('rel',[[true,'Sí'],[false,'No (ocultar)']],st.rel)}</div>
+    <div class="fila"><b>Categorías (máx. 3)</b>${CATS_LISTA.map(c=>`<label style="display:flex;gap:4px;align-items:center;font-size:12px"><input type="checkbox" value="${esc(c)}" ${cats.includes(c)?'checked':''}>${esc(c)}</label>`).join('')}</div>
+    <div class="fila"><b>¿Por qué? (opcional; ayuda a la IA)</b><textarea maxlength="300" placeholder="p. ej. habla de su situación personal, no de una falla de Yape"></textarea></div>
+    <div class="fila" style="justify-content:flex-end;margin:0"><span class="sub" id="corr-msg" style="margin-right:auto"></span><button type="button" id="corr-no">Cancelar</button><button type="button" class="pri" id="corr-ok">Guardar</button></div>`;
+  document.body.appendChild(f);
+  const r=b.getBoundingClientRect();f.style.top=(window.scrollY+r.bottom+6)+'px';f.style.left=Math.max(16,Math.min(window.scrollX+r.left-200,window.scrollX+document.documentElement.clientWidth-f.offsetWidth-16))+'px';
+  f.querySelectorAll('[data-g]').forEach(x=>x.onclick=()=>{const g=x.dataset.g;st[g]=g==='s'?x.dataset.v:x.dataset.v==='true';
+    if(g==='q'&&st.q){st.rel=true;if(st.s!=='negativo')st.s='negativo'}if(g==='rel'&&!st.rel)st.q=false;
+    f.querySelectorAll('[data-g]').forEach(y=>y.classList.toggle('on',String(st[y.dataset.g])===y.dataset.v))});
+  f.querySelector('#corr-no').onclick=()=>f.remove();
+  f.querySelector('#corr-ok').onclick=async()=>{
+    const elegidas=[...f.querySelectorAll('input[type=checkbox]:checked')].map(x=>x.value).slice(0,3);
+    const res=await fetch('/api/corregir',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.c,sentimiento:st.s,queja:st.q,atribuible:st.q,relevante:st.rel,categorias:elegidas,nota:f.querySelector('textarea').value})}).then(r=>r.json());
+    if(res.error){f.querySelector('#corr-msg').textContent=res.error;return}
+    f.remove();cargarItems();refrescarGraficos()}}
+document.addEventListener('click',e=>{const b=e.target.closest('.corr');if(b){e.preventDefault();abrirCorreccion(b);return}
+  const f=document.getElementById('corr-form');if(f&&!f.contains(e.target))f.remove()});
 function itemHTML(r,nuevo){
   const q=F.q.trim();let t=esc(r.texto);if(q)q.split(/\s+/).forEach(w=>{t=t.replace(new RegExp('('+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>')});
-  return `<div class="item ${nuevo?'nuevo':''}"><div class="meta">${r.tipo==='post_oficial'?'':`<span class="sent s-${r.sentimiento}">${esc(r.sentimiento)}</span>`}${r.por_ia?`<span class="chip" title="Clasificado por IA: ${esc(r.ia_motivo||'')}" style="cursor:help">IA ⓘ</span>`:''}${r.es_queja?`<span class="sev ${r.severidad>=3?'sev3':''}">Queja ${['','leve','media','grave'][r.severidad]}</span>`:''}${r.ia_atribuible===0?'<span class="chip" title="El problema lo causan terceros o no depende de la entidad (p. ej. estafas con comprobantes falsos)">no atribuible a la entidad</span>':''}<b style="color:var(--ink2)">${esc(r.fuente)}</b>${r.via?`<span class="chip">encontrado vía ${esc(r.via)}</span>`:''}${r.tipo==='comentario'?`<span class="chip">comentario a ${esc(r.cuenta||'cuenta oficial')}</span>`:r.tipo==='noticia'?'<span class="chip">noticia</span>':r.tipo==='tendencia'?'<span class="chip">tendencia de búsqueda</span>':r.tipo==='oficial'?`<span class="chip">respuesta oficial de ${esc(r.cuenta)}</span>`:r.tipo==='post_oficial'?`<span class="chip" style="font-weight:600">publicación oficial de ${esc(r.cuenta)}</span>${r.metricas?`<span class="chip">💬 ${fmt(r.metricas.comentarios||0)} · 👍 ${fmt(r.metricas.reacciones||0)}${r.metricas.compartidos?` · ↗ ${fmt(r.metricas.compartidos)}`:''}</span>`:''}`:''}<span>${esc(r.autor)}</span><span>· ${esc(new Date(r.fecha).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))} (hace ${hace(r.fecha)})</span>${r.bancos.map(b=>`<span class="chip" style="font-weight:600">${esc(b)}</span>`).join('')}${r.categorias.map(c=>`<span class="chip" style="background:transparent;border:1px solid var(--line)">${esc(c)}</span>`).join('')}</div><div class="txt">${t} ${segura(r.url)?`<a href="${esc(segura(r.url))}" target="_blank" rel="noopener noreferrer">ver ↗</a>`:''}</div></div>`}
+  return `<div class="item ${nuevo?'nuevo':''}" data-id="${esc(r.id)}"><div class="meta">${r.corregido?'<span class="chip" title="Clasificación corregida por el analista; la IA la usa como ejemplo" style="border:1px solid var(--acc)">✓ corregido</span>':''}${r.tipo==='post_oficial'?'':`<span class="sent s-${r.sentimiento}">${esc(r.sentimiento)}</span>`}${r.por_ia?`<span class="chip" title="Clasificado por IA: ${esc(r.ia_motivo||'')}" style="cursor:help">IA ⓘ</span>`:''}${r.es_queja?`<span class="sev ${r.severidad>=3?'sev3':''}">Queja ${['','leve','media','grave'][r.severidad]}</span>`:''}${r.ia_atribuible===0?'<span class="chip" title="El problema lo causan terceros o no depende de la entidad (p. ej. estafas con comprobantes falsos)">no atribuible a la entidad</span>':''}<b style="color:var(--ink2)">${esc(r.fuente)}</b>${r.via?`<span class="chip">encontrado vía ${esc(r.via)}</span>`:''}${r.tipo==='comentario'?`<span class="chip">comentario a ${esc(r.cuenta||'cuenta oficial')}</span>`:r.tipo==='noticia'?'<span class="chip">noticia</span>':r.tipo==='tendencia'?'<span class="chip">tendencia de búsqueda</span>':r.tipo==='oficial'?`<span class="chip">respuesta oficial de ${esc(r.cuenta)}</span>`:r.tipo==='post_oficial'?`<span class="chip" style="font-weight:600">publicación oficial de ${esc(r.cuenta)}</span>${r.metricas?`<span class="chip">💬 ${fmt(r.metricas.comentarios||0)} · 👍 ${fmt(r.metricas.reacciones||0)}${r.metricas.compartidos?` · ↗ ${fmt(r.metricas.compartidos)}`:''}</span>`:''}`:''}<span>${esc(r.autor)}</span><span>· ${esc(new Date(r.fecha).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))} (hace ${hace(r.fecha)})</span>${r.bancos.map(b=>`<span class="chip" style="font-weight:600">${esc(b)}</span>`).join('')}${r.categorias.map(c=>`<span class="chip" style="background:transparent;border:1px solid var(--line)">${esc(c)}</span>`).join('')}</div><div class="txt">${t} ${segura(r.url)?`<a href="${esc(segura(r.url))}" target="_blank" rel="noopener noreferrer">ver ↗</a>`:''}${YO?.rol==='admin'&&r.tipo!=='post_oficial'&&r.tipo!=='oficial'?` <button class="corr" data-c="${esc(r.id)}" data-s="${esc(r.sentimiento)}" data-q="${r.es_queja?1:0}" data-cats="${esc(JSON.stringify(r.categorias||[]))}" title="Corregir la clasificación (la IA aprende de tus correcciones)">✎ Corregir</button>`:''}</div></div>`}
 
 let hayMas=false,cargando=false;
 async function cargarItems(append){
@@ -689,7 +721,7 @@ $('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim()
 // ---------- Panel de configuración ----------
 let CFG=null,cfgTab='general';
 const lista=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
-const TABS_ADMIN=[['general','General'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
+const TABS_ADMIN=[['general','General'],['ejemplos','Ejemplos de la IA'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
 const tabsVisibles=()=>YO?.rol==='admin'?TABS_ADMIN:[['cuenta','Mi cuenta']];
 async function abrirConfig(){
   if(YO?.rol!=='admin'){CFG={};cfgTab='cuenta';$('#cfg-msg').textContent='';$('#cfg').classList.add('on');$('#cfg-guardar').style.display='none';pintarConfig();return}
@@ -800,6 +832,22 @@ function pintarConfig(){
     CFG.brightdata=CFG.brightdata||{};c.querySelectorAll('[data-bd]').forEach(x=>x.oninput=()=>CFG.brightdata[x.dataset.bd]=x.value);
     CFG.creatorcrawl=CFG.creatorcrawl||{};c.querySelectorAll('[data-c]').forEach(x=>x.oninput=()=>CFG.creatorcrawl[x.dataset.c]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value});}
+  if(cfgTab==='ejemplos'){
+    c.innerHTML='<p class="ayuda">Cargando…</p>';
+    fetch('/api/ejemplos').then(r=>r.json()).then(d=>{
+      const ej=d.ejemplos||[];
+      c.innerHTML=`<p class="ayuda">Cada vez que corriges un mensaje con <b>✎ Corregir</b>, queda como ejemplo. Al clasificar, la IA recibe los ejemplos más parecidos y sigue tu criterio. En el monitor local se guardan también en <code>ejemplos.json</code>: al subirlo a GitHub, Railway aprende lo mismo.</p>
+      <div class="frow" style="gap:8px;margin-bottom:10px"><button id="ej-exp">Exportar (.json)</button><label class="tg" style="cursor:pointer">Importar…<input type="file" id="ej-imp" accept="application/json,.json" hidden></label><span class="sub" id="ej-msg">${fmt(ej.length)} ejemplos</span></div>
+      ${ej.length?ej.map(e=>`<div class="bloque" style="padding:8px 10px"><div style="font-size:13px">${esc(e.texto.slice(0,280))}${e.texto.length>280?'…':''}</div>
+        <div class="sub" style="margin-top:4px"><b>${esc(e.sentimiento)}</b> · ${e.queja?'queja':'no es queja'}${e.relevante?'':' · no trata de la entidad'}${(e.categorias||[]).length?' · '+e.categorias.map(esc).join(', '):''}${e.nota?' · <i>'+esc(e.nota)+'</i>':''} · ${esc((e.entidades||[]).join(', '))}
+        <button class="corr" data-borrar="${esc(e.id)}" style="margin-left:6px">Quitar</button></div></div>`).join(''):'<div class="sub">Aún no hay ejemplos: usa ✎ Corregir en la lista de menciones.</div>'}`;
+      $('#ej-exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(ej,null,1)],{type:'application/json'}));a.download='ejemplos.json';a.click();URL.revokeObjectURL(a.href)};
+      $('#ej-imp').onchange=async e=>{const file=e.target.files[0];if(!file)return;let lista;try{lista=JSON.parse(await file.text())}catch(x){$('#ej-msg').textContent='Archivo no válido';return}
+        const r=await fetch('/api/ejemplos/importar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({ejemplos:Array.isArray(lista)?lista:lista.ejemplos||[]})}).then(r=>r.json());
+        $('#ej-msg').textContent=r.error||`${fmt(r.importados)} importados`;setTimeout(pintarConfig,800)};
+      c.querySelectorAll('[data-borrar]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Quitar este ejemplo? El mensaje volverá a clasificarse con la IA.'))return;
+        await fetch('/api/corregir/borrar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.borrar})});pintarConfig()})});
+    return}
   if(cfgTab==='accesos'){
     c.innerHTML=`<p class="ayuda"><b>Administrador</b>: todo (configuración, pausas, archivo, accesos). <b>Lector</b>: ver el panel, filtrar y descargar. Las contraseñas deben tener al menos 10 caracteres con letras y números. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
     <div class="bloque"><b>Nueva cuenta</b><div class="rej" style="margin-top:8px">
