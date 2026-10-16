@@ -3800,6 +3800,7 @@ def _estadisticas(qs):
     vacio = lambda: {"menciones": 0, "quejas": 0, "graves": 0, "positivo": 0, "neutro": 0, "negativo": 0}
     por_banco = {b: vacio() for b in BANCOS}
     por_cat, por_fuente, serie, serie_ref = {}, {}, {}, {}
+    por_entidad = {}  # {entidad: {cubeta: [quejas, negativas]}} para comparar entidades en el tiempo
     calor = [[0] * 24 for _ in range(7)]  # quejas por día de la semana x hora (Lima)
     fechas = [datetime.fromisoformat(r["fecha"]) for r in rows]
     # Rango efectivo del gráfico: lo pedido, recortado a los datos existentes y a "ahora"
@@ -3832,6 +3833,11 @@ def _estadisticas(qs):
         serie.setdefault(t, {"positivo": 0, "neutro": 0, "negativo": 0, "quejas": 0})
         serie[t][s] += 1
         serie[t]["quejas"] += r["es_queja"]
+        for b in bancos:
+            if not sel_bancos or b in sel_bancos:
+                c = por_entidad.setdefault(b, {}).setdefault(t, [0, 0])
+                c[0] += r["es_queja"]
+                c[1] += s == "negativo"
         if _origen(r["id"], r["fuente"]) in disp:  # base comparable para promedio y umbral
             serie_ref.setdefault(t, {"positivo": 0, "neutro": 0, "negativo": 0, "quejas": 0})
             serie_ref[t][s] += 1
@@ -3856,8 +3862,20 @@ def _estadisticas(qs):
              for b, n in ultima.items() if n >= 5 and n >= 3 * max(base.get(b, 0) / 48, 1)]
     return {**tot, "por_banco": por_banco, "por_categoria": por_cat, "por_fuente": por_fuente,
             "serie": _serie_continua(serie, ini, fin, gran), "granularidad": gran,
+            "entidades_serie": _series_entidades(por_entidad, ini, fin, gran),
             "serie_ref": _serie_continua(serie_ref, ini, fin, gran) if fuera else None, "fuentes_fuera": fuera,
             "calor": calor, "desde": desde, "hasta": hasta, "picos": picos}
+
+
+def _series_entidades(por_entidad, ini, fin, gran):
+    """Quejas y negativas por entidad, alineadas con las mismas cubetas que la serie principal."""
+    cubetas, t, fin_c = [], _cubeta(ini, gran), _cubeta(fin, gran)
+    while t <= fin_c and len(cubetas) < 3000:
+        cubetas.append(t)
+        t += GRANOS[gran]
+    orden = [b for b in BANCOS if b in por_entidad] + [b for b in por_entidad if b not in BANCOS]
+    return {b: {"quejas": [por_entidad[b].get(c, [0, 0])[0] for c in cubetas],
+                "negativas": [por_entidad[b].get(c, [0, 0])[1] for c in cubetas]} for b in orden}
 
 
 def _serie_continua(serie, ini, fin, gran):

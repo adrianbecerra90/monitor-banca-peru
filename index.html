@@ -6,14 +6,14 @@
 <title>Monitor Banca Perú</title>
 <style>
 :root{
-  --c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;
+  --c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;--c7:#6250d6;--c8:#e34948;
   --bg:#f4f4f2;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#7a7974;--line:#e3e2de;--chip:#efeeea;
   --acc:#2a78d6;--pos:#2a78d6;--neu:#a8a7a1;--neg:#d6453a;--warn:#fab219;--good:#0ca30c;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#121211;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#8f8e88;--line:#2e2e2b;--chip:#262624;
-  --acc:#3987e5;--pos:#3987e5;--neu:#9a9993;--neg:#e5584c;--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;color-scheme:dark}}
-:root[data-theme="dark"]{--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--bg:#121211;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#8f8e88;--line:#2e2e2b;--chip:#262624;--acc:#3987e5;--pos:#3987e5;--neu:#9a9993;--neg:#e5584c;color-scheme:dark}
+  --acc:#3987e5;--pos:#3987e5;--neu:#9a9993;--neg:#e5584c;--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;--c7:#9085e9;--c8:#e66767;color-scheme:dark}}
+:root[data-theme="dark"]{--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;--c7:#9085e9;--c8:#e66767;--bg:#121211;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#8f8e88;--line:#2e2e2b;--chip:#262624;--acc:#3987e5;--pos:#3987e5;--neu:#9a9993;--neg:#e5584c;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
@@ -171,6 +171,19 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div class="legend"><span id="ley-serie" style="display:contents"></span><i class="lin">Promedio</i><i class="lin umb">Umbral de alerta (prom. + 2σ)</i><i class="noche">Noche (22:00–6:00)</i><i class="mk">Por encima del umbral</i></div>
         <div id="chart"><div class="tip" id="tip"></div></div>
         <div id="serie-nota"></div><div class="hint">Clic en una barra para ver ese intervalo en detalle.</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <h2 id="t-ent">Quejas por entidad</h2>
+          <span class="frow" style="gap:8px">
+            <label class="sub" style="display:flex;gap:6px;align-items:center">Medir
+              <select id="ent-medida" aria-label="Qué comparar entre entidades"><option value="quejas">Quejas</option><option value="negativas">Menciones negativas</option></select></label>
+            <button class="tg" id="ent-tabla-btn" aria-pressed="false">Ver tabla</button></span>
+        </div>
+        <div class="legend" id="ent-leyenda" role="group" aria-label="Entidades: clic para mostrar u ocultar"></div>
+        <div id="ent-chart" style="position:relative"></div>
+        <div id="ent-tabla" hidden></div>
+        <div class="hint">Clic en una entidad de la leyenda para mostrarla u ocultarla y comparar solo las que elijas.</div>
       </div>
       <div class="card">
         <h2>Nube de palabras <span class="sub" id="nb-info" style="text-transform:none;letter-spacing:0"></span></h2>
@@ -411,6 +424,54 @@ function serie(st){
       zoomPila.push({periodo:F.periodo,desde:F.desde,hasta:F.hasta,gran:F.gran});
       F.periodo='custom';F.desde=v.t;F.hasta=v.fin;F.gran='auto';tip.style.display='none';pintarFiltros();recargar()}})}
 
+// ---------- quejas por entidad en el tiempo (líneas, una escala; color fijo por entidad) ----------
+const ENT_COL=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--c6)','var(--c7)','var(--c8)'];
+let ENT_MED='quejas',ENT_OCULTAS=[],ENT_TABLA=false;
+try{const m=localStorage.getItem('monitor.ent.medida');if(m==='negativas')ENT_MED=m;ENT_OCULTAS=JSON.parse(localStorage.getItem('monitor.ent.ocultas')||'[]')}catch(e){}
+const colorEntidad=b=>{const i=(ESTADO?.bancos||[]).indexOf(b);return i>=0&&i<8?ENT_COL[i]:'var(--muted)'};
+function entidadesTiempo(st){
+  const gran=st.granularidad,pts=st.serie,ES=st.entidades_serie||{},nom=ENT_MED==='quejas'?'Quejas':'Menciones negativas';
+  $('#t-ent').textContent=`${nom} por entidad · cada ${GRAN_TXT[gran]} · hora de Lima`;
+  $('#ent-medida').value=ENT_MED;
+  $('#ent-medida').onchange=e=>{ENT_MED=e.target.value;try{localStorage.setItem('monitor.ent.medida',ENT_MED)}catch(x){}entidadesTiempo(st)};
+  $('#ent-tabla-btn').onclick=()=>{ENT_TABLA=!ENT_TABLA;entidadesTiempo(st)};
+  $('#ent-tabla-btn').classList.toggle('on',ENT_TABLA);$('#ent-tabla-btn').setAttribute('aria-pressed',ENT_TABLA);
+  const todas=Object.keys(ES),vis=todas.filter(b=>!ENT_OCULTAS.includes(b));
+  $('#ent-leyenda').innerHTML=todas.map(b=>`<button class="tg ${vis.includes(b)?'on':''}" data-b="${esc(b)}" aria-pressed="${vis.includes(b)}"><span class="sw" style="background:${colorEntidad(b)}"></span>${esc(b)}</button>`).join('')+
+    (todas.length>1?`<button class="tg" id="ent-todas">${vis.length===todas.length?'Ocultar todas':'Mostrar todas'}</button>`:'');
+  const guardar=()=>{try{localStorage.setItem('monitor.ent.ocultas',JSON.stringify(ENT_OCULTAS))}catch(x){}entidadesTiempo(st)};
+  $('#ent-leyenda').querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const v=b.dataset.b;ENT_OCULTAS=ENT_OCULTAS.includes(v)?ENT_OCULTAS.filter(x=>x!==v):[...ENT_OCULTAS,v];guardar()});
+  if($('#ent-todas'))$('#ent-todas').onclick=()=>{ENT_OCULTAS=vis.length===todas.length?[...todas]:[];guardar()};
+  const serieDe=b=>ES[b][ENT_MED]||[];
+  // tabla (alternativa accesible): total del periodo, pico y cuándo
+  $('#ent-tabla').hidden=!ENT_TABLA;
+  if(ENT_TABLA){const filas=todas.map(b=>{const v=serieDe(b),tot=v.reduce((a,x)=>a+x,0),mx=Math.max(0,...v),i=v.indexOf(mx);return{b,tot,mx,cuando:mx?pts[i]?.t:null}}).sort((a,b)=>b.tot-a.tot);
+    $('#ent-tabla').innerHTML=`<table class="tabla-ent" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><thead><tr><th style="text-align:left">Entidad</th><th style="text-align:right">${esc(nom)} en el periodo</th><th style="text-align:right">Máximo por ${esc(GRAN_TXT[gran])}</th><th style="text-align:left;padding-left:12px">Cuándo</th></tr></thead><tbody>${filas.map(f=>`<tr style="border-top:1px solid var(--line)"><td><span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:${colorEntidad(f.b)}"></span>${esc(f.b)}</td><td style="text-align:right">${fmt(f.tot)}</td><td style="text-align:right">${fmt(f.mx)}</td><td style="padding-left:12px">${f.cuando?esc(etiqueta(f.cuando,gran,true)):'—'}</td></tr>`).join('')}</tbody></table>`}
+  const W=900,H=230,L=36,R=118,B=24,T=12,iw=W-L-R,ih=H-B-T,n=pts.length;
+  if(!n||!vis.length||!vis.some(b=>serieDe(b).some(x=>x))){$('#ent-chart').innerHTML=`<div class="empty">${vis.length?'Sin '+nom.toLowerCase()+' en este periodo':'Elige al menos una entidad en la leyenda'}</div>`;return}
+  const max=Math.max(1,...vis.flatMap(serieDe)),nice=Math.ceil(max/4)*4||4;
+  const x=i=>L+(n<2?iw/2:i*iw/(n-1)),y=v=>T+ih-v/nice*ih;
+  let g='';
+  for(let k=0;k<=4;k++){const yy=T+ih-ih*k/4;g+=`<line x1="${L}" x2="${L+iw}" y1="${yy}" y2="${yy}" stroke="var(--line)"/><text x="${L-6}" y="${yy+3}" text-anchor="end">${fmt(nice*k/4)}</text>`}
+  const nl=Math.min(8,n),paso=Math.max(1,Math.round(n/nl)),intradia=!['dia','semana'].includes(gran);let diaPrev='';
+  for(let i=0;i<n;i+=paso){const t=pts[i].t,dia=t.slice(0,10),lab=intradia&&dia!==diaPrev?etiqueta(t,'dia')+' '+t.slice(11):etiqueta(t,gran);diaPrev=dia;
+    g+=`<text x="${x(i)}" y="${H-7}" text-anchor="middle">${esc(lab)}</text>`}
+  vis.forEach(b=>{const v=serieDe(b);g+=`<polyline fill="none" stroke="${colorEntidad(b)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${v.map((p,i)=>x(i).toFixed(1)+','+y(p).toFixed(1)).join(' ')}"/>`});
+  if(vis.length<=4){ // etiquetas directas al final, separadas para que no se encimen
+    const fin=vis.map(b=>({b,y:y(serieDe(b).at(-1))})).sort((a,c)=>a.y-c.y);
+    for(let k=1;k<fin.length;k++)if(fin[k].y-fin[k-1].y<12)fin[k].y=fin[k-1].y+12;
+    const exceso=fin.length?fin.at(-1).y-(T+ih-4):0;if(exceso>0)fin.forEach(f=>f.y-=exceso); // que no bajen del eje
+    fin.forEach(f=>g+=`<text x="${L+iw+6}" y="${f.y+3}" style="fill:var(--ink2)">${esc(f.b)}</text>`)}
+  g+=`<line id="ent-cruz" x1="0" x2="0" y1="${T}" y2="${T+ih}" stroke="var(--ink2)" stroke-dasharray="3 3" style="display:none"/><rect id="ent-hit" x="${L}" y="${T}" width="${iw}" height="${ih}" fill="transparent"/>`;
+  $('#ent-chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(nom)} por entidad en el tiempo">${g}</svg><div class="tip" id="ent-tip"></div>`;
+  const svg=$('#ent-chart svg'),tip=$('#ent-tip'),cruz=$('#ent-cruz');
+  $('#ent-hit').onmousemove=e=>{const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)*W/r.width,j=Math.max(0,Math.min(n-1,Math.round((px-L)/iw*Math.max(1,n-1))));
+    cruz.setAttribute('x1',x(j));cruz.setAttribute('x2',x(j));cruz.style.display='';
+    const rango=['dia','semana'].includes(gran)?etiqueta(pts[j].t,gran,true):etiqueta(pts[j].t,gran,true)+' – '+pts[j].fin.slice(11);
+    tip.innerHTML=`<b>${esc(rango)}</b>`+vis.map(b=>({b,v:serieDe(b)[j]})).sort((a,c)=>c.v-a.v).map(o=>`<span style="--c:${colorEntidad(o.b)}">${esc(o.b)}: ${fmt(o.v)}</span>`).join('<br>');
+    const box=$('#ent-chart').getBoundingClientRect();tip.style.display='block';let tx=e.clientX-box.left+12;if(tx+tip.offsetWidth>box.width)tx-=tip.offsetWidth+24;tip.style.left=tx+'px';tip.style.top='4px'};
+  $('#ent-hit').onmouseleave=()=>{tip.style.display='none';cruz.style.display='none'}}
+
 function calor(st){
   const m=st.calor,max=Math.max(1,...m.flat()),orden=[0,1,2,3,4,5,6],nom=['lun','mar','mié','jue','vie','sáb','dom'];
   if(!m.flat().some(Boolean)){$('#calor').innerHTML='<div class="sub">Sin menciones negativas en este periodo</div>';return}
@@ -471,7 +532,7 @@ async function cargarStats(){
   else $('#k-net-spark').innerHTML='';
   $('#k-quejas').textContent=fmt(st.quejas);$('#k-graves').textContent=fmt(st.graves);
   $('#picos').innerHTML=st.picos.filter(p=>!alertaCerrada('pico:'+p.banco,p.ultima_hora,3)).map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en la última hora (promedio ${p.promedio}/h). Posible incidente o caída.<button class="cerrar" data-k="${esc('pico:'+p.banco)}" data-n="${p.ultima_hora}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
-  serie(st);calor(st);entidades(st);
+  serie(st);entidadesTiempo(st);calor(st);entidades(st);
   barras($('#cats'),Object.entries(st.por_categoria).sort((a,b)=>b[1]-a[1]),F.categoria,n=>{F.categoria=F.categoria===n?'':n;pintarFiltros();recargar()});
   barras($('#redes'),Object.entries(st.por_fuente).sort((a,b)=>b[1]-a[1]),F.fuente.length===1?F.fuente[0]:'',n=>{F.fuente=F.fuente.length===1&&F.fuente[0]===n?[]:[n];pintarFiltros();recargar()});
   $('#csv').href='/api/export.csv?'+params()}
