@@ -1,5 +1,19 @@
 [
  {
+  "id": "x:2111217749955584323",
+  "texto": "En mi caso tengo el Yape asociada a una cuenta digitalcon monto bajo para mis gustos. Y la app del banco en un celular viejo en casa con mis cuentas de ahorro, sueldo, etc. Si me roban y me piden abrir mi app solo tendré Yape con 2 Luquitas y no verán mis otras cuentas",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "consejo personal de seguridad (tener poco saldo en Yape por si roban el celular); no es queja ni crítica a Yape",
+  "fecha": "2026-10-16T22:38:28.140587+00:00"
+ },
+ {
   "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzQwMzk3MjAxMzk0OTI2ODg=",
   "texto": "Cuando pago el dinero no le llega a la otra persona, pero sí me descuentan y me miran como estafador por culpa de su aplicativo. Y tambien al contrario es peor cuando me pagan se duplica el pago y lo más lógico es devolverles y así lo hago siempre, pero al cabo de más de una semana scotiabank devuelve el dinero que se duplico. Dándome perdidas por que ocurre con varios clientes y no se a quien hizo la devolución. Ya que vendo productos digitales. Y ni hablar de las recargas a celular, ya no se ni cuanto me debe scotiabank  por las recargar fallidas ya que se quedan con el saldo y no le llega a ala empresa de telefonía y por ende no me sueltan los datos.",
   "entidades": [
