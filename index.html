@@ -182,7 +182,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
           <h2 id="t-ent">Quejas por entidad</h2>
           <span class="frow" style="gap:8px">
             <label class="sub" style="display:flex;gap:6px;align-items:center">Rango
-              <select id="ent-rango" aria-label="Rango de tiempo del gráfico"><option value="panel">Como el panel</option><option value="6">Últimas 6 h</option><option value="24">Últimas 24 h</option><option value="72">Últimos 3 días</option><option value="168">Últimos 7 días</option><option value="720">Últimos 30 días</option><option value="2160">Últimos 90 días</option></select></label>
+              <select id="ent-rango" aria-label="Rango de tiempo del gráfico"><option value="panel">Como el panel</option><option value="1">Última hora</option><option value="2">Últimas 2 h</option><option value="3">Últimas 3 h</option><option value="4">Últimas 4 h</option><option value="5">Últimas 5 h</option><option value="6">Últimas 6 h</option><option value="24">Últimas 24 h</option><option value="72">Últimos 3 días</option><option value="168">Últimos 7 días</option><option value="720">Últimos 30 días</option><option value="2160">Últimos 90 días</option></select></label>
             <label class="sub" style="display:flex;gap:6px;align-items:center">Detalle
               <select id="ent-gran" aria-label="Detalle del gráfico"><option value="auto">Automático</option><option value="15min">Cada 15 min</option><option value="hora">Por hora</option><option value="dia">Por día</option><option value="semana">Por semana</option></select></label>
             <label class="sub" style="display:flex;gap:6px;align-items:center">Medir
@@ -438,7 +438,7 @@ const ENT_COL=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(
 let ENT_MED='quejas',ENT_OCULTAS=[],ENT_TABLA=false,ENT_RANGO='panel',ENT_GRAN='auto',ENT_ST=null;
 try{const m=localStorage.getItem('monitor.ent.medida');if(m==='negativas')ENT_MED=m;ENT_OCULTAS=JSON.parse(localStorage.getItem('monitor.ent.ocultas')||'[]');
   const r=localStorage.getItem('monitor.ent.rango'),g=localStorage.getItem('monitor.ent.gran');
-  if(['panel','6','24','72','168','720','2160'].includes(r))ENT_RANGO=r;if(['auto','15min','hora','dia','semana'].includes(g))ENT_GRAN=g}catch(e){}
+  if(['panel','1','2','3','4','5','6','24','72','168','720','2160'].includes(r))ENT_RANGO=r;if(['auto','15min','hora','dia','semana'].includes(g))ENT_GRAN=g}catch(e){}
 // Rango y detalle propios del gráfico: si difieren del panel, pide sus propios datos (con los demás filtros iguales)
 async function entidadesTiempo(stPanel){
   $('#ent-rango').value=ENT_RANGO;$('#ent-gran').value=ENT_GRAN;
@@ -453,7 +453,7 @@ async function entidadesTiempo(stPanel){
 const colorEntidad=b=>{const i=(ESTADO?.bancos||[]).indexOf(b);return i>=0&&i<8?ENT_COL[i]:'var(--muted)'};
 function dibujarEnt(st){
   const gran=st.granularidad,pts=st.serie,ES=st.entidades_serie||{},nom=ENT_MED==='quejas'?'Quejas':'Menciones negativas';
-  const rangoTxt={'6':'últimas 6 h','24':'últimas 24 h','72':'últimos 3 días','168':'últimos 7 días','720':'últimos 30 días','2160':'últimos 90 días'}[ENT_RANGO];
+  const rangoTxt={'1':'última hora','2':'últimas 2 h','3':'últimas 3 h','4':'últimas 4 h','5':'últimas 5 h','6':'últimas 6 h','24':'últimas 24 h','72':'últimos 3 días','168':'últimos 7 días','720':'últimos 30 días','2160':'últimos 90 días'}[ENT_RANGO];
   $('#t-ent').textContent=`${nom} por entidad · ${rangoTxt?rangoTxt+' · ':''}cada ${GRAN_TXT[gran]} · hora de Lima`;
   $('#ent-medida').value=ENT_MED;
   $('#ent-medida').onchange=e=>{ENT_MED=e.target.value;try{localStorage.setItem('monitor.ent.medida',ENT_MED)}catch(x){}dibujarEnt(st)};
