@@ -125,8 +125,24 @@ CATEGORIAS = {
                              r"no (puedo|pude|he podido|me deja|me permite) (ingresar|entrar|acceder|operar|yapear|plinear|transferir|pagar|abrir|usar)",
                              r"problemas? (de acceso|para (ingresar|entrar|acceder|plinear|yapear|pagar)|con (el|la|su) (app|aplicativo|aplicacion|plataforma|web|banca))",
                              r"\b(caida|se cayo el sistema|sin sistema)\b"],
+    # La operación se hizo mal (no es caída ni fraude): cobros dobles, débitos sin entrega, transferencias que no llegan
+    "Errores operativos": [r"(descontaron|cobraron|debitaron|cargaron|cobro|desconto|debito)\w* (dos|2|tres|3) veces",
+                           r"\bdobles? (cobros?|cargos?|debitos?|descuentos?)\b|\bcobro duplicado",
+                           r"(desconto|descontaron|debito|debitaron|cobro|cobraron|salio de mi cuenta).{0,60}"
+                           r"(no (llego|llega|recibio|me dio|me entrego|salio|dispenso)|pero no|nunca llego)",
+                           r"(transferencia|plin|yape|plineo|yapeo|deposito|pago)s?.{0,30}no (me )?(llego|llega|aparece|se refleja|figura)",
+                           r"(cajero|atm|agente).{0,50}(se quedo con|no (me )?(dio|entrego|boto|dispenso)|se trago)",
+                           r"no (me )?(dio|entrego|boto|dispenso) (el |mi )?(dinero|efectivo|plata)",
+                           r"(saldo|monto) (incorrecto|equivocado|en cero|negativo)|aparece (en )?(cero|0)",
+                           r"operacion (anulada|cancelada|rechazada).{0,50}(descont|cobr|debit)",
+                           r"error (en|al|de) (la )?(transaccion|operacion|transferencia|pago|cobro|deposito)"],
+    # Incidentes de seguridad de la propia entidad: hackeos, filtraciones, brechas, ataques
+    "Ciberseguridad / hackeos": [r"\bhackea\w*|\bhackeo\w*|\bhackers?\b|\bhackearon",
+                                 r"filtracion|filtraron|se filtr\w*|datos (filtrados|expuestos)|data (expuesta|filtrada)",
+                                 r"brecha (de seguridad|de datos)|ciberataque|ciber ?seguridad|ransomware",
+                                 r"incidente de seguridad|vulnerad\w*|acceso no autorizado|sistema de seguridad (ha sido )?vulnerado"],
     "Fraude / seguridad": [r"\bestafa", r"\bfraude", r"phishing", r"\bclonaron|\bclonacion|\bclonad",
-                           r"\bsuplant", r"\bhacke", r"(consumos?|operacion(es)?|cargos?|compras?) no reconocid",
+                           r"\bsuplant", r"(consumos?|operacion(es)?|cargos?|compras?) no reconocid",
                            r"me (robaron|sacaron|vaciaron)", r"vaciaron mi cuenta", r"no reconozco"],
     "Cobros / comisiones": [r"\bcomision", r"cobro (indebido|doble|injusto)", r"me (cobraron|descontaron|debitaron)",
                             r"\bcobran\b", r"(cobro|cuota|comision|cargo) (de|por) mantenimiento", r"\bmembresia", r"desgravamen",
@@ -351,6 +367,8 @@ def clasificar(texto, tipo=""):
     if tipo == "noticia":
         # Los titulares usan muletillas ("¿hasta cuándo…?", "otra vez") sin carga negativa: solo cuenta la queja
         neg = neg if es_queja else 0
+    if not es_queja and set(cats) & {"Errores operativos", "Ciberseguridad / hackeos"}:
+        es_queja = True  # un error en la operación o un incidente de seguridad de la entidad ya es un reclamo
     if fuera_del_servicio(cats) or entidad_como_alternativa(texto):
         es_queja, neg = False, 0  # solo marketing/diseño, o la entidad es la alternativa: no es negativo ni queja
     if es_queja or neg > pos:
@@ -2674,6 +2692,15 @@ Para cada elemento devuelve:
 - "severidad": 0 si no es queja; 1 leve; 2 media; 3 grave (fraude, robo, dinero perdido o retenido, cuenta bloqueada,
   caída masiva, no poder retirar o pagar).
 - "categorias": lista con 0 a 3 de estas, exactamente escritas: {categorias}
+  Las cuatro categorías clave del monitor (pueden ir juntas si el texto reporta varias cosas):
+  · "App / canales caídos": disponibilidad (ver abajo).
+  · "Errores operativos": la operación se hizo mal aunque el canal funcione: cobros o débitos dobles, dinero
+    descontado que no llega al destino o que el cajero/agente no entregó, saldos equivocados, operaciones anuladas
+    que igual se cobraron, depósitos no abonados.
+  · "Fraude / seguridad": fraude contra el cliente: consumos o cargos no reconocidos, robo de dinero, cuentas
+    vaciadas, clonación, suplantación de identidad, préstamos a nombre de otro.
+  · "Ciberseguridad / hackeos": incidentes de seguridad de la propia entidad: hackeos, filtraciones o exposición de
+    datos de clientes, brechas, ataques, avisos de "incidente" que la entidad envía a sus clientes.
   "App / canales caídos" es SOLO disponibilidad: la app, web, cajeros o agentes no funcionan, no cargan, dan error,
   no dejan operar o están lentos al punto de impedir la operación. Lo que se queja de cómo es la app (sonidos,
   notificaciones, diseño, colores, menús, cambios de versión, publicidad, pasos de más, usabilidad) va en

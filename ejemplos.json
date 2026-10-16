@@ -1,5 +1,940 @@
 [
  {
+  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzQwMzk3MjAxMzk0OTI2ODg=",
+  "texto": "Cuando pago el dinero no le llega a la otra persona, pero sí me descuentan y me miran como estafador por culpa de su aplicativo. Y tambien al contrario es peor cuando me pagan se duplica el pago y lo más lógico es devolverles y así lo hago siempre, pero al cabo de más de una semana scotiabank devuelve el dinero que se duplico. Dándome perdidas por que ocurre con varios clientes y no se a quien hizo la devolución. Ya que vendo productos digitales. Y ni hablar de las recargas a celular, ya no se ni cuanto me debe scotiabank  por las recargar fallidas ya que se quedan con el saldo y no le llega a ala empresa de telefonía y por ende no me sueltan los datos.",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.515144+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzEzMDI5NjI5MDUwNzQ3MDA=",
+  "texto": "Hasta cuando  piensas devolverme mi dinero,  encima que no llega al destino retienen dinero ajeno",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.496183+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzE3NjY0MjUwNDc4OTAxNjE=",
+  "texto": "Acabo de llamar nuevamente a la banca por mi dinero desde el 19 que me salen 24 horas para devolver.  Que 48 .. que ahora 72 horas.  Todo el tiempo cuando el dinero esta en tránsito tienes esa costumbre  de apoderarse se dinero ajeno. Si no llaman son incapaces de devolver a las cuentas. \n\nNecesito mi dinero ... de caso contrario haré una denuncia",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.477091+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzE2OTAyMTgwODg3MTA1Nzc=",
+  "texto": "Indecopi por favor vean el caso de algunos clientes, llevo 2 días que me jalaron dinero por 700 soles en total de compras que ya estaban debitadas y ahora han vuelvo a cobrarse, eso no es lo peor… llamas y te dicen que no saben nada del tema, acabo de volver de Scotiabank san Isidro y la de plataforma tampoco sabe del tema solo me hizo llenar un reclamo y que espere una respuesta, esto es tremeeeendooooooo !!!! Se hacen los locos todos y llevan 2 días con el dinero retenido, ni un correo informativo ni unas disculpas nada!!! Por favor indecopi ayúdanos una multa por esto, como puede ser posible que nadie sepa nada y nos hagan esperar tanto tiempo por un error de ellos.",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.458005+00:00"
+ },
+ {
+  "id": "x:2105773121320157401",
+  "texto": "Gente, cuidado! , está pasando algo recurrente con @ScotiabankPE vas a hacer una operación con tu tarjeta, te debitan y la plata no llega al comercio. Para que te devuelvan por SU error tienes que esperar 3 dias mínimo. O sea nos afectan por su incompetencia! @IndecopiOficial",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.438966+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzExMzExMDQ2MDk1NzE5NDU=",
+  "texto": "Que horrible el sistema. Desde ayer en la noche.. Tengo problemas quiero usar MI DINERO y no puedo  todo sale en cero y además se debe esperar hasta las 8 para hablar con un asesor. Que paupérrimo servicio",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Errores operativos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de disponibilidad del canal; error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.419406+00:00"
+ },
+ {
+  "id": "instagram:17957260779228057",
+  "texto": "BBVA en Perú hace más de 20 días, el cajero de la agencia magdalena (Jr. Francisco Bolognesi 399) se ha quedado con 400$ cuando intentaba depositar a mi cuenta, el cajero se reinicio en plena operación. Es increíble que hasta el día de hoy no me den una respuesta. Teniendo las cámaras, control del cajero, cinta del conteo de todos los billetes, es increíble que a la fecha no me den respuesta. Por poner recursos malogrados para los clientes en sus agencia, que mal servicio. BBVA en España solicitó su apoyo para solucionar mi caso 10092600642 y 11092601064. el primer caso lo ingresaron de manera incorrecta, además que el ingreso de reclamo no me llego al correo.",
+  "entidades": [
+   "BBVA Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.400118+00:00"
+ },
+ {
+  "id": "instagram:17902856715597298",
+  "texto": "@bbva_peru BBVA en Perú hace más de 20 días, el cajero de la agencia magdalena (Jr. Francisco Bolognesi 399) se ha quedado con 400$ cuando intentaba depositar a mi cuenta, el cajero se reinicio en plena operación. Es increíble que hasta el día de hoy no me den una respuesta. Teniendo las cámaras, control del cajero, cinta del conteo de todos los billetes, es increíble que a la fecha no me den respuesta. Por poner recursos malogrados para los clientes en sus agencia, que mal servicio. @bbva_espana BBVA en España solicitó su apoyo para solucionar mi caso 10092600642 y 11092601064. el primer caso lo ingresaron de manera incorrecta, además que el ingreso de reclamo no me llego al correo.",
+  "entidades": [
+   "BBVA Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Atención al cliente",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.381013+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIxMzI3MzI0OTA5MzgxNjI=",
+  "texto": "Sigue fallando el app, encima te cobran y el dinero no le llega a los destinatarios. Me han cobrado tres veces ya, y nunca llegó el dinero, pero sí se descontó de mi cuenta. Es un desastre",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Errores operativos",
+   "Cobros / comisiones"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de disponibilidad del canal; error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.361672+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTUzNTUzODE2Nzk2ODk4XzI3MzI5MzQ4MjM4MDY5MDA=",
+  "texto": "Mi dinero se ha quedado retenido en el cajero golbal net Interbank , llamo no contestan, no responden wasap, en mi cuenta Interbank se ha descontado , es un monto alto , nadie apoya ni dan respuesta, son de lo peor, he llamado a la policía e iré a indecopi sino lo resuelven eso",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.341735+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTUzNTUzODE2Nzk2ODk4XzE4Mjg2MTQxMjE4OTY0NzY=",
+  "texto": "Hola. Retiré dinero de la alcancia, la aplicación hizo refresh y descontaron mi propio dinero. Sale en proceso y comunicarse con la banca está siendo difícil! .",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.322429+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTU0NzY4Mjc2Njc1NDUyXzIyMzI2ODE3MDcyOTc0MjQ=",
+  "texto": "Cómo es posible que pase eso se supone que la información de la tarjeta es privada como se pudo filtrar y su sistema detecto a tiempo pero nos causa la incomodidad porque somos cientos de personas en la cola del banco.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.303112+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIyNTE0NjU4NjkwNTYzMjE=",
+  "texto": "La app no esta funcionando, hice 2 plieneos y se ha debitado pero no llega a los destinatarios, siempre es lo mismo Superintendencia de Banca, Seguros y AFP del Perú, Indecopi",
+  "entidades": [
+   "SBS",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Errores operativos",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de disponibilidad del canal; error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.283501+00:00"
+ },
+ {
+  "id": "x:2109120932228817130",
+  "texto": ".@interbank me mandó este mensaje. Alguien entró a sus datos pero me dicen que contuvieron el \"incidente\". \nA alguien le llegó este mismo mensaje a su correo?",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.264531+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzE0NTg3ODMzMjI3ODkwMjU=",
+  "texto": "Hasta el momento no llega los plin que realice",
+  "entidades": [
+   "Plin",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.245386+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzExMTYwOTk0ODc2MDc1MTA=",
+  "texto": "El día de ayer me pase plata mediante plin a yape, el mobto6fue de 406 soles y nunca llego a yape la cantidad\nPero si se descontó de la cuenta\nTampoco llego una constancia en mi correo\nNose que hacer para recuperar la plata",
+  "entidades": [
+   "Yape",
+   "Plin",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.225974+00:00"
+ },
+ {
+  "id": "ytc:UgyOEgu79m8uTpxkK194AaABAg",
+  "texto": "Justo ayer sábado 10 de octubre recibí un correo de Interseguro por este tema, me pareció recontra extraño... cada vez la seguridad de este banco va de mal a peor... menos mal que anulé la tarjeta de crédito",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.206661+00:00"
+ },
+ {
+  "id": "tiktok:7695580160967443252",
+  "texto": "Todos los datos de todos sus usuarios están en internet 😂 donde quedó su seguridad con inteligencia artificial",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.187542+00:00"
+ },
+ {
+  "id": "x:2109646407326122200",
+  "texto": "¿Cómo es que los defraudadores tienen mi correo que es parte de mis datos personales sensibles o el correo de otros usuarios si ustedes son los custodios de esa data? Me das una explicación válida?",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.167631+00:00"
+ },
+ {
+  "id": "x:2110067123816960170",
+  "texto": "No me sorprende lo frágiles que son los sistemas de seguridad informática del grupo Intercorp. A mí me extranjeron dinero vía tarjeta de crédito Interbank en dic 2024. Tuve que pelear para que me devuelvan, y eso que tenía un seguro antirrobo contratado con ellos mismos.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Fraude / seguridad",
+   "Ciberseguridad / hackeos",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): fraude contra el cliente (cargos no reconocidos, robo); incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.148368+00:00"
+ },
+ {
+  "id": "x:2110094497505808472",
+  "texto": "También me llegó. Con razón @interbank no responde cómo así tienen nuestros datos personales.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.128570+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTU0NzY4Mjc2Njc1NDUyXzM5NjQyMzYyOTc4NzQzMDk5",
+  "texto": "Hola acabo de hacer un retiro sin tarjeta en un cajero y no salió el dinero pero si me han descontado el monto lo acabo de verificar en mi aplicación Interbank necesito una solución porfavor",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.109240+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTU0NzY4Mjc2Njc1NDUyXzIyNjUwNjAzNjc2NzUzNTg=",
+  "texto": "Buenas noches, hace unos minutos he querido hacer un retiro de mi cuenta de ahorros, salió operación anulada pero entro a mí aplicativo de Interbank y me lo han descontado. Necesito la devolución completa de mi dinero. Esto paso en el centro comercial Plaza Vea en Paita - Piura",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.089994+00:00"
+ },
+ {
+  "id": "x:2110552819732251107",
+  "texto": "Me deposité dinero en un cajero pero sólo me botó un voucher indicando que ocurrió un error :( el dinero no llegó a mi cuenta",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.070436+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzE0OTM4MTM2OTkxNzM3MjM=",
+  "texto": "Hace unos días, en el cajero ubicado en el grifo de Santa Anita, el cajero se quedó con mis S/20. Presenté mi reclamo al banco y me respondieron que, como se emitió el comprobante, el retiro había sido realizado correctamente. Sin embargo, el dinero nunca salió del cajero.\n\nDespués de esta experiencia, ya no puedo confiar en sus cajeros y mucho menos en su aplicativo, que constantemente aparece en mantenimiento, tanto por las mañanas como por las noches. Esto genera mucha inseguridad y, sinceramente, deja mucho que desear del servicio que brinda el banco.",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.050749+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzEzODA3NTQ2NTA4NjM2NDA=",
+  "texto": "No pasa nada con su plin\nPlineas y no llega al destino q envías y cuando reclamas te dejan esperando más d 10 días y no dan solución con la devolución",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:51.031076+00:00"
+ },
+ {
+  "id": "instagram:18115821284284086",
+  "texto": "Pero mis datos que se filtraron,  como hago para que dejen de llamarme.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:51.011012+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzk0MjIyNDE0NTA0NjQzMQ==",
+  "texto": "Hace poco tuve un problema que el cajero no me dispensó el dinero y para recuperarlo tuve que comunicamos con la banca Telefónica y esperar casi dos semanas....pensé que seria más agil la atención...debe mejorar y ser más rápido la solución en estos casos",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.991484+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzEwNDYzNTE1MDE3MzI5NDQ=",
+  "texto": "Ya me queje el cajero en el último retiro de mi sueldo se apagó se puso negro cajero en falla y no me entrego 50 soles hice mi reclamo y no fue sasticfatorio su respuesta nos aparece como efectivo retirado y ya pues el cajero me robo y ahí queda pero hay cámaras aparte el cajero asé un check si hay alguna falla y todavía x que me queje toman represalias ya no me dan adelanto de sueldo de 30 x ciento de mi salario apenas 10 x ciento y pujando un beneficio que todos los bancos aplican.",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.971817+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzE4NzQ5MDYwNzY4MTEyNjc=",
+  "texto": "El día de ayer intenté realizar un pago de S/ 70.00 en un establecimiento mediante la aplicación Plin.\nLa operación se revirtió y no recibí comprobante alguno.\nAnte ello, repetí la transacción, pero nuevamente se generó un error.\nEl resultado fue el siguiente:\nEl dinero se descontó dos veces de mi cuenta Scotiabank.\nEl comercio no recibió el pago y me retuvo por el incidente.\nPara poder continuar, me vi obligado a pagar con otra entidad bancaria, desembolsando en total S/ 140.00 por una cena cuyo valor real era de S/ 70.00.\nAl revisar mi correo, no figura comprobante de la operación; únicamente aparece el descuento reflejado en la aplicación.\nEste hecho no solo me ha causado un perjuicio económico directo, sino también una situación de incomodidad y desconfianza hacia el sistema.\nSi el monto hubiera sido mayor (por ejemplo, S/ 500.00), la pérdida habría sido aún más grave.\n\nSolicito con carácter urgente:\nLa devolución inmediata del monto descontado indebidamente.\nLa emisión del comprobante correspondiente a la operación fallida.",
+  "entidades": [
+   "Plin",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.951644+00:00"
+ },
+ {
+  "id": "x:2107300292769231081",
+  "texto": "@IndecopiOficial Llevo mas de 40 dias exigiendo a @interbank la devolución de un doble cobro. He ido 4 veces hacer el reclamo y las 4 veces q la asesora ingresa el reclamo lo \"hace mal\". HE ADJUNTADO pruebas que el doble cobro se realizó pero ellos dicen q el sist. No lo registra",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cobros / comisiones",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.931827+00:00"
+ },
+ {
+  "id": "x:2108919898407649594",
+  "texto": "No es primera vez que hay problemas con @interbank. Ya ha sucedido que su sistema de seguridad ha sido vulnerado, y la @SBSPERU aún existe?",
+  "entidades": [
+   "Interbank",
+   "SBS"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.911025+00:00"
+ },
+ {
+  "id": "x:2108929188396716388",
+  "texto": "Han hackeado nuevamente sus bases de datos, me mandaron un correo avisándome del hecho...ni modo...definitivamente, @interbank @intercorp @sip bye bye, no puede ser posible que no inviertan en reforzar la seguridad digital considerando sus antecedentes",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.891062+00:00"
+ },
+ {
+  "id": "instagram:18096121532669048",
+  "texto": "Los han hackeado de nuevo??????? Toda la vida lo mismo con ustedes.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.870798+00:00"
+ },
+ {
+  "id": "tiktok:7695062713185160456",
+  "texto": "Nuevamente se cayó el sistema de Interbank, recuerden en 2024 cuando hackearon su sistema. #interbankperu #bcp #bbva #finanzas #hacking ",
+  "entidades": [
+   "BCP",
+   "Interbank",
+   "BBVA Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de disponibilidad del canal; incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.850289+00:00"
+ },
+ {
+  "id": "x:2108957966351122565",
+  "texto": "Si desde la última vez que Interbank se cayó y salieron todas las noticias de que los habían hackeado, no querían pagar y siguieron sin invertir en ciberseguridad, no sacaste tu plata... Lo de hoy es culpa tuya #SalgandeInterbank",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.829366+00:00"
+ },
+ {
+  "id": "x:2108970886648713617",
+  "texto": "No pasa un año sin que @interbank no tengo incidencias de este tipo. Se cae el sistema, hackeos, temas de seguridad. Pero nunca tienen una respuesta.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Ciberseguridad / hackeos",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de disponibilidad del canal; incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.807279+00:00"
+ },
+ {
+  "id": "x:2108990258662515104",
+  "texto": "al parecer hackearon interbank y estan haciendo compras no reconocidas a varios",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos",
+   "Fraude / seguridad",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos); fraude contra el cliente (cargos no reconocidos, robo)",
+  "fecha": "2026-10-16T22:30:50.786423+00:00"
+ },
+ {
+  "id": "x:2109024682330521862",
+  "texto": "Otra vez @interbank?  \nYa contraten una buena empresa de ciberseguridad. 🫤",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.766446+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzM2MjE2NDU3MjQ2NTU2MjE=",
+  "texto": "Acabo de plinear y su hermoso banco me descontó Pero no generó comprobante y el comercio no recibió el dinero, generando un doble gasto porque tuve que yapear y por eso moveré mi cuenta sueldo ya que no es la primera vez que pasa esto, ya me cansé.",
+  "entidades": [
+   "Yape",
+   "Plin",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.746685+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIyMzM0NDI4OTA5MTgxNzA=",
+  "texto": "Hice 2 plins y no llegaron, tuve que pagar doble porque me de botaron pero no le llegó",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.726974+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIxNDU5MTM4MzI5NTA2MDY=",
+  "texto": "Hize un plineo de 400 soles a mi cuenta de yape y la plata no llega.. Y sale que si se plineo\nPor que no me llega? Ahors si reclamo esto en el banco espero que me lo solucionen por que si no tomaré medidas contra este banco",
+  "entidades": [
+   "Yape",
+   "Plin",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.707375+00:00"
+ },
+ {
+  "id": "x:2109326627637260507",
+  "texto": "Me paso lo mismo, en mis movimientos sale qué si se hizo la transferencia pero aun no llega cuando mande desde la banca a yape😞, el tuyo se soluciono?",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cuentas / transferencias",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.687348+00:00"
+ },
+ {
+  "id": "bsky:at://did:plc:65xzu4se42blbypbgmki3xxv/app.bsky.feed.post/3mxmobj7lvk2l",
+  "texto": "Una vez más hackearon al Interbank, una vergüenza ese banco. Ya debería irme de ahí de una vez.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.667453+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTU0NzY4Mjc2Njc1NDUyXzg3OTQ2ODI3ODQ5MDA1OA==",
+  "texto": "Otraaaa vez tú Interbank??? si estás pagando a tu personal sueldo mínimo, al que está a cargo de ciberseguridad por lo menos pagale el doble",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.647844+00:00"
+ },
+ {
+  "id": "tiktok:7695741330083726101",
+  "texto": "Pésima seguridad, nuevamente filtración de datos, si esto pasará en otros países ya estarían pagando por el daño causado a sus usuarios en fin.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.626192+00:00"
+ },
+ {
+  "id": "x:2110073536907989392",
+  "texto": "Tmr mi yape se cobro dos veces por algo que la señora de la tienda ni me dio por que mi yape era \"falso\" mañana los mato a todos",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.606619+00:00"
+ },
+ {
+  "id": "x:2110143120415289519",
+  "texto": "Es que hace poco una filtración de data de Interbank. Mejor dicho, los hackearon otra vez, y sabe que afectó un porcentaje considerable de sus base de datos. Una de sus medidas fue anular las tarjetas de varios usuarios. Sin embargo supongo que aún hay algunos que están filtrados",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.587040+00:00"
+ },
+ {
+  "id": "x:2110211704701268386",
+  "texto": "No entra ni con Face ID, ni contraseña..otra vez los hackearon??? Que esta pasando?? #interbank #SBS @IndecopiOficial",
+  "entidades": [
+   "Interbank",
+   "SBS"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Ciberseguridad / hackeos",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de disponibilidad del canal; incidente de ciberseguridad de la entidad (hackeo, filtración de datos)",
+  "fecha": "2026-10-16T22:30:50.566930+00:00"
+ },
+ {
+  "id": "x:2110496212176851284",
+  "texto": "@SBSPERU @IndecopiOficial como puedo presentar un reclamo ya que el @bbva_peru me hace doble cobre no es la primera vez que lo hace tengo que estar escribiendo siempre para hacer quee devuelvan el doble cobro esta ves es 620 soles lo que han descontado de mi línea de crédito",
+  "entidades": [
+   "BBVA Perú",
+   "SBS"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos",
+   "Cobros / comisiones",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.547234+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTU0NzY4Mjc2Njc1NDUyXzExMjg3MjY1OTk3MzA3MDI=",
+  "texto": "Hola acabo de hacer un retiro sin tarjeta el cajero no botó mi dinero y aparece que si en mi cuenta sin embargo el dinero no salió del cajero en la agencia de Arnaldo Márquez de Jesús Maria",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.525093+00:00"
+ },
+ {
+  "id": "x:2110531052586594526",
+  "texto": "Intenté retirar con Retiro sin tarjeta de un  cajero , pero me salió Operación cancelada,  sin embargo se ha cobrado de mi cuenta , y cuando vuelvo a ingresar al cajero me sale que ya no hay movimientos pendientes 🚨 Necesito ayuda",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): error operativo: la operación se hizo mal (cobro doble, dinero descontado que no llegó o no se entregó)",
+  "fecha": "2026-10-16T22:30:50.504958+00:00"
+ },
+ {
+  "id": "x:2109842604447678619",
+  "texto": "lo necesito pero mi Yape no dice lo mismo🥀",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-16T22:30:35.039742+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTc4MzUwMDc0MzI2NTQzXzE1NTg1NTA3MzI2OTM1NzA=",
+  "texto": "Alguien más tiene problemas con el Yape????",
+  "entidades": [
+   "Yape",
+   "Banco de la Nación"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "",
+  "fecha": "2026-10-16T22:29:44.571930+00:00"
+ },
+ {
   "id": "news:https://elcomercio.pe/economia/interbank-presenta-funcionalidad-modo-calle-brindando-mayor-seguridad-a-los-clientes-frente-al-robo-de-celulares-noticia/",
   "texto": "Interbank presenta funcionalidad ‘Modo Calle’ brindando mayor seguridad a los clientes frente al robo de celulares. Interbank presentó la la funcionalidad ‘Modo Calle’ en su aplicativo bancario frente a la situación de inseguridad en el país, como el robo de celulares. Con ello, los clientes de la institución ...",
   "entidades": [
@@ -153,40 +1088,6 @@
   "fecha": "2026-10-16T22:27:18.759729+00:00"
  },
  {
-  "id": "x:2110067123816960170",
-  "texto": "No me sorprende lo frágiles que son los sistemas de seguridad informática del grupo Intercorp. A mí me extranjeron dinero vía tarjeta de crédito Interbank en dic 2024. Tuve que pelear para que me devuelvan, y eso que tenía un seguro antirrobo contratado con ellos mismos.",
-  "entidades": [
-   "Interbank"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "Fraude / seguridad",
-   "Tarjetas / Yape / Plin",
-   "Créditos / cobranzas"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
-  "fecha": "2026-10-16T22:27:18.739588+00:00"
- },
- {
-  "id": "x:2110073536907989392",
-  "texto": "Tmr mi yape se cobro dos veces por algo que la señora de la tienda ni me dio por que mi yape era \"falso\" mañana los mato a todos",
-  "entidades": [
-   "Yape"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:27:18.719852+00:00"
- },
- {
   "id": "x:2110075598433599924",
   "texto": "Me pasó con una tarjeta Interbank empresarial, que la tenía cortada, pero aparecieron consumos de rappi y alquiler de vehículos",
   "entidades": [
@@ -202,22 +1103,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
   "fecha": "2026-10-16T22:27:18.699816+00:00"
- },
- {
-  "id": "x:2110094497505808472",
-  "texto": "También me llegó. Con razón @interbank no responde cómo así tienen nuestros datos personales.",
-  "entidades": [
-   "Interbank"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "Fraude / seguridad"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
-  "fecha": "2026-10-16T22:27:18.679710+00:00"
  },
  {
   "id": "x:2110130370100523155",
@@ -364,24 +1249,6 @@
   "atribuible": false,
   "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
   "fecha": "2026-10-16T22:27:18.498750+00:00"
- },
- {
-  "id": "x:2110211704701268386",
-  "texto": "No entra ni con Face ID, ni contraseña..otra vez los hackearon??? Que esta pasando?? #interbank #SBS @IndecopiOficial",
-  "entidades": [
-   "Interbank",
-   "SBS"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Reclamos / regulador"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:27:18.478346+00:00"
  },
  {
   "id": "x:2110254926764912722",
@@ -1435,23 +2302,6 @@
   "fecha": "2026-10-16T22:08:13.053720+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzQwMzk3MjAxMzk0OTI2ODg=",
-  "texto": "Cuando pago el dinero no le llega a la otra persona, pero sí me descuentan y me miran como estafador por culpa de su aplicativo. Y tambien al contrario es peor cuando me pagan se duplica el pago y lo más lógico es devolverles y así lo hago siempre, pero al cabo de más de una semana scotiabank devuelve el dinero que se duplico. Dándome perdidas por que ocurre con varios clientes y no se a quien hizo la devolución. Ya que vendo productos digitales. Y ni hablar de las recargas a celular, ya no se ni cuanto me debe scotiabank  por las recargar fallidas ya que se quedan con el saldo y no le llega a ala empresa de telefonía y por ende no me sueltan los datos.",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:13.035456+00:00"
- },
- {
   "id": "web:https://www.instagram.com/reel/DcRRnRyRJJ4/",
   "texto": "Hay mensajes que nadie quiere recibir… Una compra, .... #BCP #Yape #AtencionAlCliente #BancaDigital #Peru · September 15 ... Nos vamos a PLIN o otra billetera .no hay problema. September 4 ...",
   "entidades": [
@@ -1470,23 +2320,6 @@
   "fecha": "2026-10-16T22:08:13.017010+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzEzMDI5NjI5MDUwNzQ3MDA=",
-  "texto": "Hasta cuando  piensas devolverme mi dinero,  encima que no llega al destino retienen dinero ajeno",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:12.998372+00:00"
- },
- {
   "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzEwNzIzNzYyMDE4NDY5MzY=",
   "texto": "Gracias por la información",
   "entidades": [
@@ -1499,41 +2332,6 @@
   "atribuible": false,
   "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
   "fecha": "2026-10-16T22:08:12.979849+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzE3NjY0MjUwNDc4OTAxNjE=",
-  "texto": "Acabo de llamar nuevamente a la banca por mi dinero desde el 19 que me salen 24 horas para devolver.  Que 48 .. que ahora 72 horas.  Todo el tiempo cuando el dinero esta en tránsito tienes esa costumbre  de apoderarse se dinero ajeno. Si no llaman son incapaces de devolver a las cuentas. \n\nNecesito mi dinero ... de caso contrario haré una denuncia",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Reclamos / regulador"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:12.960980+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzE0OTM4MTM2OTkxNzM3MjM=",
-  "texto": "Hace unos días, en el cajero ubicado en el grifo de Santa Anita, el cajero se quedó con mis S/20. Presenté mi reclamo al banco y me respondieron que, como se emitió el comprobante, el retiro había sido realizado correctamente. Sin embargo, el dinero nunca salió del cajero.\n\nDespués de esta experiencia, ya no puedo confiar en sus cajeros y mucho menos en su aplicativo, que constantemente aparece en mantenimiento, tanto por las mañanas como por las noches. Esto genera mucha inseguridad y, sinceramente, deja mucho que desear del servicio que brinda el banco.",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:12.942594+00:00"
  },
  {
   "id": "tiktok:7677757149943464722",
@@ -1550,24 +2348,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
   "fecha": "2026-10-16T22:08:12.923966+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzEzODA3NTQ2NTA4NjM2NDA=",
-  "texto": "No pasa nada con su plin\nPlineas y no llega al destino q envías y cuando reclamas te dejan esperando más d 10 días y no dan solución con la devolución",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:12.904864+00:00"
  },
  {
   "id": "tiktok:7678421007522562837",
@@ -1883,24 +2663,6 @@
   "fecha": "2026-10-16T22:08:12.526377+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxMzg4MzQ2ODcwMTEwNzEyXzE2OTAyMTgwODg3MTA1Nzc=",
-  "texto": "Indecopi por favor vean el caso de algunos clientes, llevo 2 días que me jalaron dinero por 700 soles en total de compras que ya estaban debitadas y ahora han vuelvo a cobrarse, eso no es lo peor… llamas y te dicen que no saben nada del tema, acabo de volver de Scotiabank san Isidro y la de plataforma tampoco sabe del tema solo me hizo llenar un reclamo y que espere una respuesta, esto es tremeeeendooooooo !!!! Se hacen los locos todos y llevan 2 días con el dinero retenido, ni un correo informativo ni unas disculpas nada!!! Por favor indecopi ayúdanos una multa por esto, como puede ser posible que nadie sepa nada y nos hagan esperar tanto tiempo por un error de ellos.",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias",
-   "Reclamos / regulador"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:12.507323+00:00"
- },
- {
   "id": "news:https://news.google.com/rss/articles/CBMi1AFBVV95cUxOZUhTQ01SVVJDVElJRDM1aDl3dWNNMGFjZ3pxZFdOR3lLc0VKTmtITGJTTEUzUFRvY21XNzdRSmZlMExDU2pIY29QVlhfODFfeGpsQ2xNS0ExSjloOU5TbGlyRDFjVk5Ka0IySlNrdFJxRkg3cDNhLUVoRVVma0pTQ2x6Q1hNdmlabmpXeTRFSlZOZDlibERqVUZPLTRvQWhjWW5GR051TndHM3N6Y215a1VhTWRIZ1Q0M2REWHFxRURsVml6S2tfcTk5aTU2WmtqUXpVOQ?oc=5",
   "texto": "'El mejor plan es cuidarnos': cómo el BCP y TBWA Perú llevan la prevención climática del cine a las calles - Roastbrief",
   "entidades": [
@@ -2134,22 +2896,6 @@
   "atribuible": false,
   "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
   "fecha": "2026-10-16T22:08:12.236894+00:00"
- },
- {
-  "id": "instagram:18115821284284086",
-  "texto": "Pero mis datos que se filtraron,  como hago para que dejen de llamarme.",
-  "entidades": [
-   "Interbank"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "Fraude / seguridad"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
-  "fecha": "2026-10-16T22:08:12.217500+00:00"
  },
  {
   "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzE4MjU2Njk1ODg3OTIyNTU=",
@@ -2791,24 +3537,6 @@
   "atribuible": false,
   "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
   "fecha": "2026-10-16T22:08:11.499229+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzEwNDYzNTE1MDE3MzI5NDQ=",
-  "texto": "Ya me queje el cajero en el último retiro de mi sueldo se apagó se puso negro cajero en falla y no me entrego 50 soles hice mi reclamo y no fue sasticfatorio su respuesta nos aparece como efectivo retirado y ya pues el cajero me robo y ahí queda pero hay cámaras aparte el cajero asé un check si hay alguna falla y todavía x que me queje toman represalias ya no me dan adelanto de sueldo de 30 x ciento de mi salario apenas 10 x ciento y pujando un beneficio que todos los bancos aplican.",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:11.478732+00:00"
  },
  {
   "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzEwODkwNDI2NjcxOTYyMzE=",
@@ -3587,24 +4315,6 @@
   "fecha": "2026-10-16T22:08:10.488283+00:00"
  },
  {
-  "id": "x:2105773121320157401",
-  "texto": "Gente, cuidado! , está pasando algo recurrente con @ScotiabankPE vas a hacer una operación con tu tarjeta, te debitan y la plata no llega al comercio. Para que te devuelvan por SU error tienes que esperar 3 dias mínimo. O sea nos afectan por su incompetencia! @IndecopiOficial",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:10.467250+00:00"
- },
- {
   "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzEzODk2OTkyMTY2NjgxMDI=",
   "texto": "Que le paso al apps",
   "entidades": [
@@ -3921,41 +4631,6 @@
   "fecha": "2026-10-16T22:08:10.047824+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzE4NzQ5MDYwNzY4MTEyNjc=",
-  "texto": "El día de ayer intenté realizar un pago de S/ 70.00 en un establecimiento mediante la aplicación Plin.\nLa operación se revirtió y no recibí comprobante alguno.\nAnte ello, repetí la transacción, pero nuevamente se generó un error.\nEl resultado fue el siguiente:\nEl dinero se descontó dos veces de mi cuenta Scotiabank.\nEl comercio no recibió el pago y me retuvo por el incidente.\nPara poder continuar, me vi obligado a pagar con otra entidad bancaria, desembolsando en total S/ 140.00 por una cena cuyo valor real era de S/ 70.00.\nAl revisar mi correo, no figura comprobante de la operación; únicamente aparece el descuento reflejado en la aplicación.\nEste hecho no solo me ha causado un perjuicio económico directo, sino también una situación de incomodidad y desconfianza hacia el sistema.\nSi el monto hubiera sido mayor (por ejemplo, S/ 500.00), la pérdida habría sido aún más grave.\n\nSolicito con carácter urgente:\nLa devolución inmediata del monto descontado indebidamente.\nLa emisión del comprobante correspondiente a la operación fallida.",
-  "entidades": [
-   "Plin",
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:10.026735+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDA5MzQ4Nzg4MDEwNTIwXzExMzExMDQ2MDk1NzE5NDU=",
-  "texto": "Que horrible el sistema. Desde ayer en la noche.. Tengo problemas quiero usar MI DINERO y no puedo  todo sale en cero y además se debe esperar hasta las 8 para hablar con un asesor. Que paupérrimo servicio",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:10.005978+00:00"
- },
- {
   "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIxNjM0NjU4MTQyMDcwMDM=",
   "texto": "Para cuando arreglan la app ?",
   "entidades": [
@@ -4036,42 +4711,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
   "fecha": "2026-10-16T22:08:09.900344+00:00"
- },
- {
-  "id": "instagram:17957260779228057",
-  "texto": "BBVA en Perú hace más de 20 días, el cajero de la agencia magdalena (Jr. Francisco Bolognesi 399) se ha quedado con 400$ cuando intentaba depositar a mi cuenta, el cajero se reinicio en plena operación. Es increíble que hasta el día de hoy no me den una respuesta. Teniendo las cámaras, control del cajero, cinta del conteo de todos los billetes, es increíble que a la fecha no me den respuesta. Por poner recursos malogrados para los clientes en sus agencia, que mal servicio. BBVA en España solicitó su apoyo para solucionar mi caso 10092600642 y 11092601064. el primer caso lo ingresaron de manera incorrecta, además que el ingreso de reclamo no me llego al correo.",
-  "entidades": [
-   "BBVA Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias",
-   "Atención al cliente"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:09.878968+00:00"
- },
- {
-  "id": "instagram:17902856715597298",
-  "texto": "@bbva_peru BBVA en Perú hace más de 20 días, el cajero de la agencia magdalena (Jr. Francisco Bolognesi 399) se ha quedado con 400$ cuando intentaba depositar a mi cuenta, el cajero se reinicio en plena operación. Es increíble que hasta el día de hoy no me den una respuesta. Teniendo las cámaras, control del cajero, cinta del conteo de todos los billetes, es increíble que a la fecha no me den respuesta. Por poner recursos malogrados para los clientes en sus agencia, que mal servicio. @bbva_espana BBVA en España solicitó su apoyo para solucionar mi caso 10092600642 y 11092601064. el primer caso lo ingresaron de manera incorrecta, además que el ingreso de reclamo no me llego al correo.",
-  "entidades": [
-   "BBVA Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Atención al cliente",
-   "Tarjetas / Yape / Plin"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:09.857646+00:00"
  },
  {
   "id": "tiktok:7692152927838536455",
@@ -4263,23 +4902,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
   "fecha": "2026-10-16T22:08:09.619502+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIxMzI3MzI0OTA5MzgxNjI=",
-  "texto": "Sigue fallando el app, encima te cobran y el dinero no le llega a los destinatarios. Me han cobrado tres veces ya, y nunca llegó el dinero, pero sí se descontó de mi cuenta. Es un desastre",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cobros / comisiones"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:09.597675+00:00"
  },
  {
   "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzExNTQ3MTM1NjcxNzIxOTg=",
@@ -5480,24 +6102,6 @@
   "fecha": "2026-10-16T22:08:07.908495+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxNTUzNTUzODE2Nzk2ODk4XzI3MzI5MzQ4MjM4MDY5MDA=",
-  "texto": "Mi dinero se ha quedado retenido en el cajero golbal net Interbank , llamo no contestan, no responden wasap, en mi cuenta Interbank se ha descontado , es un monto alto , nadie apoya ni dan respuesta, son de lo peor, he llamado a la policía e iré a indecopi sino lo resuelven eso",
-  "entidades": [
-   "Interbank"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias",
-   "Atención al cliente"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:07.883651+00:00"
- },
- {
   "id": "facebook:Y29tbWVudDoxNDUyNDMyMzI3MDU1NDUxXzEwOTY5NzkwMTI5Nzg4NjU=",
   "texto": "Ustedes mismos están actualizando todo para robarnos",
   "entidades": [
@@ -5669,22 +6273,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
   "fecha": "2026-10-16T22:08:07.608387+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNTUzNTUzODE2Nzk2ODk4XzE4Mjg2MTQxMjE4OTY0NzY=",
-  "texto": "Hola. Retiré dinero de la alcancia, la aplicación hizo refresh y descontaron mi propio dinero. Sale en proceso y comunicarse con la banca está siendo difícil! .",
-  "entidades": [
-   "Interbank"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:07.583372+00:00"
  },
  {
   "id": "facebook:Y29tbWVudDoxNTUzNTUzODE2Nzk2ODk4XzIyMTkzNjcyOTg2MzQwNzA=",
@@ -7900,44 +8488,6 @@
   "fecha": "2026-10-16T22:08:03.968774+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzM2MjE2NDU3MjQ2NTU2MjE=",
-  "texto": "Acabo de plinear y su hermoso banco me descontó Pero no generó comprobante y el comercio no recibió el dinero, generando un doble gasto porque tuve que yapear y por eso moveré mi cuenta sueldo ya que no es la primera vez que pasa esto, ya me cansé.",
-  "entidades": [
-   "Yape",
-   "Plin",
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.940376+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIyNTE0NjU4NjkwNTYzMjE=",
-  "texto": "La app no esta funcionando, hice 2 plieneos y se ha debitado pero no llega a los destinatarios, siempre es lo mismo Superintendencia de Banca, Seguros y AFP del Perú, Indecopi",
-  "entidades": [
-   "SBS",
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias",
-   "Reclamos / regulador"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.911808+00:00"
- },
- {
   "id": "facebook:Y29tbWVudDoxNjQ1MzU3NzE3NjMwNzQ5XzQ1NjgyNDE2NjY3Nzg3MDk=",
   "texto": "Q pasa q esta fallando el plin🤬😡",
   "entidades": [
@@ -8129,43 +8679,6 @@
   "fecha": "2026-10-16T22:08:03.595901+00:00"
  },
  {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIyMzM0NDI4OTA5MTgxNzA=",
-  "texto": "Hice 2 plins y no llegaron, tuve que pagar doble porque me de botaron pero no le llegó",
-  "entidades": [
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.567099+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzE0NTg3ODMzMjI3ODkwMjU=",
-  "texto": "Hasta el momento no llega los plin que realice",
-  "entidades": [
-   "Plin",
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.538306+00:00"
- },
- {
   "id": "x:2109175604650315785",
   "texto": "Interbank, otro que va a mi lista de enemigos este 2026. \nJacobo Cisneros (@JacoboCisneros)\nInterbank de mierda a todas horas estás caídoooooo me tienes hartoooooi",
   "entidades": [
@@ -8248,26 +8761,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
   "fecha": "2026-10-16T22:08:03.393414+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzIxNDU5MTM4MzI5NTA2MDY=",
-  "texto": "Hize un plineo de 400 soles a mi cuenta de yape y la plata no llega.. Y sale que si se plineo\nPor que no me llega? Ahors si reclamo esto en el banco espero que me lo solucionen por que si no tomaré medidas contra este banco",
-  "entidades": [
-   "Yape",
-   "Plin",
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Tarjetas / Yape / Plin",
-   "Cuentas / transferencias"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.365281+00:00"
  },
  {
   "id": "x:2109278082624323738",
@@ -8370,44 +8863,6 @@
   "atribuible": true,
   "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
   "fecha": "2026-10-16T22:08:03.191942+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNDIzNTQ1ODYzMjU3NDc5XzExMTYwOTk0ODc2MDc1MTA=",
-  "texto": "El día de ayer me pase plata mediante plin a yape, el mobto6fue de 406 soles y nunca llego a yape la cantidad\nPero si se descontó de la cuenta\nTampoco llego una constancia en mi correo\nNose que hacer para recuperar la plata",
-  "entidades": [
-   "Yape",
-   "Plin",
-   "Scotiabank Perú"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias",
-   "Tarjetas / Yape / Plin"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.162105+00:00"
- },
- {
-  "id": "x:2109326627637260507",
-  "texto": "Me paso lo mismo, en mis movimientos sale qué si se hizo la transferencia pero aun no llega cuando mande desde la banca a yape😞, el tuyo se soluciono?",
-  "entidades": [
-   "Yape"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos",
-   "Cuentas / transferencias",
-   "Tarjetas / Yape / Plin"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:03.132844+00:00"
  },
  {
   "id": "ytc:UgyJhfgjQnFYAqu3N_p4AaABAg",
@@ -9477,23 +9932,6 @@
   "atribuible": false,
   "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
   "fecha": "2026-10-16T22:08:01.044425+00:00"
- },
- {
-  "id": "facebook:Y29tbWVudDoxNTc4MzUwMDc0MzI2NTQzXzE1NTg1NTA3MzI2OTM1NzA=",
-  "texto": "Alguien más tiene problemas con el Yape????",
-  "entidades": [
-   "Yape",
-   "Banco de la Nación"
-  ],
-  "sentimiento": "negativo",
-  "queja": true,
-  "categorias": [
-   "App / canales caídos"
-  ],
-  "relevante": true,
-  "atribuible": true,
-  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
-  "fecha": "2026-10-16T22:08:01.012476+00:00"
  },
  {
   "id": "x:2111151024400412734",
