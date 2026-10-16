@@ -520,5 +520,13 @@
     "factor": 3,
     "enfriamiento_minutos": 120,
     "reserva_diaria_pct": 25
+  },
+  "notificaciones": {
+    "_nota": "Avisos al celular (ntfy) cuando las menciones negativas de la última hora superan promedio + 2σ (día/noche, últimos 'dias_base' días, solo fuentes disponibles). Total y por entidad.",
+    "activas": true,
+    "dias_base": 7,
+    "minimo": 3,
+    "enfriamiento_minutos": 120,
+    "enlace": "https://monitor-banca-peru-production.up.railway.app"
   }
 }

@@ -791,6 +791,10 @@ function pintarConfig(){
     c.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>pausa(b.dataset.pf,!pausada(b.dataset.pf)));
     c.querySelectorAll('[data-int]').forEach(i=>i.oninput=()=>CFG.intervalos_minutos[i.dataset.int]=i.value);
     pintarApagados(ESTADO.apagados||[]);
+    c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Notificaciones al celular</b> <span class="sub">(cuando las menciones negativas de la última hora superan promedio + 2σ)</span>
+      <div class="sub" style="margin-top:6px">${ESTADO.notificaciones?.configuradas?'✅ Activas en este monitor (ntfy).'+(ESTADO.notificaciones.ultima_revision?' Última revisión hace '+hace(ESTADO.notificaciones.ultima_revision)+'.':''):'⚪ No configuradas en este monitor: falta NOTIFY_NTFY_TOPIC.'}</div>
+      <div class="frow" style="margin-top:8px;gap:8px"><button id="nt-prueba">Enviar notificación de prueba</button><span class="sub" id="nt-msg"></span></div></div>`);
+    $('#nt-prueba').onclick=async()=>{const r=await post('/api/notificaciones/prueba').then(r=>r.json());$('#nt-msg').textContent=r.error||'Enviada: revisa tu celular.'};
     c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Volver a clasificar con IA</b> <span class="sub">(tras cambiar criterios: lo ya clasificado no se corrige solo)</span>
       <div class="frow" style="margin-top:8px;align-items:center;gap:8px">Últimos <input type="number" id="rc-dias" min="1" max="365" value="30" style="width:70px"> días
       <button id="rc-ir">Volver a clasificar</button><span class="sub" id="rc-msg"></span></div>

@@ -2588,6 +2588,103 @@ def _incidente_pendiente(red):
     return bancos
 
 
+# ---------------- Notificaciones al celular cuando se supera el umbral (promedio + 2σ) ----------------
+# Por ntfy (app gratuita, sin cuenta): el monitor publica en un canal de nombre secreto (NOTIFY_NTFY_TOPIC) y el
+# celular suscrito recibe la alerta. Activar solo en un monitor (p. ej. producción) para no recibir duplicados.
+_NOTIF = {"ultima": {}}
+
+
+def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None):
+    tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema):
+        raise RuntimeError("Falta NOTIFY_NTFY_TOPIC (nombre de canal de 12 a 64 letras, números, - o _)")
+    servidor = os.environ.get("NOTIFY_NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+    h = {"Title": titulo.encode("utf-8").decode("latin-1", "ignore"), "Priority": prioridad, "Tags": etiquetas,
+         "Content-Type": "text/plain; charset=utf-8"}
+    if url:
+        h["Click"] = url
+    http_get(f"{servidor}/{tema}", h, data=mensaje.encode("utf-8"), timeout=30)
+
+
+def _umbrales_por_hora(clave_fn, dias=7):
+    """Promedio y desviación por hora (franja día 6–22 y noche) de las menciones negativas, solo con fuentes
+    disponibles. Devuelve {clave: {"dia": (prom, sd, n), "noche": (...)}} con clave = "Total" o la entidad."""
+    disp = fuentes_disponibles()
+    fin = ahora().replace(minute=0, second=0, microsecond=0)
+    ini = fin - timedelta(days=dias)
+    with _db_lock, db() as con:
+        filas = con.execute("SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND sentimiento = 'negativo' "
+                            "AND fecha >= ? AND fecha < ?", (iso(ini), iso(fin))).fetchall()
+    cuentas = {}
+    for r in filas:
+        if _origen(r["id"], r["fuente"]) not in disp:
+            continue
+        h = datetime.fromisoformat(r["fecha"]).astimezone(LIMA).replace(minute=0, second=0, microsecond=0)
+        for k in clave_fn(r):
+            cuentas.setdefault(k, {}).setdefault(h, 0)
+            cuentas[k][h] += 1
+    horas = [ini + timedelta(hours=i) for i in range(dias * 24)]
+    res = {}
+    for k, por_hora in cuentas.items():
+        res[k] = {}
+        for franja in ("dia", "noche"):
+            vals = [por_hora.get(h.astimezone(LIMA).replace(minute=0, second=0, microsecond=0), 0) for h in horas
+                    if (6 <= h.astimezone(LIMA).hour < 22) == (franja == "dia")]
+            n = len(vals)
+            p = sum(vals) / n if n else 0
+            sd = (sum((v - p) ** 2 for v in vals) / n) ** 0.5 if n else 0
+            res[k][franja] = (p, sd, n)
+    return res
+
+
+def revisar_umbral_notificar():
+    cfg = CONFIG.get("notificaciones", {})
+    if not cfg.get("activas", True) or not os.environ.get("NOTIFY_NTFY_TOPIC"):
+        return []
+    clave_fn = lambda r: ["Total"] + json.loads(r["bancos"] or "[]")
+    umbrales = _umbrales_por_hora(clave_fn, cfg.get("dias_base", 7))
+    disp = fuentes_disponibles()
+    hace1h = iso(ahora() - timedelta(hours=1))
+    with _db_lock, db() as con:
+        recientes = con.execute("SELECT id, fuente, bancos FROM items WHERE oculto = 0 AND sentimiento = 'negativo' "
+                                "AND fecha >= ?", (hace1h,)).fetchall()
+    ahora_n = {}
+    for r in recientes:
+        if _origen(r["id"], r["fuente"]) in disp:
+            for k in clave_fn(r):
+                ahora_n[k] = ahora_n.get(k, 0) + 1
+    franja = "dia" if 6 <= ahora().astimezone(LIMA).hour < 22 else "noche"
+    enviadas = []
+    for k, n in sorted(ahora_n.items(), key=lambda x: -x[1]):
+        p, sd, muestras = umbrales.get(k, {}).get(franja, (0, 0, 0))
+        umbral = p + 2 * sd
+        if muestras < 24 or sd <= 0 or n <= umbral or n < cfg.get("minimo", 3):
+            continue
+        if time.time() - _NOTIF["ultima"].get(k, 0) < cfg.get("enfriamiento_minutos", 120) * 60:
+            continue
+        _NOTIF["ultima"][k] = time.time()
+        quien = "todas las entidades" if k == "Total" else k
+        texto = (f"{n} menciones negativas en la última hora sobre {quien} (umbral {umbral:.1f}; "
+                 f"lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora).")
+        try:
+            enviar_notificacion(f"Alerta: {quien}", texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None)
+            enviadas.append({"clave": k, "n": n, "umbral": round(umbral, 1)})
+            print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {texto}", flush=True)
+        except Exception as e:
+            print(f"  Notificación fallida ({type(e).__name__}: {e})", flush=True)
+    ESTADO["notificaciones"] = {"ultima_revision": iso(ahora()), "enviadas": enviadas or ESTADO.get("notificaciones", {}).get("enviadas", [])}
+    return enviadas
+
+
+def trabajador_notificaciones():
+    while True:
+        try:
+            revisar_umbral_notificar()
+        except Exception as e:
+            print(f"  Notificaciones: {type(e).__name__}: {e}", flush=True)
+        time.sleep(300)
+
+
 def revisar_alerta_x():
     cfg = CONFIG.get("alerta_x", {})
     if not cfg.get("activa", True):
@@ -2916,7 +3013,8 @@ def importar_ejemplos(lista, usuario, solo_mas_recientes=False):
                         (str(e["id"])[:300], str(e["texto"])[:3000], json.dumps(e.get("entidades") or [], ensure_ascii=False),
                          e["sentimiento"], int(bool(e.get("queja"))), json.dumps(cats, ensure_ascii=False),
                          int(e.get("relevante") is not False), int(bool(e.get("atribuible", e.get("queja")))),
-                         str(e.get("nota") or "")[:300], usuario, str(e.get("fecha") or iso(ahora()))[:40]))
+                         str(e.get("nota") or "")[:300], str(e.get("usuario") or usuario)[:60],
+                         str(e.get("fecha") or iso(ahora()))[:40]))
             n += 1
     _exportar_ejemplos_repo()
     return n
@@ -2962,9 +3060,13 @@ def _clave_ia(d):
             1 if d.get("ia_relevante") is None else int(d.get("ia_relevante")), tuple(sorted(cats)))
 
 
-def elegir_mejor(local, remoto):
-    """Árbitro para dos clasificaciones de IA distintas del mismo mensaje (ninguna revisada a mano):
-    1) la que coincide con el ejemplo corregido más parecido; 2) la que coincide con las reglas; 3) empate: la local."""
+FOCO = ("App / canales caídos", "Errores operativos", "Fraude / seguridad", "Ciberseguridad / hackeos")
+
+
+def elegir_mejor(local, remoto, empate="local"):
+    """Árbitro de calidad entre dos clasificaciones distintas del mismo mensaje:
+    1) la que coincide con el ejemplo corregido más parecido; 2) la coherente con las reglas (sentimiento, queja,
+    relevancia y las categorías del foco); 3) si empatan, `empate` ("local", "remoto" o "empate")."""
     texto = local.get("texto") or remoto.get("texto") or ""
     puntos = {"local": 0, "remoto": 0}
     cands = {"local": _clave_ia(local), "remoto": _clave_ia(remoto)}
@@ -2991,7 +3093,18 @@ def elegir_mejor(local, remoto):
         reglas = ("neutro", 0, reglas[2])
     for k, c in cands.items():
         puntos[k] += sum(a == b for a, b in zip(c[:3], reglas))
+    # categorías del foco: premia las que las reglas también ven y penaliza las que no
+    cats_reglas = set(clasificar(texto, meta.get("tipo", ""))[1])  # categorías del texto, nombre o no a la entidad
+    for k, c in cands.items():
+        foco = set(c[3]) & set(FOCO)
+        puntos[k] += len(foco & cats_reglas) - 0.5 * len(foco - cats_reglas)
+    if puntos["remoto"] == puntos["local"]:
+        return empate
     return "remoto" if puntos["remoto"] > puntos["local"] else "local"
+
+
+def _es_auditoria(e):
+    return str((e or {}).get("nota", "")).startswith("Auditoría (Claude)")
 
 
 def importar_mensajes(lista):
@@ -3039,9 +3152,8 @@ def compatibilizar_mensajes(url, token):
             break
     # Desacuerdos: la mejor versión queda en los dos lados (y siempre en producción)
     forzar, arbitrados = set(), {"local": 0, "remoto": 0}
-    fecha_rem = {e["id"]: e.get("fecha", "") for e in
-                 json.loads(http_get(url + "/api/sync/ejemplos", h, timeout=60)).get("ejemplos", [])}
-    fecha_loc = {e["id"]: e.get("fecha", "") for e in ejemplos()}
+    ej_rem = {e["id"]: e for e in json.loads(http_get(url + "/api/sync/ejemplos", h, timeout=120)).get("ejemplos", [])}
+    ej_loc = {e["id"]: e for e in ejemplos()}
     with _db_lock, db() as con:
         locales = {r["id"]: dict(r) for r in con.execute("SELECT * FROM items WHERE ia_sentimiento IS NOT NULL")}
     for id_, loc in locales.items():
@@ -3049,8 +3161,16 @@ def compatibilizar_mensajes(url, token):
         if not rem or rem.get("ia_sentimiento") is None or _clave_ia(loc) == _clave_ia(rem):
             continue
         if rem.get("corregido") == 1 and loc.get("corregido") == 1:
-            # dos correcciones distintas: gana la más reciente
-            if fecha_loc.get(id_, "") >= fecha_rem.get(id_, ""):
+            # dos correcciones distintas: gana la mejor. Primero la del analista sobre la de la auditoría;
+            # entre iguales, el árbitro de calidad; solo si empatan, la más reciente
+            el, er = ej_loc.get(id_), ej_rem.get(id_)
+            if _es_auditoria(el) != _es_auditoria(er):
+                gana = "remoto" if _es_auditoria(el) else "local"
+            else:
+                gana = elegir_mejor(loc, rem, empate="empate")
+                if gana == "empate":
+                    gana = "local" if (el or {}).get("fecha", "") >= (er or {}).get("fecha", "") else "remoto"
+            if gana == "local":
                 forzar.add(id_)
             else:
                 with _db_lock, db() as con:
@@ -4715,6 +4835,8 @@ class Handler(BaseHTTPRequestHandler):
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
                                "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
+                               "notificaciones": {**ESTADO.get("notificaciones", {}),
+                                                  "configuradas": bool(os.environ.get("NOTIFY_NTFY_TOPIC"))},
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
@@ -4835,6 +4957,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True, "importados": n})
             except ValueError as e:
                 return self._send({"error": str(e)[:200]}, code=400)
+        if u.path == "/api/notificaciones/prueba":
+            try:
+                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán a este celular.",
+                                    prioridad="default", etiquetas="white_check_mark")
+                return self._send({"ok": True})
+            except Exception as e:
+                return self._send({"error": str(e)[:200]}, code=400)
         if u.path == "/api/ia/reclasificar":
             # vuelve a poner en la cola de la IA lo visible de los últimos N días (p. ej. tras cambiar criterios)
             try:
@@ -4926,6 +5055,7 @@ def main():
     threading.Thread(target=saldo_scrapecreators, daemon=True).start()
     threading.Thread(target=saldo_scrapingbee, daemon=True).start()
     threading.Thread(target=trabajador_sync, daemon=True).start()
+    threading.Thread(target=trabajador_notificaciones, daemon=True).start()
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
