@@ -2866,14 +2866,17 @@ def borrar_correccion(item_id):
         _exportar_ejemplos_repo()
 
 
-def importar_ejemplos(lista, usuario):
+def importar_ejemplos(lista, usuario, solo_mas_recientes=False):
     n = 0
     with _db_lock, db() as con:
         _tabla_correcciones(con)
+        actuales = {r[0]: r[1] or "" for r in con.execute("SELECT id, fecha FROM correcciones")}
         for e in lista[:5000]:
             if not (isinstance(e, dict) and e.get("id") and e.get("texto")
                     and e.get("sentimiento") in ("negativo", "neutro", "positivo")):
                 continue
+            if solo_mas_recientes and actuales.get(str(e["id"])[:300], "") >= str(e.get("fecha") or ""):
+                continue  # la versión de aquí es igual o más nueva
             cats = [c for c in (e.get("categorias") or []) if c in CATEGORIAS][:3]
             con.execute("INSERT OR REPLACE INTO correcciones VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         (str(e["id"])[:300], str(e["texto"])[:3000], json.dumps(e.get("entidades") or [], ensure_ascii=False),
@@ -2883,6 +2886,44 @@ def importar_ejemplos(lista, usuario):
             n += 1
     _exportar_ejemplos_repo()
     return n
+
+
+# ---------------- Sincronización de ejemplos entre el monitor local y la nube (Railway) ----------------
+# Ambos definen la misma SYNC_TOKEN (secreta). El local además define SYNC_URL (la dirección de la nube) y cada
+# 10 min trae los ejemplos de allá y le envía los suyos; gana la corrección más reciente de cada mensaje.
+def _sync_token_ok(valor):
+    esperado = os.environ.get("SYNC_TOKEN", "")
+    return len(esperado) >= 32 and hmac.compare_digest(esperado.encode(), (valor or "").encode())
+
+
+def sincronizar_ejemplos():
+    url, token = os.environ.get("SYNC_URL", "").rstrip("/"), os.environ.get("SYNC_TOKEN", "")
+    local = re.match(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$", url)  # solo para pruebas en el mismo equipo
+    if not ((url.startswith("https://") or local) and len(token) >= 32):
+        return None
+    h = {"X-Sync-Token": token, "X-Monitor": "1", "Content-Type": "application/json", "User-Agent": "monitor-banca-sync"}
+    remotos = json.loads(http_get(url + "/api/sync/ejemplos", h, timeout=60)).get("ejemplos", [])
+    traidos = importar_ejemplos(remotos, "sync", solo_mas_recientes=True)
+    locales = ejemplos()
+    r = json.loads(http_get(url + "/api/sync/ejemplos", h, data=json.dumps({"ejemplos": locales}).encode(), timeout=60))
+    return {"traidos": traidos, "enviados": r.get("importados", 0), "total": len(locales)}
+
+
+def trabajador_sync():
+    while True:
+        try:
+            res = sincronizar_ejemplos()
+            if res is None:
+                ESTADO["sync"] = {"activo": False, "msg": "Sin configurar (SYNC_URL y SYNC_TOKEN en .env)"}
+            else:
+                ESTADO["sync"] = {"activo": True, "ultima": iso(ahora()), **res,
+                                  "msg": f"{res['total']} ejemplos · {res['traidos']} traídos, {res['enviados']} enviados"}
+                if res["traidos"] or res["enviados"]:
+                    print(f"[{datetime.now():%H:%M:%S}] Ejemplos sincronizados con la nube: {res['traidos']} traídos, "
+                          f"{res['enviados']} enviados ({res['total']} en total)", flush=True)
+        except Exception as e:
+            ESTADO["sync"] = {"activo": True, "error": f"{type(e).__name__}: {e}"[:160], "msg": "Error al sincronizar"}
+        time.sleep(600)
 
 
 def _ia_lote(p, modelo, filas):
@@ -4408,6 +4449,10 @@ class Handler(BaseHTTPRequestHandler):
             yo = usuario_de_token(self._token())
             return self._send({"autenticado": bool(yo), **(yo or {}),
                                "configuracion_inicial": not hay_usuarios(), "puede_configurar": self._es_local()})
+        if u.path == "/api/sync/ejemplos":  # servidor a servidor: clave compartida, sin sesión
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            return self._send({"ejemplos": ejemplos()})
         self.yo = usuario_de_token(self._token())
         if not self.yo:  # todo lo demás exige sesión
             if u.path.startswith("/api/"):
@@ -4481,7 +4526,7 @@ class Handler(BaseHTTPRequestHandler):
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
                                "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
-                               "alerta_x": ESTADO.get("alerta_x", []),
+                               "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
@@ -4509,6 +4554,15 @@ class Handler(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(u.query)
         ip = self._ip()
+        if u.path == "/api/sync/ejemplos":  # servidor a servidor: clave compartida, sin sesión
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            try:
+                d = self._json_cuerpo(5_000_000)
+                return self._send({"ok": True, "importados": importar_ejemplos(d.get("ejemplos") or [], "sync",
+                                                                              solo_mas_recientes=True)})
+            except ValueError as e:
+                return self._send({"error": str(e)[:200]}, code=400)
         try:
             if u.path == "/api/login":
                 d = self._json_cuerpo()
@@ -4676,6 +4730,7 @@ def main():
     threading.Thread(target=trabajador_archivo, daemon=True).start()
     threading.Thread(target=saldo_scrapecreators, daemon=True).start()
     threading.Thread(target=saldo_scrapingbee, daemon=True).start()
+    threading.Thread(target=trabajador_sync, daemon=True).start()
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
