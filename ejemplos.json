@@ -1,5 +1,893 @@
 [
  {
+  "id": "news:https://elcomercio.pe/economia/interbank-presenta-funcionalidad-modo-calle-brindando-mayor-seguridad-a-los-clientes-frente-al-robo-de-celulares-noticia/",
+  "texto": "Interbank presenta funcionalidad ‘Modo Calle’ brindando mayor seguridad a los clientes frente al robo de celulares. Interbank presentó la la funcionalidad ‘Modo Calle’ en su aplicativo bancario frente a la situación de inseguridad en el país, como el robo de celulares. Con ello, los clientes de la institución ...",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.941038+00:00"
+ },
+ {
+  "id": "yt:0zMY3rTHFzg",
+  "texto": "Kashin Perú ¿Es Confiable? ¿Está Registrada en la SBS? | Kashin Préstamos. Kashin Perú y sus préstamos: conoce cómo funciona la Kashin App, qué relación tiene con la SBS y si realmente es confiable ",
+  "entidades": [
+   "SBS"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.921474+00:00"
+ },
+ {
+  "id": "ytc:UgwPc4VbkU3ZyqRfMhB4AaABAg",
+  "texto": "Una serie de incongruencias y falencias en la explicación. En primer lugar el decreto del presidente de la república del nombramiento de Rivarola es del 06.07.2026 que va a AFD y el informe es del 10.07.2026 o sea 4 días más tarde por lo que no se trata de un mes y en 4 días no podía subsanar el problema mencionado. No entro en desglosar el resto pero veo que hay un intento ya no de minimizar sino de diluir. \"El refrán dice: el el detalle está el diablo\" o sea cuando lo ves en forma general no te enteras de cosas pero si empiezas a desmenuzar y a hilar fino te encuentro con el verdadero problema. Ocurre lo mismo con esos contratos que te hacen firmar y que te presentan 70 páginas, no te dan una copia para que lleves y leas tranquilo sino te piden que firmes ya a pie de cada página, lo hacen bancos, telefónicas, venta de coches, etc. y cuando tienes un problema vas a reclamar y te dicen que usted aceptó las condiciones y te muestran las letras chicas del contrato que nadie lee ni puede leer. \nSi el Sr. Rivarola, que no tenía porqué hacerlo ya que no trabajaba más para el BCP y menos como gerente de la Superintendencia de Bancos, redacta un informe y lo envía de la forma que sea a la persona que fue nombrada en el cargo que anteriormente él ocupaba, no es por simple amistad o espiritu de compañerismo. Éso lo podía hacer incluso por teléfono mientras que ha optado por un formato estrictamente formal, no usa expresiones \"sabes que ocurre esto o aquello....mira que...etcétera\". Cuando se opta por la formalidad es ya por algo. No puede  ser un \"informe oficial\" y lo sabe porque ya no es funcionario del BCP sino un outsider. Todo eso de que ya está todo solucionado sólo el tiempo lo dirá. En cuanto a lo de \"estar bajo sumario\" se trata de una expresión que se ha convertido en algo de una ambigüedad infinita. Lo emplean todos los ministerios, IPS, la Comandancia de la Policía, etcétera y sabemos cómo termina. Al máximo una amonestación o le cambian de lugar a la persona implicada y todo sigue exactamente igual que antes. Sumarios administrativos que nunca terminan. Dejen de vender humo ya no compramos más.",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.901524+00:00"
+ },
+ {
+  "id": "yt:LzdTrQLc_s4",
+  "texto": "¿Por qué TODO BOLIVIA está usando YAPE? (El secreto detrás de su éxito) 📲🔥. Video Original\nhttps://youtu.be/rtfYG6kTB7k\nCANAL DE VLOGS\nhttps://www.youtube.com/@conociendoconandres\nUNETE AL DISCORD\nhttps://discord.gg/ZgezFQW7\nUNITE A MI PREMIUN\nhttps://www.youtube.com/channel/UCXjnGLiIhpcIGJH35XF0brw/join\nINSTAGRAM\nhttps://www.instagram.com/andresalba5/\nFACEBOOK\nhttps://www.facebook.com/profile.php?...\nKICK\nhttps://kick.com/andresalba5\nTIKTOK\nhttps://www.tiktok.com/@andresalba5\n\n#curiosidades #curioso #aprender #conocer #yape #economia #peruanosenelmundo #peruanos",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.881486+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNTU0NzY4Mjc2Njc1NDUyXzI3NzQ2OTAzNDk2NTY4NzI=",
+  "texto": "Porque han bloqueado el plin y tarjetaaaaaaa Info pf",
+  "entidades": [
+   "Plin",
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.861049+00:00"
+ },
+ {
+  "id": "x:2109688621053952188",
+  "texto": "Garcias al narcotrafico; la minería ilegal al @BCPComunica y al lavado $",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): crítica negativa a la entidad, sin un problema concreto que reclamar",
+  "fecha": "2026-10-16T22:27:18.841001+00:00"
+ },
+ {
+  "id": "x:2109735684307341411",
+  "texto": "Cada vez que voy al Banco de Crédito, la gerenta, mujer, me sabotea, porque es mujer, dale un poquito de poder a ese tipo de mujer, abusará del poder, así sea microscópico su poder, va a abusar, los empleados se quejan de ella, debería dedicarse al Onlyfans, pero para monstruos, siempre saca mi número, se lo saltea, siempre lo hace porque es mujer y está chiflada, el Banco de Crédito pasa a la lista negra, voy a trabajar con varios bancos, menos el Banco de Crédito, si tengo una empresa, mis empleados, no tendrán que tener nada con ese banco, si hago un concierto, debes anular tu cuenta en ese banco y cambiarte a otro o no tendrás entrada, por gente de mierda como esa ridícula gerente de agencia, la de Camacho, por eso el Perú es último en todo, último en todo, primero en corrupción, primero en odio.",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente",
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): crítica negativa a la entidad, sin un problema concreto que reclamar",
+  "fecha": "2026-10-16T22:27:18.821091+00:00"
+ },
+ {
+  "id": "x:2110007035899334887",
+  "texto": "Devuelve el YAPE oe sinverguenza",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.800882+00:00"
+ },
+ {
+  "id": "x:2110039917179044236",
+  "texto": "Se pasea con la plata que robó del Yape, cínico- sinvergüenza devuelve la plata.",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.780422+00:00"
+ },
+ {
+  "id": "x:2110050746892959827",
+  "texto": "A mi me sucedió lo mismo pero con la tarjeta de débito de Interbank, la que pertenece al grupo Intercorp - al igual que SIP (compraron en viernes santo en Metro de Plaza Norte)...por eso...next!...ese grupo, en lo que a seguridad digital se refiere, hace agua por todos lados",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Fraude / seguridad",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
+  "fecha": "2026-10-16T22:27:18.759729+00:00"
+ },
+ {
+  "id": "x:2110067123816960170",
+  "texto": "No me sorprende lo frágiles que son los sistemas de seguridad informática del grupo Intercorp. A mí me extranjeron dinero vía tarjeta de crédito Interbank en dic 2024. Tuve que pelear para que me devuelvan, y eso que tenía un seguro antirrobo contratado con ellos mismos.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Fraude / seguridad",
+   "Tarjetas / Yape / Plin",
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
+  "fecha": "2026-10-16T22:27:18.739588+00:00"
+ },
+ {
+  "id": "x:2110073536907989392",
+  "texto": "Tmr mi yape se cobro dos veces por algo que la señora de la tienda ni me dio por que mi yape era \"falso\" mañana los mato a todos",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.719852+00:00"
+ },
+ {
+  "id": "x:2110075598433599924",
+  "texto": "Me pasó con una tarjeta Interbank empresarial, que la tenía cortada, pero aparecieron consumos de rappi y alquiler de vehículos",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Fraude / seguridad",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
+  "fecha": "2026-10-16T22:27:18.699816+00:00"
+ },
+ {
+  "id": "x:2110094497505808472",
+  "texto": "También me llegó. Con razón @interbank no responde cómo así tienen nuestros datos personales.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Fraude / seguridad"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
+  "fecha": "2026-10-16T22:27:18.679710+00:00"
+ },
+ {
+  "id": "x:2110130370100523155",
+  "texto": "Tiene un app de mierda encima. Ni funciona la basura esa. @interbank",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.659763+00:00"
+ },
+ {
+  "id": "x:2110136798089195618",
+  "texto": "Yo saqué cuentas de cuánto gasté y no sé de donde me saqué ese montonón de dinero. Endeudada con Yape Crédito pero la experiencia no me lo quita nadie xddd",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin",
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.640033+00:00"
+ },
+ {
+  "id": "x:2110144490212053289",
+  "texto": "Gracias yape, ahora si me das crédito de más de 600 soles cuando ya no necesito, pero esa tarde /noche de un martes 06 de octubre ni pinga verdad?",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): crítica negativa a la entidad, sin un problema concreto que reclamar",
+  "fecha": "2026-10-16T22:27:18.620256+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDU3MDYwMTUzMjU5MzM1XzE2MTI0MzY2MjM5NjEzOTQ=",
+  "texto": "Mi bcp no abre porque",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.600572+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNDU3MDYwMTUzMjU5MzM1XzE2NjkyODI0Mjc5MzIzMTA=",
+  "texto": "A seguir apoyando al Voley Peruano Banco de Crédito BCP. Los clientes que somos leales al banco agradecemos el apoyo brindado. Vamos por mas!!!!. Arriba Perú.!!!",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "positivo",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): comentario positivo sobre la entidad",
+  "fecha": "2026-10-16T22:27:18.580111+00:00"
+ },
+ {
+  "id": "x:2110158622164455927",
+  "texto": "No me funciona Plin. Ni plineando ni yapeando. Vaya vergüenza que pasé en la cola de la bodega. Gracias @interbank",
+  "entidades": [
+   "Plin",
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.559296+00:00"
+ },
+ {
+  "id": "x:2110180916932825480",
+  "texto": "@BCPComunica, un día más y sigo sin servicio del telecrédito.",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.539101+00:00"
+ },
+ {
+  "id": "x:2110185494084472933",
+  "texto": "putmare saque un yape credito por si es que soltaban entradas pero me toco el numero de cola en san pincho y ya no pude devolver mi plata pq habia un plazo, SE ME OLVIDO Y AHORA SE ME COBRO EL SPOTIFY",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente",
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.519135+00:00"
+ },
+ {
+  "id": "x:2110210480027635877",
+  "texto": "Gracias, recién puedo ver tu Yape. 😆",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.498750+00:00"
+ },
+ {
+  "id": "x:2110211704701268386",
+  "texto": "No entra ni con Face ID, ni contraseña..otra vez los hackearon??? Que esta pasando?? #interbank #SBS @IndecopiOficial",
+  "entidades": [
+   "Interbank",
+   "SBS"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.478346+00:00"
+ },
+ {
+  "id": "x:2110254926764912722",
+  "texto": "Los servicios de banca en línea de BCP estarían experimentando una caída para algunos usuarios en este momento. ¿Eres uno de ellos? \nBCP's online banking services are reportedly down for some users right now. Are you one of them? #BancoBCP #BCPDown #BCPComunica community.designtaxi.com/top…",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:27:18.458092+00:00"
+ },
+ {
+  "id": "x:2110400940641485171",
+  "texto": "el yape no me presta ni un sol💔",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.438216+00:00"
+ },
+ {
+  "id": "x:2110415763303543167",
+  "texto": "Que incómodo el servicio de interbak del Mall de Bellavista, casi una hora haciendo cola y recién entro a la agencia, hay 15 personas antes para atender.  \n@interbank",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): queja contra la entidad que no es falla de canal ni fraude (atención, cobros, bloqueos, créditos)",
+  "fecha": "2026-10-16T22:27:18.418490+00:00"
+ },
+ {
+  "id": "x:2110420309094367730",
+  "texto": "Es normal que el vigilante de @interbank  de la sede de Barranca ande preguntando cuando dinero debo tener como mínimo para depositar ??  Y que debo tener mínimo 7k para hacerlo ??",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): queja contra la entidad que no es falla de canal ni fraude (atención, cobros, bloqueos, créditos)",
+  "fecha": "2026-10-16T22:27:18.397874+00:00"
+ },
+ {
+  "id": "x:2110445452672020980",
+  "texto": "Me parece que hay una publicidad engañosa con @sip de @interbank  te prometen cashback para comprar pero cuando vas al local dicen que su sistema no lo permite, entonces ¿porque insistentemente  dicen que compren con sip si no van a cumplir su propuesta valor ?",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): queja contra la entidad que no es falla de canal ni fraude (atención, cobros, bloqueos, créditos)",
+  "fecha": "2026-10-16T22:27:18.377245+00:00"
+ },
+ {
+  "id": "x:2110522138624950691",
+  "texto": "sí m dieron la opción pero tengo -5 soles en yape..",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin",
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.356407+00:00"
+ },
+ {
+  "id": "x:2110527176982347870",
+  "texto": "No. Se sustenta en que NO EXISTE NINGÚN DOCUMENTO DE LA TRANSACCIÓN, algo totalmente imposible para una operación de ese tamaño. Si no existe registro de la transacción es que nunca se dio.  \nY eso coincide con la idea de Armando y Víctor Andrés de que simplemente hicieron sus jugaditas con el Banco de la Nación para que disuelva la deuda y emita un documento de “cancelado”.  \nLiteralmente la deuda desapareció, así de la nada jajaja. Y años después el BN emite un documento de cancelado jajajaja.  \nFue una PENDEJADA!!! Tal como lo afirmaron Vitocho y Armando.",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas",
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.336127+00:00"
+ },
+ {
+  "id": "x:2110558014990164148",
+  "texto": "La exposición de datos personales y números de póliza puede facilitar fraudes y suplantaciones en trámites de seguros. Si bien la SBS ya supervisa el caso Interseguro, preguntamos, ¿Cómo protegerá Interseguro a sus clientes y qué medidas concretas adoptará para evitar perjuicios?",
+  "entidades": [
+   "SBS"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Seguros"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.316226+00:00"
+ },
+ {
+  "id": "x:2110737688139632728",
+  "texto": "no saben la vergüenza que te go cuando digo medio pasaje y tengo que pagar con yape yo siento que me odian",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.295648+00:00"
+ },
+ {
+  "id": "x:2110742888917479829",
+  "texto": "Ni cagando su qr de yape 😂",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.275407+00:00"
+ },
+ {
+  "id": "x:2110746460937486376",
+  "texto": "Jajaja un zurdo de mierd@ pagado por terrucos que quiere su Yape jajaja",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.254830+00:00"
+ },
+ {
+  "id": "x:2110748467739988408",
+  "texto": "Me vas a doler toda la vida 134340...nunca escucharé mi contraseña de yape en vivo",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.234694+00:00"
+ },
+ {
+  "id": "yt:0jbo7_Lyfek",
+  "texto": "La mejor aplicación para ganar dinero para yape #yape #plin #paypal. ",
+  "entidades": [
+   "Yape",
+   "Plin"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.213993+00:00"
+ },
+ {
+  "id": "x:2110801012684366174",
+  "texto": "😭😭😭 SÍ por eso ahora estoy con 6 soles en el Yape...",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.193790+00:00"
+ },
+ {
+  "id": "x:2110813659845083465",
+  "texto": "porq el yape no me quiere prestar plata😓",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.173609+00:00"
+ },
+ {
+  "id": "x:2110821767342162029",
+  "texto": "Pasa el Yape rata  un grano de arena almenos sirve",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.152819+00:00"
+ },
+ {
+  "id": "x:2110833429872836709",
+  "texto": "no justifica q no me hayas leído, tenía mi crédito yape 😈",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.132366+00:00"
+ },
+ {
+  "id": "x:2110850049122992577",
+  "texto": "No que solo hablas de alianza y solo alianza? \nYa pe negro, no te engañes a ti mismo. \nNi pagas tu deuda con Interbank y te computas de honorable (este miserable no puede pagar 2mil soles xd), ¿crees que nosotros tomaremos tu palabra como válida u honesta en algún punto?",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.111990+00:00"
+ },
+ {
+  "id": "x:2110888002864271373",
+  "texto": "Me estás flexeando una entrada en arena 1 ? \nJAJAJAJAJAJAJAAJAJAJAJAJAJAJAJAAJAJAJAJAJAJAJAAJAJAJAJAAJAJJAAJAJAJAJAJAJAJAJAJAJAJ \nCHÉVERE Tu ENTRADA DE 100 Soles Felicitaciones , encima con combo YAPE 😂😂😂",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.091787+00:00"
+ },
+ {
+  "id": "x:2110902958820880389",
+  "texto": "Lo de todo el grupo Intercorp ya es preocupante. Interbank y ahora Interseguros. \nYa es hora que cambien a su equipo de TI, ni con el convenio que tiene con Anthropic han mejorado.",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Fraude / seguridad",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): fraude o seguridad atribuible a la entidad: cargos no reconocidos, robo, filtración o suplantación",
+  "fecha": "2026-10-16T22:27:18.071552+00:00"
+ },
+ {
+  "id": "x:2110953141713997989",
+  "texto": "engenes preciosxs ayúdenme a vender por favor, ya mi plin no da más  😭😭😭😭😭",
+  "entidades": [
+   "Plin"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.050661+00:00"
+ },
+ {
+  "id": "x:2111075602857959569",
+  "texto": "Me quedo 330 en el yape 😭😭💔",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:18.029979+00:00"
+ },
+ {
+  "id": "ytc:UgzNF7WCZTc4QuEYW2V4AaABAg",
+  "texto": "Ése banco del que hablan no sólo tiene y hace actividades opacas y dudosas sino que su mismo origen e inicio es opaco y dudoso. No soy ni banquero ni especialista en ése rubro pero en lo que sí tengo experiencia es en árboles y puedo decir que si un árbol desde sus inicios está enfermo y sigue creciendo con mucha ayuda pero no se \"cura\", hay veces que incluso luego de curado no producirá frutos sanos además la gran cantidad de gastos que supone para mantenerlo sano no justifica la inversión hecha, es mejor descartarlo y buscar otro que esté sano. Si aplico por analogía el mismo principio a ése banco de oscuros y opacos inicios que para crecer necesita de \"enormes ayudas\" sean fondos públicos que desviar la mirada del BCP y no aplicarle normas y leyes del sistema financiero que el BCP debe garantizar se cumplan, pues siento decir que el resultado o fruto que dará no justifica siquiera su existencia. Se está jugando a ser banquero cuando posiblemente ni siquiera sirva para hacer y vender tortillas en la calle todo porque tiene a uno de arriba que es quien le sostiene con respiración artificial asistida. Cortenle todos los \"aparatos\" a los que está conectado y verán que en menos de 24 horas se desploma.",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:18.009448+00:00"
+ },
+ {
+  "id": "x:2111104893297598571",
+  "texto": "No sé cómo aparece la plata jsksjs yo juraba que había quedado misia después del concierto pero llegando a casa me di cuenta que tengo 200 repartido en el yape y las billeteras JAKSJSKSJSJSJ",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:17.988746+00:00"
+ },
+ {
+  "id": "ytc:Ugy8cwjNVUnNA_7foGV4AaABAg",
+  "texto": "Que asco dan todos estos colorados \nEs el colmo",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:17.967038+00:00"
+ },
+ {
+  "id": "ytc:Ugx0ak8quWbUUzO8yYR4AaABAg",
+  "texto": "Mientras la ciudadanía todo el país están viendo como pagar su factura de ande de agua si va a poder comer en el día ellos su campańa siempre robando",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:17.945643+00:00"
+ },
+ {
+  "id": "x:2111120852356116660",
+  "texto": "No, no necesitas cuenta bancaria. La ventaja es que no se cae el sistema a las 00:00 y tenes otros beneficios con Entel, de Yape a Yape o que se yooo",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:17.924067+00:00"
+ },
+ {
+  "id": "ytc:Ugz4Ge0BYyvFmCPFzFx4AaABAg",
+  "texto": "Para mí que hace mucho que el BCP no es tan independiente como venden. El dólar a 8.000 fue solo para HC y amigos, devaluaron la moneda por intereses políticos y personales...",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:17.902665+00:00"
+ },
+ {
+  "id": "x:2111161726364275121",
+  "texto": "PFFFFFF SUBANLE EL SUELDO AL ENCARGADO DEL MARKETING DE YAPE",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "positivo",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): comentario positivo sobre la entidad",
+  "fecha": "2026-10-16T22:27:17.881019+00:00"
+ },
+ {
+  "id": "x:2111163130609119635",
+  "texto": "El BCP incluyó cláusulas arbitrarias por el rollo de los depósitos de terceros, Sip de Intercorp también. \nMejor alertar y detener esas prácticas antes que este tipo de problemas lleguen al peru",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:17.859666+00:00"
+ },
+ {
+  "id": "x:2111173264567304385",
+  "texto": "Yape también cae o se bloquea y cuesta que te desbloqueen, la única diferencia es que con el banco tenés un soporte mejorcito",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:17.838520+00:00"
+ },
+ {
+  "id": "x:2111214629170880798",
+  "texto": "En mi caso, ni en pedo pongo mis cuentas oficiales en el teléfono. \nEn yape no manejo mas de 500 bs a lo mucho para pagar servicios. Por si se me pierde el telefono o si me hackean o algo similar. \nConozco casos donde pierden miles o cientos de miles. ☠️☠️☠️",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no trata del sistema financiero peruano (homónimo, otro país u otro tema)",
+  "fecha": "2026-10-16T22:27:17.816941+00:00"
+ },
+ {
+  "id": "x:2111218233374052596",
+  "texto": "Está es la misma que enseña a comer paneton y pollo a la brasa. Interbank le paga bien",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:27:17.795249+00:00"
+ },
+ {
   "id": "ejemplo:0ad31ded0c202a8f",
   "texto": "Es q a ti el orden la disciplina y la limpieza no te gusta, señor yape. busque un trabajo decente y deje de estar pidiendo plata como mendigo",
   "entidades": [
@@ -116,7 +1004,41 @@
   "fecha": "2026-10-16T22:08:13.454336+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMiwAFBVV95cUxNQ3FWMGNkMGR1YTZFUUFSNkpBY0duSndKRDN4eGcwZmp5TnB3QlJlWTE4UW1BZzhMam8xV0NlM3BwUE5KZlBlY0lnUno0VGhhczdoQXFPamxUbEgzLVFpQkczTG9fUDYwcDJoRkt5enR2cUw0bWtsZnRKSkVhUmY4LVVOc3JzdF9RQlhScngtY2tfRFpYRkJKT2VwTVI0TnhRY2QtbUlPNGl3RHpHc1Zkc1ZWQS1ReDBWa2FEN1",
+  "texto": "Interbank confirma “mantenimiento no programado”: ¿Cuándo se reestablecerían las operaciones? - Infobae",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:08:13.454336+00:00"
+ },
+ {
   "id": "news:https://news.google.com/rss/articles/CBMiwAFBVV95cUxPa1F3ZERvMENxNnhaeDFocUVWSzJfRzZvdGE4UmhCWTJmX2FsYWZYT3VqNnVsRFUtbnU2SmxsQXg3amlkNVlqR1c5WjNlVVNjLUtBSkZ4V0xzaGNtbDN6dEMzc0tFSVB0YjY2WlNIR3NCUkdBSmxQNkF6Wl83MHBsdGtnSUV5UjBuQ2s2ckRHNmpGb3p1VGNiUC1LWEhUMmNsSmdWT0ZQZVZxNWszc200ZkxPV2l6a2FTby1KcEZQYjQ?oc=5",
+  "texto": "Interbank reporta fallas en su app, cajeros y plin: ¿Qué sucedió y cuándo restablecerán servicios? - Perú Retail",
+  "entidades": [
+   "Plin",
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:08:13.436630+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMiwAFBVV95cUxPa1F3ZERvMENxNnhaeDFocUVWSzJfRzZvdGE4UmhCWTJmX2FsYWZYT3VqNnVsRFUtbnU2SmxsQXg3amlkNVlqR1c5WjNlVVNjLUtBSkZ4V0xzaGNtbDN6dEMzc0tFSVB0YjY2WlNIR3NCUkdBSmxQNkF6Wl83MHBsdGtnSUV5UjBuQ2s2ckRHNmpGb3p1VGNiUC1LWEhUMmNsSmdWT0ZQZVZxNWszc200ZkxPV2l6a2FTby1KcE",
   "texto": "Interbank reporta fallas en su app, cajeros y plin: ¿Qué sucedió y cuándo restablecerán servicios? - Perú Retail",
   "entidades": [
    "Plin",
@@ -167,7 +1089,40 @@
   "fecha": "2026-10-16T22:08:13.401015+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMiyAFBVV95cUxPVVdsSDRqamQzYms1R2FsUDNFQmU3U1o1by1OOHVIT3JSNThweXZ2UlhKeFhTanFHcEFmVFNQaFdEMXRZYk1IeTRCVWN6YTZ1MnpmejNBdkZoaF9sdFQyTXRlWFBmQW5JNE5lZW9xWFhENkZieEZBQlV2dUpaVHpBV3B1X2JFU2d6MlhyMUNjUEYtbDZxLS05M2luWnN4MElmX1l4cEMyZmVRWGF6S3A3Qi1na1l2RUFES3Utcm",
+  "texto": "‘Caída’ masiva de Interbank: App cajeros, oficinas y más no funcionan en pleno fin de mes - Infobae",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:08:13.401015+00:00"
+ },
+ {
   "id": "news:https://news.google.com/rss/articles/CBMi1gFBVV95cUxONnVYRWQwYzNMbnZmazNKTzNUNUdfS3VPSUhIU1RmTVRNV0NRaXc5UHZNMVVyNm9vT2hzNV80TDBIdG9yaU9LZGxYdXF6NTBvc2NLMkItRGUxWVZIM3RmYjV1eEl0WlNseHlhdU05by1SbThGN2NhYnVWTUV6X21ZNll6ZmhaUmp5Q1B4Nmp4d1N6d1dmbTNCcUxibFpHVmFGQUdZR1pmR3VwZnJSZkN1bGg3QmxCdmFoRlphWnFFdjgwNUd3aWo2LUVyVThuU3B4cWdoajlR0gHwAUFVX3lxTE5xLUFzd0Q3aTR3TmpTRm1SU2l6VF8zWm1xcEJKWWlEcHdLeF9PLXJ0Q1V2Z2M1eHlWYUw0Q2pVY2FOTjh3cFJFM2JZY19xbjVrU2R0WmVud0FrdmljMEEzcjNlT0d0OEtWcFBCSW95aFJsOHJIaEFhTVpQLUFTbXBvN1hlWnVSY3V4cjc4Vm9ua2RoMU1TTEtLaGEwa2x5S2VkbEN2ODJXWDRsaHEwY2dKT2hjTWFPT0ZPaG9jek4ycTA0N0VCdUpQejVtOUxJenEyODhXa2FTb1FIdXppTXc5cUFiRENjeXN5VEwyR3hTcQ?oc=5",
+  "texto": "Interbank vuelve a caerse: usuarios no pueden ingresar al aplicativo ni mover dinero de sus cuentas - Infobae",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Auditoría (Claude): falla de canal: la app, web, Yape/Plin, cajero, agente o banca telefónica no funciona o no deja operar",
+  "fecha": "2026-10-16T22:08:13.382892+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMi1gFBVV95cUxONnVYRWQwYzNMbnZmazNKTzNUNUdfS3VPSUhIU1RmTVRNV0NRaXc5UHZNMVVyNm9vT2hzNV80TDBIdG9yaU9LZGxYdXF6NTBvc2NLMkItRGUxWVZIM3RmYjV1eEl0WlNseHlhdU05by1SbThGN2NhYnVWTUV6X21ZNll6ZmhaUmp5Q1B4Nmp4d1N6d1dmbTNCcUxibFpHVmFGQUdZR1pmR3VwZnJSZkN1bGg3QmxCdmFoRlphWn",
   "texto": "Interbank vuelve a caerse: usuarios no pueden ingresar al aplicativo ni mover dinero de sus cuentas - Infobae",
   "entidades": [
    "Interbank"
@@ -317,6 +1272,22 @@
  },
  {
   "id": "news:https://news.google.com/rss/articles/CBMi4AFBVV95cUxPUUVDa0RZMWZIYVFaOFFVanBkNHdZSmZLSzkwbVd0eVhXSXFWcGtpRE51VFh2YWJDTkpRNmdNQk9EbGRZSS11ZlF0NzZlaENZSFJ1bkY3V0JjdXZFaElzVjBXTG9GbUF2LURYVTNzbFRJQWJGejQ3anhsWU9NbXZYdGt1bEdjX0dXelJCZ1FlVTQxLXlBeHFkTlllQTQxQjV4TVVvWHpjc1hMWVBtYjJNUF9FZ1NfZ0MyQWZUVDNqQnBTekNURnFxMFZ6MlUtY0taT0NWaUdYYnlTeFJIM1UyTQ?oc=5",
+  "texto": "Trabajadores del Banco de la Nación anuncian huelga nacional y protestas por reclamos laborales y “nombramientos a dedo” - Revista Caretas",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:13.201453+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMi4AFBVV95cUxPUUVDa0RZMWZIYVFaOFFVanBkNHdZSmZLSzkwbVd0eVhXSXFWcGtpRE51VFh2YWJDTkpRNmdNQk9EbGRZSS11ZlF0NzZlaENZSFJ1bkY3V0JjdXZFaElzVjBXTG9GbUF2LURYVTNzbFRJQWJGejQ3anhsWU9NbXZYdGt1bEdjX0dXelJCZ1FlVTQxLXlBeHFkTlllQTQxQjV4TVVvWHpjc1hMWVBtYjJNUF9FZ1NfZ0MyQWZUVD",
   "texto": "Trabajadores del Banco de la Nación anuncian huelga nacional y protestas por reclamos laborales y “nombramientos a dedo” - Revista Caretas",
   "entidades": [
    "Banco de la Nación"
@@ -944,6 +1915,20 @@
   "fecha": "2026-10-16T22:08:12.488374+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMi1AFBVV95cUxOZUhTQ01SVVJDVElJRDM1aDl3dWNNMGFjZ3pxZFdOR3lLc0VKTmtITGJTTEUzUFRvY21XNzdRSmZlMExDU2pIY29QVlhfODFfeGpsQ2xNS0ExSjloOU5TbGlyRDFjVk5Ka0IySlNrdFJxRkg3cDNhLUVoRVVma0pTQ2x6Q1hNdmlabmpXeTRFSlZOZDlibERqVUZPLTRvQWhjWW5GR051TndHM3N6Y215a1VhTWRIZ1Q0M2REWH",
+  "texto": "'El mejor plan es cuidarnos': cómo el BCP y TBWA Perú llevan la prevención climática del cine a las calles - Roastbrief",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:12.488374+00:00"
+ },
+ {
   "id": "tiktok:7682900380699755280",
   "texto": "Hola excelente dato, y si voy con 3 acompañantes , pueden ingresar conmigo?",
   "entidades": [
@@ -1378,6 +2363,22 @@
   "fecha": "2026-10-16T22:08:11.962919+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMi-AFBVV95cUxQZ2xNNllwUnRqamtwRmY2ZXBpNms0UzRUNkM5dzVaRTJPeC1qdFpTd3YwWEZfMC1sbDBOcFRDWERsT1d5d3lzOUs3ZmZWeFdHRlhqRG01RThNTk9mQll4OWFrWF8ycjlVdHFPZTVNdVRQRWllamd6dEtrZUphS2NIR1lzQkRPTmtubHdhQkRORjVyYmtpRDdDWHpTUnZNcm1GSHJVSVBpQjNwa29RYkdkZTlKWndLZ28xOU0tN1",
+  "texto": "Condenan a 9 años de cárcel a excajero del Banco de la Nación que se apropió de S/ 90 mil de la cuenta de una ahorrista - RPP Noticias",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Cuentas / transferencias"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.962919+00:00"
+ },
+ {
   "id": "x:2100894162044293366",
   "texto": "Con el proyecto Aprendizaje sin violencia, ofrecemos nuevas oportunidades a niños, niñas, adolescentes y jóvenes de Moche y Salaverry, en Trujillo, Perú📍🇵🇪. \nEl proyecto, implementado por @WorldVisionPeru   combina deporte, educación y emprendimiento, y forma parte de la iniciativa conjunta de Fundació Barça y @ScotiabankFC @ScotiabankPE , que nos permite trabajar unidos en 7 países de Latinoamérica. \nDurante nuestra visita, Jon Andoni Goikoetxea, Barça Legend, pudo conocer de cerca el proyecto, compartir experiencias y, sobre todo, escuchar a sus protagonistas. \nUn gran testimonio que nos recuerda que el deporte también puede ser una herramienta para generar oportunidades y transformar vidas. 🟠 \n Video",
   "entidades": [
@@ -1472,6 +2473,22 @@
   "fecha": "2026-10-16T22:08:11.842347+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMixwFBVV95cUxOVjRSZHBWaHJUSFJTTHRlYmRzMTNBajFyZVJ4bkZ6MlpRQzBDOWxhTkRSWGtnV2ttU3h2M0pZbXRXd0FKM2pjSmRwMm54T0YxQVluLXZ0V1RkTWpTMjZTZ2tUbkhQOE8yRmNESGQ5VGRJekYzdVpYY0lzNGdsZlNTdWdmNTZ6TEVmckswdGNkOGoxVTd0LTNVZFNNQ1plQmlkQm1jTUg0cllUOU9jNHRuaHBSOU5ZUWFodGNsR0",
+  "texto": "Vraem: PCM promueve instalación de universidad nacional y agencia del Banco de la Nación - Agencia Andina",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.842347+00:00"
+ },
+ {
   "id": "tiktok:7687586347775345428",
   "texto": "ahora tengo que ser experto en cajeros automáticos???",
   "entidades": [
@@ -1502,7 +2519,37 @@
   "fecha": "2026-10-16T22:08:11.802462+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMivwFBVV95cUxNeENObEMyRlJaMWgyTTRmdG5mQjJSbEkyWGNncFdwMHdpNmJHUHpoejY2WkVHc1l0NEFQNENpakFPNWU4V0NaXzk1N0hwZzl3T3NFNndPdGFxVlp2a2dVLS0zM3RjcUdUb2VBNjRNVUZQdnB5OUdkSlNEUU1GN1VRVG5JUVZ2eGJmVW9KRlJaMkhIamNGVm9JZGdnRDJlSGJ1THBiU0dvRE9ZZFZ5eFJtVWlJY0xVaWZfbm5mQl",
+  "texto": "Menores provisiones y mayor actividad financiera elevan en 27.3% la utilidad de Interbank - Finanz@s",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.802462+00:00"
+ },
+ {
   "id": "news:https://news.google.com/rss/articles/CBMi-gFBVV95cUxPQ1dXeDdkZ19TQVd0QXd4aExsMVlQQl9pRGp1YXRMRjJtSGZTNXdaLTNIdWlVSy1pbUJ6QTBKYkJtREZpMXlpQi0zMEdPZXFaR0lGTGxEazloSm5UZFNxeTJSR3o0SVk2OG00bjI5eGV1NEdTWUUtLXB1RmNGbGhSMDBMalpkcUdZR3Nyck5POWJ2NVVyUlpuUjZsLXp1c1p3NlVRWjRwZ3FKRGluczRySGR1Y2tVbTBvX2VpQ2ZqaW52NGRNTEloLW5yYUVPVTNJVV9YQ3AtSFgzUnk4UnpyUzhtLVJwSmtPV3BudXFVZi1aalhoMXp4dlJR0gGUAkFVX3lxTE5sZmItNVBlbHAwbzBKTWI1NEl3MmE1dnI4X0FCVUw1UnZQNjVMUXd3bkhRSTJGZFR5OXRpLW14dklLb0RnYTU0NmZURkxBcDVWd1dYaTdwWW9KQzN2OHpEWFpVSEtnRTRSbGN3SlRtSmJ0SG1LUFZ4U2gtZDZsS1JfRTdfV0dMdk9PNlNqVU5JWXV0Y0htRGdDTTlJYmZQZFZmcXEwcWtxb0pyME5zTTNSMFFwNXlmUDVGTFEycnY0OS01czRPaGhnc2NJNW1RSXZfNDhNWE9LNnpsdjVaZDNlNWlpQmNxaFBPajFJMEtEbWI5cW8xNHdDQk5RRkxEQ0hzMlMwX3BGLUhPYmhkTXR5ZERicg?oc=5",
+  "texto": "Paro en el Banco de la Nación: Trabajadores anuncian huelga nacional indefinida, ¿desde cuándo y qué servicios podrían afectarse? - Infobae",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.782748+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMi-gFBVV95cUxPQ1dXeDdkZ19TQVd0QXd4aExsMVlQQl9pRGp1YXRMRjJtSGZTNXdaLTNIdWlVSy1pbUJ6QTBKYkJtREZpMXlpQi0zMEdPZXFaR0lGTGxEazloSm5UZFNxeTJSR3o0SVk2OG00bjI5eGV1NEdTWUUtLXB1RmNGbGhSMDBMalpkcUdZR3Nyck5POWJ2NVVyUlpuUjZsLXp1c1p3NlVRWjRwZ3FKRGluczRySGR1Y2tVbTBvX2VpQ2",
   "texto": "Paro en el Banco de la Nación: Trabajadores anuncian huelga nacional indefinida, ¿desde cuándo y qué servicios podrían afectarse? - Infobae",
   "entidades": [
    "Banco de la Nación"
@@ -1582,6 +2629,22 @@
  },
  {
   "id": "news:https://news.google.com/rss/articles/CBMixAFBVV95cUxQc3I5ZmRZSDIzQndOcXNGektDR1JTWEp5emQ3MWJUZVNpdW9YVFR1cGpLSHdpbkpmT0NHOXY2TS1JaWx1Z25PQncyRk9uTlpjbE1hM3lNQ3Z3WmtZZW5qaVQtb3hZSUJ6a0Q1NW5FOV9xTUNGZERFT0pjS3NZbG4wS3dkdVM3WDBYR1NJVU83dXN2cHc5ODlrX0otX1U2bEhnblFSZ1NCWmdmcU9yZ2t3WS0wRU04aUZqbGVWdmdwSjRUQVdI?oc=5",
+  "texto": "BCP otorga Línea Verde de hasta US$185 millones a SIDERPERU para compra de chatarra - Gestión",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.682303+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMixAFBVV95cUxQc3I5ZmRZSDIzQndOcXNGektDR1JTWEp5emQ3MWJUZVNpdW9YVFR1cGpLSHdpbkpmT0NHOXY2TS1JaWx1Z25PQncyRk9uTlpjbE1hM3lNQ3Z3WmtZZW5qaVQtb3hZSUJ6a0Q1NW5FOV9xTUNGZERFT0pjS3NZbG4wS3dkdVM3WDBYR1NJVU83dXN2cHc5ODlrX0otX1U2bEhnblFSZ1NCWmdmcU9yZ2t3WS0wRU04aUZqbGVWdm",
   "texto": "BCP otorga Línea Verde de hasta US$185 millones a SIDERPERU para compra de chatarra - Gestión",
   "entidades": [
    "BCP"
@@ -1794,6 +2857,22 @@
  },
  {
   "id": "news:https://news.google.com/rss/articles/CBMi4gFBVV95cUxOQkl2YnRhbTJNcEhyY29kZ1ZPTnQxTGpYVXotNmMtb1ZXT0s2UDdkVkNFanBBWnl4Mzk4d0FWb0NMWGNNRkhKZm1zT2w3TGtybEdSYUgteHpQd09WMWhreHM0RVhCekRuUTVqMzR3djdBWVQ5THN6dWhtWG9oVkI1ZVNSOUpQSlFGQkJNR1Q5aXFWV3BaRDduckpSTk1qQklibWh3aXpWOUpKZGtLOG1tQi03d0wyY0NWZ1VVN0hKeEtaWlh0Z1Y3WGtoM0hWbTVjZXN1Ykt5RDNQM3FTUTRMdGJB0gH2AUFVX3lxTE1RZ3lORF9DTTFLVHN1VDBjVnZDQV8waWdiWU5TdjVGUl9LdzNwN0huUjFYeXVrdlhqTElqd1huSWJ5SWtIMXh1Y0F0ei01M2x5RzROYVZuSHN2amptVGszUFNBSlV6dkpNX19uSHhrOF9NaVN6Q1FBUFJpRFZlMzFXRTE2Si14RXNmcEZLU1hiSEt5Rml6ZXJ5MHp1blBxWndSNnd1RXdONDdFbnJLejEwQ1NQb3pwZHpKVzFJUFpvck5DWmZqbjgxY0U4V2hhRGtmX0h2enZFYmtNUUpvWklLTEQ4UWZqWUd5Rm81c184clJhS2VfQQ?oc=5",
+  "texto": "BCP otorga Línea Verde de hasta US$185 millones a Siderperú para impulsar la economía circular - El Comercio Perú",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.394962+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMi4gFBVV95cUxOQkl2YnRhbTJNcEhyY29kZ1ZPTnQxTGpYVXotNmMtb1ZXT0s2UDdkVkNFanBBWnl4Mzk4d0FWb0NMWGNNRkhKZm1zT2w3TGtybEdSYUgteHpQd09WMWhreHM0RVhCekRuUTVqMzR3djdBWVQ5THN6dWhtWG9oVkI1ZVNSOUpQSlFGQkJNR1Q5aXFWV3BaRDduckpSTk1qQklibWh3aXpWOUpKZGtLOG1tQi03d0wyY0NWZ1VVN0",
   "texto": "BCP otorga Línea Verde de hasta US$185 millones a Siderperú para impulsar la economía circular - El Comercio Perú",
   "entidades": [
    "BCP"
@@ -2057,7 +3136,35 @@
   "fecha": "2026-10-16T22:08:11.047003+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMixwFBVV95cUxPY3lYYTNoenJSNGVzRU8zQTRtVnpGYTVVMU1EZWNWcjFFVnJ3QnZMdm1rSjdNOFFxRl9ONW1GaV9PSGQ0Q0xuZ2hkNDVlYWM2RVMxUzR5M0FnaEUyRG1YSC1RbHl2djY5b2FPRklhYS1LMVdURlNJc3JTd3F3d29OcDFqV0NaZ2xEM0V4TXlmX1ZMZEUxcEFweTdodE1HNXJRRkNfOTlEYmxocTY3d18ya0puZnJiYnFnSGphaU",
+  "texto": "Cartera de personas se convierte en uno de los principales motores de crecimiento de Interbank - Finanz@s",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.047003+00:00"
+ },
+ {
   "id": "news:https://news.google.com/rss/articles/CBMiuwFBVV95cUxPS3d4Y3VleTlSVHpjaWM4MTBONlZoSDVpeWhMeDM2YmVxMEF6eHl5cTNNTW50ZTEtMEswbnJNcmwwY3FQeXFoaTl2OXh3Q3JUbHFmLXBadHlySDhFdEVPaUtZNGZHd2V6dUJxa2RtckE2WXNmaFd6SUNTMHBWQ0FOc1N0R1U5X2lidzZQTkFWOWZBRFFJSGZ0RTlLQXhsaGstbGhjUUI2bl8tWDFGVUxqY1NZR3JOTkR5M204?oc=5",
+  "texto": "Scotiabank Perú registra S/1,116 millones de utilidad a agosto y reduce provisiones 47% - Finanz@s",
+  "entidades": [
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:11.025424+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMiuwFBVV95cUxPS3d4Y3VleTlSVHpjaWM4MTBONlZoSDVpeWhMeDM2YmVxMEF6eHl5cTNNTW50ZTEtMEswbnJNcmwwY3FQeXFoaTl2OXh3Q3JUbHFmLXBadHlySDhFdEVPaUtZNGZHd2V6dUJxa2RtckE2WXNmaFd6SUNTMHBWQ0FOc1N0R1U5X2lidzZQTkFWOWZBRFFJSGZ0RTlLQXhsaGstbGhjUUI2bl8tWDFGVUxqY1NZR3JOTkR5M204?o",
   "texto": "Scotiabank Perú registra S/1,116 millones de utilidad a agosto y reduce provisiones 47% - Finanz@s",
   "entidades": [
    "Scotiabank Perú"
@@ -3109,6 +4216,22 @@
   "fecha": "2026-10-16T22:08:09.663285+00:00"
  },
  {
+  "id": "news:https://news.google.com/rss/articles/CBMizwFBVV95cUxQa0pyS09CT0dPaXVGNFpXQnhPOHJMeWZSelVhaDd3U2YxaFAwZ1ltcUFsT0J0ajZlenZPcURyYnVqV0xEMUNyV0ZoYTE2bENEbnF6YTA5MkllUENfVG5ZOHBUQWoxdVdQdFZCRDBjd2kwMjBNeml5NWNwS210YmNQZ3NHWlN0dTVMNnJmUUlwZzBKLWIxQTNMbUdJaW96dllrVzUxZEJORGVqZHBjb0FGRXVVSlIzcy1Ydy0zNW",
+  "texto": "SBS fija infracciones muy graves de bancos, AFP y seguros por no proteger a clientes, ¿en qué casos? - Gestión",
+  "entidades": [
+   "SBS"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:09.663285+00:00"
+ },
+ {
   "id": "tiktok:7692782826995991317",
   "texto": "mucho falla su aplicativo y no me llegan las ofertas que supuestamente tienen 🤨🤨🤨",
   "entidades": [
@@ -4098,6 +5221,22 @@
  },
  {
   "id": "news:https://news.google.com/rss/articles/CBMiogFBVV95cUxOeU5CUDkyd2V0TXdXcjdtRXlXN1IzT3FUYWZXOHdYa2RYZ05KVHBmMjJnQnlITTYyeWE3LXRoSktrQTVia2YyZjdwWXpqM1c1cFJGdThja3JfQXdwVTZrSGhSOE9Mc1FpMDZZb1BvaGlyTlFrcUtKZ2FZd0ZOendVYlFRR2w0S1dmR0RiRTk3LTYxelhhQUF6Z0R5SUFmczRTd1HSAacBQVVfeXFMTzZPUHdhT2hGM3diMW00S2tnZUhwVUYzbzk3a2FJbFNsbDV6aDlCVUtrQXpFb05QNzZVLW1MeFhDQ0F2Nzg5RElUUmJ2NlNiVHROai1ZR3dPSWZ5ZkxtUlJYZmtHbUpXaG45cWphMmlLX1Qwc25QNVM0Q05nZHF5ZjVXeC1mUmp3Y2dEWkpCb0hiMVhsMWcwcm9JdlRjMjFxQjNyZnY0NE0?oc=5",
+  "texto": "SBS paga precios sobredimensionados por pasajes... - Panamericana TV",
+  "entidades": [
+   "SBS"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "Auditoría (Claude): no es queja: consulta, noticia, anuncio, situación personal, humor o tema de terceros",
+  "fecha": "2026-10-16T22:08:08.251288+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMiogFBVV95cUxOeU5CUDkyd2V0TXdXcjdtRXlXN1IzT3FUYWZXOHdYa2RYZ05KVHBmMjJnQnlITTYyeWE3LXRoSktrQTVia2YyZjdwWXpqM1c1cFJGdThja3JfQXdwVTZrSGhSOE9Mc1FpMDZZb1BvaGlyTlFrcUtKZ2FZd0ZOendVYlFRR2w0S1dmR0RiRTk3LTYxelhhQUF6Z0R5SUFmczRTd1HSAacBQVVfeXFMTzZPUHdhT2hGM3diMW00S2",
   "texto": "SBS paga precios sobredimensionados por pasajes... - Panamericana TV",
   "entidades": [
    "SBS"
@@ -8450,6 +9589,81 @@
   "fecha": "2026-10-16T22:08:00.829038+00:00"
  },
  {
+  "id": "yt:jY4PDoCZznM",
+  "texto": "El impacto de Yape y Plin en el Perú: lo que cambió en 8 años. En 2018, un peruano hacía en promedio 29 pagos digitales al año. Hoy hace cerca de 767, más de dos por día. ¿Qué pasó en el ...",
+  "entidades": [
+   "Yape",
+   "Plin"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "",
+  "fecha": "2026-10-16T21:56:57.559312+00:00"
+ },
+ {
+  "id": "x:2110928859268849840",
+  "texto": "JUSTO la mochis saco esos 😓 quería pedirlos pero mi yape ya no da más",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-16T21:56:42.631067+00:00"
+ },
+ {
+  "id": "x:2110974210751525284",
+  "texto": "cobra tu yape muerto de hambre",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-16T21:56:21.279413+00:00"
+ },
+ {
+  "id": "x:2110901073267363979",
+  "texto": "Yo tengo -150 soles jaja yape crédito 😔",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-16T21:55:28.132638+00:00"
+ },
+ {
+  "id": "x:2111105616324575701",
+  "texto": "Yo con el prestamo que saque de yape para comprar una entrada más para los biti y nunca consegui la entrada (me endeude por las) 😔",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "habla de una situación personal",
+  "fecha": "2026-10-16T21:54:52.706576+00:00"
+ },
+ {
   "id": "ejemplo:31c45f743e1eaae0",
   "texto": "Qué está pasando con la banca peruana? @SBSPERU brilla por su ausencia y silencio",
   "entidades": [
@@ -8512,21 +9726,6 @@
   "atribuible": false,
   "nota": "descuido personal del usuario con su crédito; no es falla de Yape",
   "fecha": "2026-10-16T21:52:46.977005+00:00"
- },
- {
-  "id": "yt:jY4PDoCZznM",
-  "texto": "El impacto de Yape y Plin en el Perú: lo que cambió en 8 años. En 2018, un peruano hacía en promedio 29 pagos digitales al año. Hoy hace cerca de 767, más de dos por día. ¿Qué pasó en el ...",
-  "entidades": [
-   "Yape",
-   "Plin"
-  ],
-  "sentimiento": "neutro",
-  "queja": false,
-  "categorias": [],
-  "relevante": true,
-  "atribuible": false,
-  "nota": "nota informativa; no es queja",
-  "fecha": "2026-10-16T21:52:46.975295+00:00"
  },
  {
   "id": "ejemplo:e08534f26fb4491f",
