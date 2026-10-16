@@ -1,1 +1,397 @@
-[]
+[
+ {
+  "id": "ejemplo:31c45f743e1eaae0",
+  "texto": "Qué está pasando con la banca peruana? @SBSPERU brilla por su ausencia y silencio",
+  "entidades": [
+   "SBS"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "crítica directa al regulador por su inacción: negativo",
+  "fecha": "2026-10-16T21:52:47.038610+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNjQ1MzU3NzE3NjMwNzQ5XzMwMzQwMzA4OTM2Mjg1NTE=",
+  "texto": "BBVA eres una k-gada, a cada rato se malogra tu plin,",
+  "entidades": [
+   "Plin",
+   "BBVA Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "falla recurrente del servicio de Plin en BBVA: negativo y queja",
+  "fecha": "2026-10-16T21:52:47.036873+00:00"
+ },
+ {
+  "id": "facebook:Y29tbWVudDoxNjQ1MzU3NzE3NjMwNzQ5XzI2MzM4MDkzMDM3Mjg0MDQ=",
+  "texto": "Plin se cayó como siempre... Son desgastantes sus múltiples caídas...",
+  "entidades": [
+   "Plin",
+   "BBVA Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "caída del servicio: negativo y queja",
+  "fecha": "2026-10-16T21:52:47.006318+00:00"
+ },
+ {
+  "id": "ejemplo:2ea18c609c30f99f",
+  "texto": "putmare saque un yape credito por si es que soltaban entradas pero me toco el numero de cola en san pincho y ya no pude devolver mi plata pq habia un plazo, SE ME OLVIDO Y AHORA SE ME COBRO EL SPOTIFY",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "descuido personal del usuario con su crédito; no es falla de Yape",
+  "fecha": "2026-10-16T21:52:46.977005+00:00"
+ },
+ {
+  "id": "yt:jY4PDoCZznM",
+  "texto": "El impacto de Yape y Plin en el Perú: lo que cambió en 8 años. En 2018, un peruano hacía en promedio 29 pagos digitales al año. Hoy hace cerca de 767, más de dos por día. ¿Qué pasó en el ...",
+  "entidades": [
+   "Yape",
+   "Plin"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "nota informativa; no es queja",
+  "fecha": "2026-10-16T21:52:46.975295+00:00"
+ },
+ {
+  "id": "ejemplo:e08534f26fb4491f",
+  "texto": "Sin jodas tengo 3so en yape ptm",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "saldo personal del usuario; no es queja",
+  "fecha": "2026-10-16T21:52:46.945995+00:00"
+ },
+ {
+  "id": "ejemplo:ef7690580d6435f1",
+  "texto": "no saben la vergüenza que tengo cuando digo medio pasaje y tengo que pagar con yape yo siento que me odian",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "anécdota personal pagando con Yape; no es queja contra Yape",
+  "fecha": "2026-10-16T21:52:46.945755+00:00"
+ },
+ {
+  "id": "news:https://news.google.com/rss/articles/CBMipgFBVV95cUxQVi04S0NKWVBmRFBFNWlWcktlSUFuU21JRnF0VE1YZTRqN21tQ0IyM1Qya091UHQyUnJqUXBCWmpNZTJ4OUhEdi1pSm5Oak9lYmItSXdrRHBZMWFrYlBqcnFfb0gyRnotRjY2cWNIeXc0RWJRR3lHTHJUSUJvYTVZQzl0ekU3clF2OHlDSGlZZ2FseDh0Y2N4cXZ3WlZUZmR3QktDTHln?oc=5",
+  "texto": "Hidrandina denuncia falsos cobradores que piden yape y transferencias - Macronorte",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "estafa de terceros contra clientes de otra empresa; no trata de Yape",
+  "fecha": "2026-10-16T21:52:46.944097+00:00"
+ },
+ {
+  "id": "ejemplo:bfbc34783c006fc4",
+  "texto": "Ya me quedé misia y tuve q pedir mi préstamo yape para verlo en el cine, DEJENME BIEN CARAJO",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "situación personal; usa el préstamo de Yape, no reporta un problema",
+  "fecha": "2026-10-16T21:52:46.913889+00:00"
+ },
+ {
+  "id": "ejemplo:94784c7676cc2b18",
+  "texto": "ya paguen xfa q me da vergüenza que yape me siga ofreciendo créditos",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "comentario en broma sobre las ofertas de crédito; no es queja",
+  "fecha": "2026-10-16T21:52:46.913650+00:00"
+ },
+ {
+  "id": "yt:xrPP-1MJMvk",
+  "texto": "Half-Life pero es Perú: El Yape Ladrillo King Kong 🧱📱 | Parodia Peruana. ¡Qué pasa, gente! Bienvenidos a un nuevo video de GORDON PE FREEMAN.   Esta vez nuestro hombre de ciencia favorito está yendo a chambear tranquilo a Black Mesa, pero lo detiene el tío Barney porque su traje HEV \"color chizito\" parece de gasfitero de Puente Piedra y no tiene SOAT. Como Gordon está aguja y el Yape está caído, aplica la vieja confiable: ¡pasar saldo por Bluetooth con un ladrillo King Kong! 🧱😂   ¿Qué harías tú si te piden para la Inca Kola en pleno laboratorio? ¡Déjalo en los coment",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "parodia: 'el Yape está caído' es parte del chiste, no un reporte real",
+  "fecha": "2026-10-16T21:52:46.912246+00:00"
+ },
+ {
+  "id": "ejemplo:89fde5fe14d6df14",
+  "texto": "pobre en yape pq no agarre nada de lo que tengo en efectivo 👅👅",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "situación económica personal",
+  "fecha": "2026-10-16T21:52:46.882689+00:00"
+ },
+ {
+  "id": "ejemplo:c28b33bef2167cbc",
+  "texto": "Vendi un auto hace mas de 10 años y no le cambiaron el nombre, mi banco me congeló la cuenta asi que ahora solo manejo el Yape, nada de bancos.",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "la queja es contra otro banco sin nombrar; Yape es la alternativa que usa",
+  "fecha": "2026-10-16T21:52:46.882473+00:00"
+ },
+ {
+  "id": "ejemplo:45d9366aa30d9120",
+  "texto": "La de Susy Díaz con Yape POS fue mejor",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Marketing / publicidad"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "opinión sobre un anuncio anterior; no es disponibilidad",
+  "fecha": "2026-10-16T21:52:46.882214+00:00"
+ },
+ {
+  "id": "ejemplo:ebefad2ebcdf559b",
+  "texto": "Ya pero no entendí qué se guarda, para qué y por qué una vez al mes….",
+  "entidades": [],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "duda sobre lo que explica un anuncio: consulta, no queja ni disponibilidad",
+  "fecha": "2026-10-16T21:52:46.882011+00:00"
+ },
+ {
+  "id": "ejemplo:e948a615538c2406",
+  "texto": "PFFFFFF SUBANLE EL SUELDO AL ENCARGADO DEL MARKETING DE YAPE",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "positivo",
+  "queja": false,
+  "categorias": [
+   "Marketing / publicidad"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "elogio a la publicidad; nada que ver con la disponibilidad",
+  "fecha": "2026-10-16T21:52:46.881779+00:00"
+ },
+ {
+  "id": "ejemplo:45da3e552a96b78b",
+  "texto": "¿Soy el único que no supera el sonido de \"yape\"? xd",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Experiencia / diseño de la app"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "comentario en broma sobre el sonido (diseño); no es disponibilidad ni queja",
+  "fecha": "2026-10-16T21:52:46.881565+00:00"
+ },
+ {
+  "id": "ejemplo:54157d5c549aa50d",
+  "texto": "Donaciones: BCP, BBVA o PLIN",
+  "entidades": [
+   "Plin",
+   "BCP",
+   "BBVA Perú"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "el banco solo aparece como medio de pago para donaciones; no habla de la entidad",
+  "fecha": "2026-10-16T21:52:46.881346+00:00"
+ },
+ {
+  "id": "ejemplo:1e37df272d3f6ad1",
+  "texto": "o te puedo dar pero en moneda solo que no tiene yape mi mama",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "menciona Yape como medio de pago; no es negativo",
+  "fecha": "2026-10-16T21:52:46.881131+00:00"
+ },
+ {
+  "id": "bsky:at://did:plc:plwsf5wvxxgexeckzwnm7hvc/app.bsky.feed.post/3mxeitfesd22l",
+  "texto": "Lo malo de tener una sobrinita bebé es que ahora se me pegan  las canciones de Plin Plin 🥲",
+  "entidades": [
+   "Plin"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "canciones del payaso Plin Plin, nada que ver con la billetera",
+  "fecha": "2026-10-16T21:52:46.879637+00:00"
+ },
+ {
+  "id": "x:2108206086549623140",
+  "texto": "Payasin plin plin otra vez 😅😅😅",
+  "entidades": [
+   "Plin"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "el payaso Plin Plin, no la billetera Plin",
+  "fecha": "2026-10-16T21:52:46.849357+00:00"
+ },
+ {
+  "id": "x:2109803104203886986",
+  "texto": "Desde cuando Yape tiene servicio de taxis?",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "pregunta o broma, no es queja",
+  "fecha": "2026-10-16T21:52:46.818919+00:00"
+ },
+ {
+  "id": "x:2109839187247517788",
+  "texto": "Durante un taller realizado en la Superintendencia de Banca, Seguros y AFP (SBS), como parte de las actividades de la semana de representación, el presidente de la Comisión de Economía, Medio Ambiente y Defensa del Consumidor del Senado de la República, Alfonso López Chau, planteó nuevamente la creación de un fondo soberano de riqueza como alternativa para financiar la transformación productiva del Perú. Para ello, propuso revisar las experiencias de Chile y Brasil.   \nbit.ly/4josdQB",
+  "entidades": [
+   "SBS"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "la SBS solo es la sede del evento; es una propuesta política, nada negativo",
+  "fecha": "2026-10-16T21:52:46.788224+00:00"
+ },
+ {
+  "id": "x:2108681641304768693",
+  "texto": "Y mi Yape",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "fragmento sin contenido: no dice nada de la entidad",
+  "fecha": "2026-10-16T21:52:46.757737+00:00"
+ },
+ {
+  "id": "ejemplo:3e19b1c2a4708c0c",
+  "texto": "Uno de ellos habría realizado un supuesto pago mediante Yape, mostrando el comprobante al personal del restaurante. Sin embargo, los trabajadores no habrían",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "delito de terceros que usan la marca; no es atribuible a Yape",
+  "fecha": "2026-10-16T21:52:46.728403+00:00"
+ },
+ {
+  "id": "ejemplo:456463802d614036",
+  "texto": "¡ALERTA! TRES SUJETOS HABRÍAN CONSUMIDO S/160 EN RESTAURANT Y PAGAN CON FALSO YAPE #Ica | ¡Atención comerciantes! Tres sujetos fueron señalados por protagonizar presuntamente una estafa en un restaurante del distrito de #Parcona",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Fraude / seguridad"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "estafa de terceros con un comprobante falso de Yape; no es culpa de Yape ni de sus sistemas",
+  "fecha": "2026-10-16T21:52:46.728110+00:00"
+ },
+ {
+  "id": "x:2109487886819103184",
+  "texto": "Acabo de revisar mi yape me quede con 20 soles para sobrevivir todo el mes...",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "situación económica personal del usuario, no una falla de Yape",
+  "fecha": "2026-10-16T21:52:46.726437+00:00"
+ }
+]
