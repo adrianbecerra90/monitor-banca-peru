@@ -4359,6 +4359,20 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._send({"error": str(e)}, code=400)
             return self._send({"ok": True, "pausa": PAUSA})
+        if u.path == "/api/ia/reclasificar":
+            # vuelve a poner en la cola de la IA lo visible de los últimos N días (p. ej. tras cambiar criterios)
+            try:
+                dias = max(1, min(int(qs.get("dias", ["30"])[0]), 365))
+            except ValueError:
+                return self._send({"error": "días no válido"}, code=400)
+            with _db_lock, db() as con:
+                n = con.execute("""UPDATE items SET ia_sentimiento=NULL, ia_queja=NULL, ia_severidad=NULL,
+                                   ia_categorias=NULL, ia_relevante=NULL, ia_motivo=NULL, ia_atribuible=NULL
+                                   WHERE oculto = 0 AND fecha >= ? AND meta NOT LIKE '%"tipo": "post_oficial"%'
+                                   AND meta NOT LIKE '%"tipo": "oficial"%'""",
+                                (iso(ahora() - timedelta(days=dias)),)).rowcount
+            registrar(self.yo["usuario"], f"reclasificó con IA {n} mensajes ({dias} días)", self.client_address[0])
+            return self._send({"ok": True, "en_cola": n})
         if u.path == "/api/encender":
             try:
                 avisos = encender(qs.get("tipo", [""])[0], qs.get("nombre", [""])[0][:60], qs.get("fuente", [""])[0][:60])
