@@ -3009,8 +3009,8 @@ def importar_mensajes(lista):
                 con.execute(f"INSERT INTO items ({','.join(datos)}) VALUES ({','.join('?' * len(datos))})", list(datos.values()))
                 nuevos += 1
                 continue
-            if actual["corregido"] == 1:
-                continue  # la corrección de aquí manda
+            if actual["corregido"] == 1 and not it.get("_forzar"):
+                continue  # la corrección de aquí manda (salvo que llegue una corrección más reciente, ya decidida)
             tomar = (it.get("corregido") == 1 or it.get("_forzar")
                      or (it.get("auditado") == 1 and actual["auditado"] != 1)
                      or (actual["ia_sentimiento"] is None and it.get("ia_sentimiento")))
@@ -3039,12 +3039,27 @@ def compatibilizar_mensajes(url, token):
             break
     # Desacuerdos: la mejor versión queda en los dos lados (y siempre en producción)
     forzar, arbitrados = set(), {"local": 0, "remoto": 0}
+    fecha_rem = {e["id"]: e.get("fecha", "") for e in
+                 json.loads(http_get(url + "/api/sync/ejemplos", h, timeout=60)).get("ejemplos", [])}
+    fecha_loc = {e["id"]: e.get("fecha", "") for e in ejemplos()}
     with _db_lock, db() as con:
         locales = {r["id"]: dict(r) for r in con.execute("SELECT * FROM items WHERE ia_sentimiento IS NOT NULL")}
     for id_, loc in locales.items():
         rem = remotos.get(id_)
-        if not rem or rem.get("ia_sentimiento") is None or rem.get("corregido") == 1 or _clave_ia(loc) == _clave_ia(rem):
+        if not rem or rem.get("ia_sentimiento") is None or _clave_ia(loc) == _clave_ia(rem):
             continue
+        if rem.get("corregido") == 1 and loc.get("corregido") == 1:
+            # dos correcciones distintas: gana la más reciente
+            if fecha_loc.get(id_, "") >= fecha_rem.get(id_, ""):
+                forzar.add(id_)
+            else:
+                with _db_lock, db() as con:
+                    con.execute(f"UPDATE items SET {', '.join(c + ' = ?' for c in CAMPOS_IA)} WHERE id = ?",
+                                [rem.get(c) for c in CAMPOS_IA] + [id_])
+                    _aplicar_ia(con)
+            continue
+        if rem.get("corregido") == 1:
+            continue  # ya se tomó al importar
         if loc.get("corregido") == 1 or loc.get("auditado") == 1:
             forzar.add(id_)  # lo revisado aquí manda
             continue
