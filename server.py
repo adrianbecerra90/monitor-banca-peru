@@ -537,7 +537,8 @@ def init_db():
 INCIDENTE_CIBER = re.compile(r"\b(filtr(o|aron|acion|aciones|ado|ada|ados|adas|an|ando)|hacke(o|os|aron|ado|ada|ar)|ransomware|"
                              r"ciberataque|ataque informatico|vulnerad[oa]s?|brecha de (datos|seguridad)|datos expuestos|"
                              r"exposicion de datos|secuestro de datos|incidente de (ciber)?seguridad|exfiltr\w*|"
-                             r"base de datos (robada|filtrada|expuesta|en venta))\b")
+                             r"base de datos (robada|filtrada|expuesta|en venta)|ataques? (a|al|contra) |"
+                             r"grupo de ransomware|muestra gratis|direccion onion|\.onion|dark ?web|deep ?web)\b")
 CHARLA_CIBER = re.compile(r"\b(fortalec\w*|capacita\w*|congreso|taller|webinar|recomendaciones|consejos|como proteger(te|se)?|"
                           r"evita(r)? ser|reune a expertos|resiliencia)\b")
 
