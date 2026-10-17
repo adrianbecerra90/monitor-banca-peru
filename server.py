@@ -2838,6 +2838,9 @@ def revisar_referentes_x():
                                json.dumps(a["entidades"], ensure_ascii=False), a["organizacion"], a["sector"], iso(ahora())))
             if cur.rowcount:
                 para_avisar.append(a)
+            else:  # si se sumó una entidad después (p.ej. BCRP), la alerta ya guardada se actualiza
+                con.execute("UPDATE alertas_ciber SET entidades = ?, organizacion = ?, sector = ? WHERE id = ?",
+                            (json.dumps(a["entidades"], ensure_ascii=False), a["organizacion"], a["sector"], a["id"]))
             if a["entidades"]:
                 al_panel.append(a)
                 # si ya entró por la búsqueda general de X, pasa a ser alerta (salvo que el analista lo haya corregido)
