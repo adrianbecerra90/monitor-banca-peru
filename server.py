@@ -5136,14 +5136,26 @@ def sintesis_nube(qs):
     pos = sum(w["positivo"] for w in ws)
     lista = "; ".join(f'{w["palabra"]} ({w["total"]}: {w["negativo"]} neg, {w["positivo"]} pos)' for w in ws)
     lista_af = "; ".join(f'{b} ({a["neg"]} negativas, {a["quejas"]} quejas de {a["total"]} menciones)' for b, a in afectados)
-    huella = hashlib.sha256(json.dumps([(w["palabra"], w["total"] // 3) for w in ws] + [(b, a["neg"] // 3) for b, a in afectados]
-                                       + [g("banco"), g("horas"), g("fuente")], ensure_ascii=False).encode()).hexdigest()
+    # la huella cambia con cualquier filtro o cambio de la nube: así la frase se regenera cuando cambia lo que se ve
+    filtros = sorted((k, v[0]) for k, v in qs.items() if k not in ("gran", "orden", "max", "_"))
+    huella = hashlib.sha256(json.dumps([filtros, [(w["palabra"], w["total"]) for w in ws], [(b, a["neg"]) for b, a in afectados]],
+                                       ensure_ascii=False).encode()).hexdigest()
     previo = _SINTESIS.get(huella)
     if previo and time.time() - previo[0] < 20 * 60:
         return previo[1]
     ambito = g("banco").replace(",", ", ") or "todas las entidades monitoreadas"
-    periodo = {"1": "la última hora", "24": "las últimas 24 horas", "72": "los últimos 3 días", "168": "los últimos 7 días",
-               "720": "los últimos 30 días"}.get(g("horas"), "el periodo seleccionado")
+    periodo = ({"1": "la última hora", "24": "las últimas 24 horas", "72": "los últimos 3 días", "168": "los últimos 7 días",
+                "720": "los últimos 30 días", "2160": "los últimos 90 días"}.get(g("horas"))
+               or (f"del {g('desde')[:16].replace('T', ' ')} al {g('hasta')[:16].replace('T', ' ') or 'hoy'}"
+                   if g("desde") and not g("desde").startswith("2000") else "todo el histórico" if g("desde") else "el periodo seleccionado"))
+    extras = [x for x in (f"solo menciones {g('sentimiento').replace(',', ' y ')}s" if g("sentimiento") else "",
+                          f"solo de {g('fuente').replace(',', ', ')}" if g("fuente") else "",
+                          f"categoría {g('categoria')}" if g("categoria") else "",
+                          "solo quejas" if g("solo_quejas") == "1" else "",
+                          f"tipo de contenido {g('tipo')}" if g("tipo") else "",
+                          f"que contienen «{g('q')}»" if g("q") else "") if x]
+    if extras:
+        periodo += " (filtro: " + "; ".join(extras) + ")"
     prompt = (f"Eres analista de reputación y riesgo del sistema financiero peruano. Estas son las palabras y frases más "
               f"frecuentes en redes sociales sobre {ambito} en {periodo}, con cuántas publicaciones las usan y su tono "
               f"({d.get('publicaciones', 0)} publicaciones analizadas):\n{lista}\n\n"

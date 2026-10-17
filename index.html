@@ -813,10 +813,14 @@ async function cargarNube(){
 // Una frase de la IA con la idea global de hacia dónde va la conversación (según las palabras y su peso)
 let tSint,pSint='';function cargarSintesis(p){clearTimeout(tSint);tSint=setTimeout(async()=>{const q=p.toString();
   if(q===pSint&&$('#nube-sintesis').textContent)return;pSint=q;
-  const el=$('#nube-sintesis');if(!el.textContent)el.innerHTML='<span class="sub">🧠 Resumiendo la conversación…</span>';
-  try{const r=await fetch('/api/nube/sintesis?'+q).then(r=>r.json());
+  const el=$('#nube-sintesis');
+  // al cambiar los filtros, la frase anterior se atenúa y se avisa que se está actualizando
+  if(!el.textContent)el.innerHTML='<span class="sub">🧠 Resumiendo la conversación…</span>';
+  else{el.style.opacity='.45';el.querySelector('.sub')?.replaceChildren('Actualizando la síntesis con los filtros actuales…')}
+  try{const r=await fetch('/api/nube/sintesis?'+q).then(r=>r.json());if(q!==pSint)return; // llegó tarde: ya hay otra pedida
+    el.style.opacity='';
     el.innerHTML=r.frase?`🧠 <b>${esc(r.frase)}</b><span class="sub">Síntesis de la nube · ${esc(r.fuente)}${r.generada?' · hace '+hace(r.generada):''}</span>`:(r.motivo?`<span class="sub">${esc(r.motivo)}</span>`:'')}
-  catch(e){el.innerHTML=''}},800)}
+  catch(e){el.innerHTML='';el.style.opacity=''}},800)}
 function dibujarNube(ws){
   // Distribución en espiral (tipo Wordle): la más frecuente al centro, el resto alrededor sin solaparse
   const W=900,H=Math.max(280,Math.min(460,180+ws.length*3)),cx=W/2,cy=H/2;
