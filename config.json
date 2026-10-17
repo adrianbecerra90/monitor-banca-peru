@@ -166,6 +166,20 @@
         "Banco Pichincha",
         "Pichincha"
       ]
+    },
+    "Interseguro": {
+      "buscar": [
+        "Interseguro"
+      ],
+      "alias": [
+        "Interseguro",
+        "@Interseguro",
+        "#Interseguro",
+        "interseguro.pe",
+        "Interseguro Perú",
+        "Interseguro Peru"
+      ],
+      "ambiguos": []
     }
   },
   "contexto_peru": [
@@ -560,6 +574,25 @@
     "dias_base": 7,
     "minimo": 3,
     "enfriamiento_minutos": 120,
-    "enlace": "https://monitor-banca-peru-production.up.railway.app"
+    "enlace": "https://monitor-banca-peru-production.up.railway.app",
+    "minimo_ultima_hora": 5,
+    "piso_base_escasa": 8,
+    "base_escasa": 20
+  },
+  "x_referentes": {
+    "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
+    "cuentas": [
+      "alph4_SEC",
+      "H4ckmanac",
+      "FalconFeedsio",
+      "DarkWebInformer",
+      "DailyDarkWeb",
+      "MonThreat",
+      "SOCRadar",
+      "ESETLA"
+    ],
+    "intervalo_minutos": 10,
+    "notificar": true,
+    "notificar_horas": 24
   }
 }

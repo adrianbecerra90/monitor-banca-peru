@@ -234,6 +234,8 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="entidades"></div>
         <div class="sub" style="margin-top:6px">Clic para filtrar. Mayús+clic para seleccionar varias.</div>
       </div>
+      <div class="card"><h2>Ciberseguridad · referentes en X</h2><div id="ciber"></div>
+        <div class="sub" id="ciber-pie" style="margin-top:6px"></div></div>
       <div class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
       <div class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
       <div class="card hist-card">
@@ -280,8 +282,8 @@ const horaLima=t=>{const d=new Date(t);return isNaN(d)?'':d.toLocaleTimeString('
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>Number(n).toLocaleString('es-PE');
 const SENT=[['negativo','Negativo','var(--neg)'],['neutro','Neutro','var(--neu)'],['positivo','Positivo','var(--pos)']];
-const PERIODOS=[['1','1 h'],['24','24 h'],['168','7 días'],['720','30 días'],['2160','90 días'],['todo','Todo (incl. restaurado)'],['custom','Personalizado']];
-let F={gran:'auto',periodo:'168',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};
+const PERIODOS=[['1','1 h'],['24','24 h'],['72','3 días'],['168','7 días'],['720','30 días'],['2160','90 días'],['todo','Todo (incl. restaurado)'],['custom','Personalizado']];
+let F={gran:'auto',periodo:'72',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};
 let zoomPila=[],ESTADO=null,offset=0,pendientes=[],vistosGraves=new Set();
 
 // ---------- estado de filtros (persistido en la URL) ----------
@@ -302,7 +304,9 @@ function validarF(o){
   v.q=str(o.q,120);v.desde=fecha(o.desde);v.hasta=fecha(o.hasta);
   return v}
 function guardarF(){try{localStorage.setItem('monitor.filtros',JSON.stringify(F))}catch(e){}}
-function leerF(){try{F=validarF(JSON.parse(localStorage.getItem('monitor.filtros')||'null'))}catch(e){F=validarF(null)}}
+function leerF(){try{F=validarF(JSON.parse(localStorage.getItem('monitor.filtros')||'null'))}catch(e){F=validarF(null)}
+  // una sola vez: el periodo por defecto pasó de 7 a 3 días
+  try{if(!localStorage.getItem('monitor.periodo3d')){if(F.periodo==='168')F.periodo='72';localStorage.setItem('monitor.periodo3d','1')}}catch(e){}}
 if(location.hash)history.replaceState(null,'',location.pathname); // limpia enlaces antiguos con filtros en la URL
 function params(extra={}){
   const p=new URLSearchParams();
@@ -438,7 +442,7 @@ const ENT_COL=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(
 let ENT_MED='quejas',ENT_OCULTAS=[],ENT_TABLA=false,ENT_RANGO='panel',ENT_GRAN='auto',ENT_ST=null;
 try{const m=localStorage.getItem('monitor.ent.medida');if(m==='negativas')ENT_MED=m;ENT_OCULTAS=JSON.parse(localStorage.getItem('monitor.ent.ocultas')||'[]');
   const r=localStorage.getItem('monitor.ent.rango'),g=localStorage.getItem('monitor.ent.gran');
-  if(['panel','1','2','3','4','5','6','24','72','168','720','2160'].includes(r))ENT_RANGO=r;if(['auto','15min','hora','dia','semana'].includes(g))ENT_GRAN=g}catch(e){}
+  if(['panel','1','2','3','4','5','6','24','72','168','720','2160'].includes(r)&&localStorage.getItem('monitor.ent.rango3d'))ENT_RANGO=r;localStorage.setItem('monitor.ent.rango3d','1');if(['auto','15min','hora','dia','semana'].includes(g))ENT_GRAN=g}catch(e){}
 // Rango y detalle propios del gráfico: si difieren del panel, pide sus propios datos (con los demás filtros iguales)
 async function entidadesTiempo(stPanel){
   $('#ent-rango').value=ENT_RANGO;$('#ent-gran').value=ENT_GRAN;
@@ -693,7 +697,18 @@ function pintarPausa(){
   $('#banner-reanudar')?.addEventListener('click',()=>pausa('todo',false))}
 $('#pausa-global').onclick=()=>pausa('todo',!ESTADO?.pausa?.todo);
 
-let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube()},120)}
+// Alertas de cuentas de inteligencia de amenazas: solo las del sistema financiero, seguros y AFP del Perú
+async function cargarCiber(){
+  try{const d=await fetch('/api/ciber').then(r=>r.json());const a=d.alertas||[];
+    $('#ciber').innerHTML=a.length?a.slice(0,8).map(x=>{const mon=x.entidades.length;
+      const tit=(x.texto.split('\n')[0]||'').replace(/^\W+/,'').slice(0,140);
+      return `<div style="padding:7px 0;border-top:1px solid var(--line)"><div style="font-size:13px">${mon?'<b style="color:var(--neg)">● Monitoreada:</b> '+esc(x.entidades.join(', ')):'<b>'+esc(x.sector)+'</b>'}${x.organizacion&&!mon?' · '+esc(x.organizacion):''}</div>
+      <div class="sub" style="margin-top:2px">${esc(tit)}</div>
+      <div class="sub" style="margin-top:2px">${esc(x.cuenta)} · hace ${hace(x.fecha)}${x.url?` · <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">ver ↗</a>`:''}</div></div>`}).join(''):'<div class="sub">Sin alertas del sistema financiero peruano en los últimos 30 días.</div>';
+    const e=d.estado||{};$('#ciber-pie').textContent=`${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' · revisado hace '+hace(e.ultima_revision):''}${(e.errores||[]).length?' · sin respuesta: '+e.errores.length:''}`}
+  catch(e){}}
+setInterval(cargarCiber,120000);
+let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube();cargarCiber()},120)}
 
 // ---------- Nube de palabras ----------
 let NB={excluir:[]}; // ya no se usa: las exclusiones viven en el servidor (⚙ Configuración → Nube de palabras)
@@ -1068,7 +1083,7 @@ $('#f-orden').onchange=e=>{F.orden=e.target.value;guardarF();cargarItems()};
 $('#f-desde').onchange=e=>{F.desde=e.target.value;guardarF();recargar()};
 $('#f-hasta').onchange=e=>{F.hasta=e.target.value;guardarF();recargar()};
 let tq;$('#f-q').oninput=e=>{clearTimeout(tq);tq=setTimeout(()=>{F.q=e.target.value.trim();guardarF();recargar()},300)};
-$('#f-reset').onclick=()=>{zoomPila=[];F={gran:'auto',periodo:'168',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};pintarFiltros();recargar()};
+$('#f-reset').onclick=()=>{zoomPila=[];F={gran:'auto',periodo:'72',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};pintarFiltros();recargar()};
 $('#notif').onchange=e=>{if(e.target.checked&&'Notification'in window)Notification.requestPermission()};
 $('#refresh').onclick=async()=>{await post('/api/refresh');setTimeout(cargarEstado,800)};
 $('#h-go').onclick=async()=>{const fuentes=[...$('#h-fuentes').querySelectorAll('input:checked')].map(i=>i.value).join(',');

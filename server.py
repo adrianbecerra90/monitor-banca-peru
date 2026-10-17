@@ -332,6 +332,8 @@ def fuera_del_servicio(cats, atribuible=True):
 def clasificar(texto, tipo=""):
     """Devuelve (es_queja, categorias, severidad, sentimiento).
     tipo: 'noticia', 'comentario' (en una cuenta oficial) o '' (publicación social)."""
+    if tipo == "alerta_ciber":  # alerta de una cuenta de inteligencia de amenazas sobre la entidad
+        return True, ["Ciberseguridad / hackeos"], 3, "negativo"
     t = _sin_instituciones(normalizar(texto))
     cats = [k for k, pats in _cat_re.items() if any(p.search(t) for p in pats)]
     if tipo in ("oficial", "post_oficial") or RESPUESTA_OFICIAL.search(t):  # respuesta de la propia cuenta del banco/SBS
@@ -465,7 +467,7 @@ def es_relevante(texto, tipo=""):
     (p.ej. "plin" significa "lleno" en rumano)."""
     t = normalizar(texto)
     palabras = re.findall(r"[a-zñ]{2,}", t)
-    if tipo == "noticia":
+    if tipo in ("noticia", "alerta_ciber"):
         return True
     if _sin_contenido(texto) or APODO.search(normalizar(texto)):
         return False
@@ -534,7 +536,7 @@ def _aplicar_ia(con):
                    WHERE ia_sentimiento IS NOT NULL""")
     # Lo no atribuible a la entidad, o que solo trata de marketing o diseño, no cuenta como negativo ni como queja
     for r in con.execute("SELECT id, categorias, ia_atribuible, texto FROM items WHERE (sentimiento = 'negativo' OR es_queja = 1) "
-                         "AND oculto = 0 AND COALESCE(corregido, 0) = 0").fetchall():  # lo corregido a mano no se toca
+                         "AND oculto = 0 AND COALESCE(corregido, 0) = 0 AND meta NOT LIKE '%\"tipo\": \"alerta_ciber\"%'").fetchall():  # lo corregido a mano no se toca
         if fuera_del_servicio(json.loads(r[1] or "[]"), False if r[2] == 0 else True) or ajeno_a_la_entidad(r[3]):
             con.execute("UPDATE items SET sentimiento = CASE WHEN sentimiento = 'negativo' THEN 'neutro' ELSE sentimiento END, "
                         "es_queja = 0, severidad = 0 WHERE id = ?", (r[0],))
@@ -2634,6 +2636,7 @@ def _umbrales_por_hora(clave_fn, dias=7):
             p = sum(vals) / n if n else 0
             sd = (sum((v - p) ** 2 for v in vals) / n) ** 0.5 if n else 0
             res[k][franja] = (p, sd, n)
+        res[k]["base"] = sum(por_hora.values())
     return res
 
 
@@ -2665,10 +2668,17 @@ def revisar_umbral_notificar():
                         c["foco"][cat] = c["foco"].get(cat, 0) + 1
     franja = "dia" if 6 <= ahora().astimezone(LIMA).hour < 22 else "noche"
     enviadas = []
-    for k, n in sorted(ahora_n.items(), key=lambda x: -x[1]):
-        p, sd, muestras = umbrales.get(k, {}).get(franja, (0, 0, 0))
+    # Primero las entidades; "Total" solo avisa si ninguna entidad lo explica ya en esta misma revisión
+    orden = sorted(ahora_n.items(), key=lambda x: (x[0] == "Total", -x[1]))
+    for k, n in orden:
+        if k == "Total" and enviadas:
+            continue
+        u = umbrales.get(k, {})
+        p, sd, muestras = u.get(franja, (0, 0, 0))
         umbral = p + 2 * sd
-        if muestras < 24 or sd <= 0 or n <= umbral or n < cfg.get("minimo", 3):
+        if u.get("base", 0) < cfg.get("base_escasa", 20):
+            umbral = max(umbral, cfg.get("piso_base_escasa", 8))  # con poca historia, la desviación engaña
+        if muestras < 24 or n <= umbral or n < max(cfg.get("minimo", 3), cfg.get("minimo_ultima_hora", 5)):
             continue
         if time.time() - _NOTIF["ultima"].get(k, 0) < cfg.get("enfriamiento_minutos", 120) * 60:
             continue
@@ -2701,6 +2711,192 @@ def trabajador_notificaciones():
         except Exception as e:
             print(f"  Notificaciones: {type(e).__name__}: {e}", flush=True)
         time.sleep(300)
+
+
+# --------------------------------------------------------------------------
+# Alertas de ciberseguridad: cuentas referentes en X (inteligencia de amenazas) filtradas al sistema financiero peruano
+# --------------------------------------------------------------------------
+
+X_REFERENTES = {"cuentas": ["alph4_SEC", "H4ckmanac", "FalconFeedsio", "DarkWebInformer", "DailyDarkWeb",
+                            "MonThreat", "SOCRadar", "ESETLA"],
+                "intervalo_minutos": 10, "notificar": True, "notificar_horas": 24}
+
+# Entidades del sistema financiero, seguros y AFP del Perú (además de las monitoreadas). Las de nombre común
+# ("Prima", "Pacífico", "Rímac", "Hábitat", "Oh") solo cuentan con contexto peruano
+SF_PERU = re.compile(r"\b(banco de credito( del peru)?|credicorp|intercorp|interbank|bbva peru|scotiabank peru|banbif|"
+                     r"banco interamericano de finanzas|banco pichincha|pibank|banco gnb|banco falabella|banco ripley|mibanco|"
+                     r"alfin banco|bancom|banco de comercio|citibank peru|icbc peru|santander peru|bank of china peru|"
+                     r"banco de la nacion|agrobanco|banco agropecuario|cofide|mivivienda|compartamos|bci peru|"
+                     r"caja (municipal|rural|arequipa|piura|sullana|cusco|huancayo|trujillo|ica|tacna|maynas|metropolitana|"
+                     r"del santa|paita|los andes|raiz|incasur|prymera|centro|cencosud)|"
+                     r"financiera (confianza|efectiva|oh|qapaq|proempresa|credinka|surgir|crediscotia)|credinka|crediscotia|"
+                     r"rimac seguros|pacifico seguros|la positiva|mapfre peru|interseguro|chubb peru|crecer seguros|protecta|"
+                     r"vivir seguros|qualitas peru|cardif peru|ohio national|secrex|"
+                     r"afp (integra|prima|profuturo|habitat)|prima afp|profuturo|integra afp|habitat afp|"
+                     r"yape|plin|tunki|ligo|superintendencia de banca|sbs|bcrp|banco central de reserva|smv)\b")
+SF_PERU_COMUN = re.compile(r"\b(rimac|pacifico|prima|habitat|integra|oh!?|bim|ripley|falabella|confianza)\b")
+SECTOR_SF = re.compile(r"\b(banca|banco|bancari\w*|bank\w*|financ\w*|seguros?|aseguradora|insurance|afp|pensiones|pension\w*|"
+                       r"caja municipal|cooperativa de ahorro|microfinanz\w*|fintech|pagos digitales|payments?|credit\w*)\b")
+# Proveedores del sistema financiero: un ataque a ellos también expone a bancos, aseguradoras y AFP
+PROVEEDORES_SF = re.compile(r"\b(niubiz|visanet|izipay|culqi|procesos mc|unibanca|global ?net|multired|kasnet|western union peru|"
+                            r"equifax( peru)?|infocorp|sentinel|experian peru|xchange|cavali|bvl|bolsa de valores de lima|"
+                            r"prosegur|hermes( transportes)?|liderman|cobiscorp|topaz|bantotal|canvia|gmd|stefanini|"
+                            r"ntt data peru|everis peru|indra peru|atento|konecta|teleperformance|tata consultancy peru|"
+                            r"kushki|payu|mercado pago peru|safetypay|pagoefectivo|tarjeta oh|diners club peru|"
+                            r"visa peru|mastercard peru|american express peru|asbanc|apeseg|asociacion de afp)\b")
+PROVEE_SF = re.compile(r"\b(proveedor\w*|presta servicios|brinda servicios|servicios|soluciones|plataforma|software|sistemas?|"
+                       r"vendor|provider|supplier|clientes)\b.{0,60}\b(bancos?|banca|entidades financieras|instituciones financieras|"
+                       r"financial institutions|banks|aseguradoras|insurers|afps?|cajas municipales|sector financiero)\b")
+CONTEXTO_PE = re.compile(r"\b(peru|peruan[oa]s?|lima)\b|\.pe\b|\.com\.pe\b|🇵🇪")
+
+
+def _cfg_referentes():
+    return {**X_REFERENTES, **CONFIG.get("x_referentes", {})}
+
+
+def evaluar_alerta_ciber(texto):
+    """¿La alerta toca al sistema financiero, de seguros o AFP del Perú? Devuelve (entidades_monitoreadas, sector)
+    o None. Si la alerta trae la ficha "Sector:", el sector se decide solo con esa línea (evita falsos positivos)."""
+    t = normalizar(texto)
+    peru = CONTEXTO_PE.search(t) is not None or "🇵🇪" in (texto or "")
+    # sin una entidad nombrada, Perú debe ser el país de la víctima (titular o ficha), no un dato al pasar
+    cabecera = (texto or "").split("\n", 1)[0]
+    pais = re.search(r"(pais|country|ubicacion|location)\s*:\s*([^\n•|]{2,40})", t)
+    peru_victima = (CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
+                    or bool(pais and CONTEXTO_PE.search(pais.group(2))))
+    monitoreadas = detectar_bancos(texto, peru)
+    m = re.search(r"(?:industria\s*/\s*)?sector\s*:\s*([^\n•|]{2,80})", t)
+    sector_txt = m.group(1) if m else ""
+    otra = (peru and SF_PERU.search(t)) or (peru_victima and SF_PERU_COMUN.search(re.sub(r"https?://\S+", " ", t)) and
+                                            SECTOR_SF.search(sector_txt or t))
+    de_sector = peru_victima and SECTOR_SF.search(sector_txt if m else cabecera.lower() + " " + t[:300])
+    proveedor = (peru and PROVEEDORES_SF.search(t)) or (peru_victima and PROVEE_SF.search(t))
+    if not (monitoreadas or otra or de_sector or proveedor):
+        return None
+    if not peru and not monitoreadas:
+        return None
+    if m and not SECTOR_SF.search(sector_txt) and not monitoreadas and not SF_PERU.search(t) and not proveedor:
+        return None  # p.ej. "Sector: Gobierno" aunque el texto mencione una cuenta bancaria
+    org = re.search(r"organizaci[oó]n\s*:\s*([^\n•|]{2,80})", texto or "", re.I) or \
+        re.search(r"\|\s*([^|\n]{3,80}?)\s*[–-]\s*Per[uú]", cabecera)
+    nombre = (org.group(1).strip() if org else (otra or proveedor).group(0).title() if (otra or proveedor) else "").strip(" .")
+    es_prov = bool(proveedor) and not otra and not (de_sector and not PROVEE_SF.search(t))
+    return {"entidades": monitoreadas, "organizacion": nombre[:80],
+            "sector": "Proveedor del SF" if es_prov else "Seguros" if re.search(r"segur|insurance", sector_txt or t) else
+                      "AFP" if re.search(r"\bafp\b|pension", sector_txt or t) else "Sistema financiero"}
+
+
+def _tabla_ciber(con):
+    con.execute("""CREATE TABLE IF NOT EXISTS alertas_ciber (id TEXT PRIMARY KEY, cuenta TEXT, texto TEXT, url TEXT,
+                   fecha TEXT, entidades TEXT, organizacion TEXT, sector TEXT, capturado TEXT, notificada INTEGER DEFAULT 0)""")
+
+
+def _leer_cuenta_x(handle):
+    _, raiz, _ = _nitter_get(f"/{handle}/rss")
+    out = []
+    for i in raiz.iter("item"):
+        titulo = i.findtext("title", "")
+        if titulo.startswith("RT by"):
+            continue
+        desc = re.split(r"<blockquote|<hr", i.findtext("description", "") or "")[0]
+        texto = re.sub(r"\s*[—-]*\s*https?://\S*nitter\S*", "", limpiar_html(desc) or titulo)
+        texto = re.sub(r"[ \t]+", " ", re.sub(r"\n\s*\n+", "\n", texto)).strip()
+        link = re.sub(r"^https?://[^/]+", "https://x.com", i.findtext("link", "")).split("#")[0]
+        out.append({"id": "x:" + link.rsplit("/", 1)[-1], "texto": texto, "url": link,
+                    "fecha": parse_fecha(i.findtext("pubDate")), "cuenta": "@" + handle})
+    return out
+
+
+def revisar_referentes_x():
+    """Lee las cuentas referentes y guarda solo lo que toca al sistema financiero, seguros o AFP del Perú.
+    Lo que nombra a una entidad monitoreada entra además al panel como Ciberseguridad / hackeos."""
+    cfg = _cfg_referentes()
+    nuevas, errores = [], []
+    for h in cfg.get("cuentas", []):
+        h = str(h).lstrip("@").strip()
+        if not re.fullmatch(r"\w{1,30}", h):
+            continue
+        try:
+            posts = _leer_cuenta_x(h)
+        except Exception as e:
+            errores.append(f"@{h}: {type(e).__name__}")
+            continue
+        for p in posts:
+            ev = evaluar_alerta_ciber(p["texto"])
+            if ev:
+                nuevas.append({**p, **ev})
+        time.sleep(2)
+    al_panel, para_avisar = [], []
+    with _db_lock, db() as con:
+        _tabla_ciber(con)
+        for a in nuevas:
+            cur = con.execute("INSERT OR IGNORE INTO alertas_ciber (id, cuenta, texto, url, fecha, entidades, organizacion,"
+                              " sector, capturado) VALUES (?,?,?,?,?,?,?,?,?)",
+                              (a["id"], a["cuenta"], a["texto"][:3000], url_segura(a["url"]), a["fecha"],
+                               json.dumps(a["entidades"], ensure_ascii=False), a["organizacion"], a["sector"], iso(ahora())))
+            if cur.rowcount:
+                para_avisar.append(a)
+            if a["entidades"]:
+                al_panel.append(a)
+                # si ya entró por la búsqueda general de X, pasa a ser alerta (salvo que el analista lo haya corregido)
+                fila = con.execute("SELECT meta FROM items WHERE id = ? AND COALESCE(corregido, 0) = 0", (a["id"],)).fetchone()
+                if fila and '"alerta_ciber"' not in (fila[0] or ""):
+                    meta = {**json.loads(fila[0] or "{}"), "tipo": "alerta_ciber", "via": a["cuenta"],
+                            "bancos_fijos": a["entidades"], "peru": True}
+                    con.execute("UPDATE items SET meta=?, es_queja=1, severidad=3, sentimiento='negativo', oculto=0, ia_sentimiento=NULL, "
+                                "categorias=?, bancos=? WHERE id=?",
+                                (json.dumps(meta, ensure_ascii=False), json.dumps(["Ciberseguridad / hackeos"], ensure_ascii=False),
+                                 json.dumps(a["entidades"], ensure_ascii=False), a["id"]))
+    if al_panel:
+        guardar([{"id": a["id"], "fuente": "X", "tipo": "alerta_ciber", "peru": True, "bancos_fijos": a["entidades"],
+                  "via": a["cuenta"], "autor": a["cuenta"], "texto": a["texto"], "url": a["url"], "fecha": a["fecha"]}
+                 for a in al_panel])
+    _avisar_ciber(para_avisar, cfg)
+    ESTADO["referentes_x"] = {"ultima_revision": iso(ahora()), "cuentas": len(cfg.get("cuentas", [])),
+                              "nuevas": len(para_avisar), "errores": errores}
+    if para_avisar:
+        print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad (X referentes): {len(para_avisar)} alertas nuevas del SF peruano",
+              flush=True)
+    return para_avisar
+
+
+def _avisar_ciber(alertas, cfg):
+    if not cfg.get("notificar", True) or not os.environ.get("NOTIFY_NTFY_TOPIC"):
+        return
+    corte = iso(ahora() - timedelta(hours=cfg.get("notificar_horas", 24)))
+    for a in alertas:
+        if a["fecha"] < corte:
+            continue
+        quien = ", ".join(a["entidades"]) or a["organizacion"] or a["sector"]
+        tipo = re.search(r"\|\s*([^|]{3,40}?)\s*\|", a["texto"])
+        resumen = re.sub(r"\s+", " ", a["texto"])[:300]
+        try:
+            enviar_notificacion(f"Ciberseguridad: {quien}"[:120],
+                                f"{(tipo.group(1).strip() + ' · ') if tipo else ''}{a['sector']} · vía {a['cuenta']}"
+                                f"{' · entidad monitoreada' if a['entidades'] else ''}\n{resumen}",
+                                etiquetas="shield", url=a["url"] or None)
+            with _db_lock, db() as con:
+                con.execute("UPDATE alertas_ciber SET notificada = 1 WHERE id = ?", (a["id"],))
+        except Exception as e:
+            print(f"  Notificación de ciberseguridad fallida ({type(e).__name__}: {e})", flush=True)
+
+
+def alertas_ciber(dias=30):
+    with _db_lock, db() as con:
+        _tabla_ciber(con)
+        filas = con.execute("SELECT id, cuenta, texto, url, fecha, entidades, organizacion, sector FROM alertas_ciber "
+                            "WHERE fecha >= ? ORDER BY fecha DESC LIMIT 200", (iso(ahora() - timedelta(days=dias)),)).fetchall()
+    return [{**dict(r), "entidades": json.loads(r["entidades"] or "[]")} for r in filas]
+
+
+def trabajador_referentes():
+    time.sleep(20)
+    while True:
+        try:
+            revisar_referentes_x()
+        except Exception as e:
+            print(f"  Referentes X: {type(e).__name__}: {e}", flush=True)
+        time.sleep(max(5, int(_cfg_referentes().get("intervalo_minutos", 10))) * 60)
 
 
 def revisar_alerta_x():
@@ -3293,7 +3489,7 @@ def _json_tolerante(texto):
 
 
 SIN_IA = """ia_sentimiento IS NULL AND oculto = 0 AND meta NOT LIKE '%"tipo": "post_oficial"%'
-            AND meta NOT LIKE '%"tipo": "oficial"%'"""
+            AND meta NOT LIKE '%"tipo": "oficial"%' AND meta NOT LIKE '%"tipo": "alerta_ciber"%'"""
 
 
 def _guardar_ia(filas, res):
@@ -4845,6 +5041,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ejemplos": ejemplos(), "categorias": list(CATEGORIAS)})
         if u.path == "/api/stats":
             return self._send(estadisticas(qs))
+        if u.path == "/api/ciber":
+            return self._send({"alertas": alertas_ciber(), "cuentas": _cfg_referentes().get("cuentas", []),
+                               "estado": ESTADO.get("referentes_x", {})})
         if u.path == "/api/estado":
             with _db_lock, db() as con:
                 r = con.execute("SELECT COUNT(*), MIN(fecha), MAX(fecha) FROM items WHERE oculto = 0").fetchone()
@@ -5098,6 +5297,7 @@ def main():
     threading.Thread(target=saldo_scrapingbee, daemon=True).start()
     threading.Thread(target=trabajador_sync, daemon=True).start()
     threading.Thread(target=trabajador_notificaciones, daemon=True).start()
+    threading.Thread(target=trabajador_referentes, daemon=True).start()
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()

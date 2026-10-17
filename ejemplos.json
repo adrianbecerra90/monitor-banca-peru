@@ -1,5 +1,21 @@
 [
  {
+  "id": "x:2111264422953976133",
+  "texto": "JJAJ que le cuesta responder? o no sabe que responder porque todo es la plata del yape y de sueldaso del cargo que su partido que se invento para su bancada",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T02:14:01.173292+00:00"
+ },
+ {
   "id": "x:2111217749955584323",
   "texto": "En mi caso tengo el Yape asociada a una cuenta digitalcon monto bajo para mis gustos. Y la app del banco en un celular viejo en casa con mis cuentas de ahorro, sueldo, etc. Si me roban y me piden abrir mi app solo tendré Yape con 2 Luquitas y no verán mis otras cuentas",
   "entidades": [
