@@ -1,5 +1,22 @@
 [
  {
+  "id": "x:2111324844214165578",
+  "texto": "UNA MIERDA INTERBANK RECONCHADETUMADREEEEEEEEE",
+  "entidades": [
+   "Interbank"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "App / canales caídos",
+   "Atención al cliente"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "",
+  "fecha": "2026-10-17T12:35:18.553669+00:00"
+ },
+ {
   "id": "x:2111241256894599439",
   "texto": "No está funcionando Mesia. No está funcionando. \nTal vez un incendio en el banco de la Nación o una virgen que llora…ya sabes, cómo en los 90s",
   "entidades": [
