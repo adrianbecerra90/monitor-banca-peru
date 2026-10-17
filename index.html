@@ -904,7 +904,8 @@ function pintarConfig(){
       ${campo('canales_telegram','Canales públicos de Telegram','Se leen sin cuenta (t.me/s/…). Solo el nombre del canal.')}
       ${campo('canales_sesion','Canales con la sesión del CSIRT','Vacío = todos los canales de la cuenta dedicada. Nombre o @usuario del canal.')}
       ${campo('actores','Actores vigilados','De ellos se registra todo lo que publican en Telegram (nombre del canal o del autor).')}
-      ${campo('alias_x','Alias de actores a buscar en X','Solo alias inconfundibles (mínimo 4 letras).')}</div>
+      ${campo('alias_x','Alias de actores a buscar en X','Se guarda todo lo que se publique sobre ellos. Solo alias inconfundibles (mínimo 4 letras).')}
+      ${campo('alias_x_peru','Grupos de amenaza a buscar en X (solo lo de Perú)','Grupos globales (p. ej. ransomware): solo se guarda lo que toque al sistema financiero peruano.')}</div>
     <div class="bloque"><b>Dominios oficiales por entidad</b>
       <p class="ayuda" style="margin-top:4px">Se usan para contar equipos infectados (Hudson Rock), detectar dominios que imitan a la entidad y buscarla en filtraciones de foros.</p>
       <div style="display:grid;gap:6px">${CFG._ents.map(e=>`<label class="frow" style="gap:8px;align-items:center"><span style="min-width:150px"><b>${esc(e.nombre)}</b></span><input data-dom="${esc(e.nombre)}" value="${esc(lst((cb.dominios||{})[e.nombre]))}" placeholder="p. ej. viabcp.com, bcp.com.pe" style="flex:1"></label>`).join('')}</div></div>`;

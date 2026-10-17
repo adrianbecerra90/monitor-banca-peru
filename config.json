@@ -632,7 +632,22 @@
       "DailyDarkWeb",
       "MonThreat",
       "SOCRadar",
-      "ESETLA"
+      "ESETLA",
+      "chum1ng0",
+      "ThreatAtlas",
+      "VECERTRadar",
+      "_venarixES_",
+      "Ransom_DB",
+      "ido_cohen2",
+      "CyberPulse56",
+      "TweetThreatNews",
+      "l0rdmalware",
+      "Saint_Intel",
+      "darkwebsonar",
+      "IBreaches",
+      "AlvieriD",
+      "hack_notice",
+      "stalliondelsur"
     ],
     "intervalo_minutos": 10,
     "notificar": true,
@@ -641,5 +656,6 @@
       "alph4_SEC",
       "peruhacking"
     ]
-  }
+  },
+  "ciber": {}
 }

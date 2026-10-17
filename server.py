@@ -2895,7 +2895,9 @@ def trabajador_notificaciones():
 # --------------------------------------------------------------------------
 
 X_REFERENTES = {"cuentas": ["alph4_SEC", "peruhacking", "H4ckmanac", "FalconFeedsio", "DarkWebInformer", "DailyDarkWeb",
-                            "MonThreat", "SOCRadar", "ESETLA"],
+                            "MonThreat", "SOCRadar", "ESETLA",
+                            # con historial de alertas sobre víctimas peruanas (búsqueda en X, oct. 2026)
+                            "chum1ng0", "ThreatAtlas", "VECERTRadar", "_venarixES_", "Ransom_DB", "ido_cohen2", "CyberPulse56", "TweetThreatNews", "l0rdmalware", "Saint_Intel", "darkwebsonar", "IBreaches", "AlvieriD", "hack_notice", "stalliondelsur"],
                 "cuentas_peru": ["alph4_SEC", "peruhacking"],  # cuentas peruanas: su contexto ya es Perú
                 "intervalo_minutos": 10, "notificar": True, "notificar_horas": 24}
 
@@ -3087,8 +3089,9 @@ FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhau
                  "infostealers": 720, "telegram_sesion": 10, "filtraciones": 360, "actores_x": 30}  # minutos
 CANALES_TELEGRAM = ["ransomfeednews", "ransomlook"]
 # Actores y canales vigilados: de ellos se registra todo (no solo lo que toca al SF) y se buscan sus alias en X
-ACTORES_VIGILADOS = ["NULLEDPE", "Loco Dave", "STARS 2", "CIAC"]  # nombres de canal/autor en Telegram
-ALIAS_X_VIGILADOS = ["NULLEDPE"]  # en X solo alias inconfundibles ("Loco Dave" a secas es un personaje de videojuego)
+ACTORES_VIGILADOS = ["NULLEDPE", "Loco Dave", "STARS 2", "CIAC", "Direwolf"]  # nombres de canal/autor en Telegram
+ALIAS_X_VIGILADOS = ["NULLEDPE"]
+ALIAS_X_SOLO_PERU = ["Direwolf"]  # grupos globales: en X solo se guarda lo que toca al SF peruano  # en X solo alias inconfundibles ("Loco Dave" a secas es un personaje de videojuego)
 
 
 def _es_vigilado(*nombres):
@@ -3444,7 +3447,9 @@ def ciber_filtraciones():
 def ciber_actores_x():
     """Busca en X (Nitter) los alias de los actores vigilados: lo que publiquen o lo que se diga de ellos."""
     out = []
-    for alias in _cfg_ciber().get("alias_x", ALIAS_X_VIGILADOS):
+    cfgc = _cfg_ciber()
+    solo_peru = set(cfgc.get("alias_x_peru", ALIAS_X_SOLO_PERU))
+    for alias in list(cfgc.get("alias_x", ALIAS_X_VIGILADOS)) + list(solo_peru):
         if len(str(alias)) < 4:
             continue
         _, raiz, _ = _nitter_get("/search/rss?" + urllib.parse.urlencode({"f": "tweets", "q": f'"{alias}"'}))
@@ -3454,8 +3459,10 @@ def ciber_actores_x():
             if normalizar(str(alias)) not in normalizar(texto + " " + i.findtext("title", "")):
                 continue
             link = re.sub(r"^https?://[^/]+", "https://x.com", i.findtext("link", "")).split("#")[0]
-            ev = evaluar_alerta_ciber(texto, True) or {"entidades": detectar_bancos(texto, True), "organizacion": str(alias)[:60],
-                                                       "sector": "Actor vigilado"}
+            ev = evaluar_alerta_ciber(texto, alias not in solo_peru)
+            if not ev and alias in solo_peru:
+                continue
+            ev = ev or {"entidades": detectar_bancos(texto, True), "organizacion": str(alias)[:60], "sector": "Actor vigilado"}
             out.append({"id": "x:" + link.rsplit("/", 1)[-1], "texto": sin_datos_personales(texto), "url": link,
                         "fecha": parse_fecha(i.findtext("pubDate")),
                         "cuenta": i.findtext("{http://purl.org/dc/elements/1.1/}creator", "") or "X", **ev})
@@ -4280,6 +4287,7 @@ def config_ciber_editable():
     return {"referentes_x": r.get("cuentas", []), "cuentas_peru": r.get("cuentas_peru", []),
             "canales_telegram": c.get("canales_telegram", []), "canales_sesion": c.get("canales_sesion", []),
             "actores": c.get("actores", ACTORES_VIGILADOS), "alias_x": c.get("alias_x", ALIAS_X_VIGILADOS),
+            "alias_x_peru": c.get("alias_x_peru", ALIAS_X_SOLO_PERU),
             "dominios": _dominios_entidades()}
 
 
@@ -4431,6 +4439,7 @@ def validar_config(d):
                           "canales_sesion": _lista_textos(cb.get("canales_sesion", []), "Canales con sesión", 40),
                           "actores": _lista_textos(cb.get("actores", []), "Actores vigilados", 30),
                           "alias_x": [a for a in _lista_textos(cb.get("alias_x", []), "Alias en X", 15) if len(a) >= 4],
+                          "alias_x_peru": [a for a in _lista_textos(cb.get("alias_x_peru", []), "Grupos en X (solo Perú)", 20) if len(a) >= 4],
                           "dominios": dominios}
     if "apify" in d:
         a = d["apify"]
