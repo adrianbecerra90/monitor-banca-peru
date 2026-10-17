@@ -43,6 +43,7 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .vistas{display:flex;gap:4px;margin:0 0 14px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
 .vistas button{border:0;background:none;border-radius:0;padding:10px 14px;font-weight:600;color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer}
 .vistas button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.vistas .badge[hidden]{display:none}
 .vistas .badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--neg);color:#fff;font-size:11px;line-height:18px;margin-left:4px}
 body[data-vista="monitoreo"] [data-vistas]:not([data-vistas~="monitoreo"]),body[data-vista="analisis"] [data-vistas]:not([data-vistas~="analisis"]),
 body[data-vista="ciber"] [data-vistas]:not([data-vistas~="ciber"]),body[data-vista="sistema"] [data-vistas]:not([data-vistas~="sistema"]){display:none}
