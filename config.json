@@ -180,6 +180,26 @@
         "Interseguro Peru"
       ],
       "ambiguos": []
+    },
+    "BCRP": {
+      "buscar": [
+        "BCRP",
+        "Banco Central de Reserva del Perú"
+      ],
+      "alias": [
+        "BCRP",
+        "#BCRP",
+        "@BCRPOficial",
+        "BCRPOficial",
+        "Banco Central de Reserva del Perú",
+        "Banco Central de Reserva del Peru",
+        "Banco Central de Reserva",
+        "bcrp.gob.pe",
+        "Banco Central"
+      ],
+      "ambiguos": [
+        "Banco Central"
+      ]
     }
   },
   "contexto_peru": [
@@ -306,6 +326,9 @@
       "facebook": "https://www.facebook.com/BancoPichinchaPeru/",
       "instagram": "https://www.instagram.com/bancopichincha.pe/",
       "tiktok": "https://www.tiktok.com/@bancopichinchaperu"
+    },
+    "BCRP": {
+      "x": "BCRPOficial"
     }
   },
   "apify": {
