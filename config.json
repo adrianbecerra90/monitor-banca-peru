@@ -200,6 +200,24 @@
       "ambiguos": [
         "Banco Central"
       ]
+    },
+    "Italtel Perú": {
+      "buscar": [
+        "Italtel Perú",
+        "Italtel Peru",
+        "Italtel"
+      ],
+      "alias": [
+        "Italtel Perú",
+        "Italtel Peru",
+        "@ItaltelPeru",
+        "Italtel",
+        "italtel.com"
+      ],
+      "ambiguos": [
+        "Italtel",
+        "italtel.com"
+      ]
     }
   },
   "contexto_peru": [
