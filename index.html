@@ -723,8 +723,12 @@ function pintarPausa(){
   $('#refresh').disabled=p.todo||!!$('#refresh').dataset.ocupado;
   $('#live').classList.toggle('pausa',p.todo);$('#live').lastChild.textContent=p.todo?'EN PAUSA':'EN VIVO';
   $('#aviso-pausa').innerHTML=p.todo?`<div class="banner-pausa">⏸ <span><b>El monitoreo está en pausa${hasta?' hasta el '+esc(hasta)+' (se reanuda solo)':' sin límite'}${p.por?' · la pausó '+esc(p.por):''}.</b> No se consultan fuentes, ni ciberseguridad, ni se clasifica con IA, y no llegan alertas nuevas al celular.</span><button class="pri" id="banner-reanudar">▶ Reanudar monitoreo</button></div>`:
-    (p.fuentes.length?`<div class="banner-pausa">⏸ En pausa: <b>${p.fuentes.map(esc).join(', ')}</b>. El resto sigue monitoreándose.</div>`:'');
-  $('#banner-reanudar')?.addEventListener('click',()=>pausa('todo',false))}
+    (p.fuentes.length?`<div class="banner-pausa">⏸ <span>En pausa: ${p.fuentes.map(f=>{const i=(p.fuentes_info||{})[f]||{};
+      const h=i.hasta?new Date(i.hasta).toLocaleString('es-PE',{weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Lima'}):'';
+      return `<b>${esc(f)}</b>${h?' hasta el '+esc(h):''}${i.por?' (la pausó '+esc(i.por)+')':''}`}).join(' · ')}. Se reanudan solas al vencer; el resto sigue monitoreándose.</span>
+      ${YO?.rol==='admin'?'<button id="banner-reanudar-fuentes">▶ Reanudar todas</button>':''}</div>`:'');
+  $('#banner-reanudar')?.addEventListener('click',()=>pausa('todo',false));
+  $('#banner-reanudar-fuentes')?.addEventListener('click',async()=>{for(const f of [...p.fuentes])await pausa(f,false)})}
 // Pausar pide duración (por defecto 1 h): una pausa olvidada apaga el monitoreo 24x7
 $('#pausa-global').onclick=e=>{if(ESTADO?.pausa?.todo)return pausa('todo',false);
   let m=$('#menu-pausa');if(m){m.remove();return}

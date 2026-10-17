@@ -2345,14 +2345,26 @@ SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a man
 try:
     with open(RUTA_PAUSA, encoding="utf-8") as _f:
         PAUSA = json.load(_f)
+    _info = PAUSA.get("fuentes_info")
+    if _info is None and PAUSA.get("fuentes"):
+        # formato antiguo: pausas por fuente sin autor ni vencimiento que quedaban olvidadas; se limpian una vez
+        print(f"Pausas antiguas sin autor ni vencimiento retiradas: {', '.join(PAUSA['fuentes'])}", flush=True)
+        PAUSA["fuentes"], _info = [], {}
     PAUSA = {"todo": bool(PAUSA.get("todo")), "hasta": PAUSA.get("hasta") if PAUSA.get("todo") else None,
-             "por": str(PAUSA.get("por") or "")[:40], "fuentes": [x for x in PAUSA.get("fuentes", []) if x in PAUSABLES]}
+             "por": str(PAUSA.get("por") or "")[:40], "fuentes": [x for x in PAUSA.get("fuentes", []) if x in PAUSABLES],
+             "fuentes_info": {k: v for k, v in (_info or {}).items() if k in PAUSABLES and isinstance(v, dict)}}
 except (FileNotFoundError, ValueError):
-    PAUSA = {"todo": False, "hasta": None, "por": "", "fuentes": []}
+    PAUSA = {"todo": False, "hasta": None, "por": "", "fuentes": [], "fuentes_info": {}}
 # migración: quita las pausas que antes se añadían solas a los servicios de pago
 PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "CreatorCrawl", "Búsqueda Google")]
 # La pausa general sobrevive a los reinicios (antes cada despliegue la quitaba en silencio) y puede tener vencimiento
 ESTADO["pausa"] = PAUSA
+try:
+    with open(RUTA_PAUSA + ".tmp", "w", encoding="utf-8") as _f:
+        json.dump(PAUSA, _f, ensure_ascii=False)
+    os.replace(RUTA_PAUSA + ".tmp", RUTA_PAUSA)
+except OSError:
+    pass
 
 
 # Servicios de pago agotados: se apagan solos hasta su fecha de renovación y mientras tanto no se consultan
@@ -2515,6 +2527,9 @@ def encender(tipo, nombre="", fuente=""):
 def en_pausa(nombre=None):
     if PAUSA["todo"] and PAUSA.get("hasta") and iso(ahora()) >= PAUSA["hasta"]:
         cambiar_pausa("todo", False, por="vencimiento")  # se reanuda sola al vencer
+    info = PAUSA["fuentes_info"].get(nombre) if nombre else None
+    if info and info.get("hasta") and iso(ahora()) >= info["hasta"]:
+        cambiar_pausa(nombre, False, por="vencimiento")
     return PAUSA["todo"] or (nombre in PAUSA["fuentes"])
 
 
@@ -2530,8 +2545,13 @@ def cambiar_pausa(objetivo, pausar, horas=0, por=""):
     elif objetivo in PAUSABLES:
         if pausar and objetivo not in PAUSA["fuentes"]:
             PAUSA["fuentes"].append(objetivo)
-        if not pausar and objetivo in PAUSA["fuentes"]:
-            PAUSA["fuentes"].remove(objetivo)
+        if pausar:  # por fuente: vence sola (24 h si no se indica otra duración) y queda quién la puso
+            PAUSA["fuentes_info"][objetivo] = {"por": por[:40], "desde": iso(ahora()),
+                                               "hasta": iso(ahora() + timedelta(hours=horas or 24))}
+        if not pausar:
+            if objetivo in PAUSA["fuentes"]:
+                PAUSA["fuentes"].remove(objetivo)
+            PAUSA["fuentes_info"].pop(objetivo, None)
     else:
         raise ValueError("Fuente desconocida")
     tmp = RUTA_PAUSA + ".tmp"
@@ -4659,6 +4679,8 @@ def datos_trends():
 def planificador():
     intervalos = CONFIG.get("intervalos_minutos", {})
     while True:
+        for f_ in list(PAUSA["fuentes"]):
+            en_pausa(f_)  # reanuda las pausas por fuente que vencieron
         en_pausa()  # reanuda la pausa general si venció
         for nombre in FUENTES:
             if en_pausa(nombre):
