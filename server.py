@@ -2717,8 +2717,9 @@ def trabajador_notificaciones():
 # Alertas de ciberseguridad: cuentas referentes en X (inteligencia de amenazas) filtradas al sistema financiero peruano
 # --------------------------------------------------------------------------
 
-X_REFERENTES = {"cuentas": ["alph4_SEC", "H4ckmanac", "FalconFeedsio", "DarkWebInformer", "DailyDarkWeb",
+X_REFERENTES = {"cuentas": ["alph4_SEC", "peruhacking", "H4ckmanac", "FalconFeedsio", "DarkWebInformer", "DailyDarkWeb",
                             "MonThreat", "SOCRadar", "ESETLA"],
+                "cuentas_peru": ["alph4_SEC", "peruhacking"],  # cuentas peruanas: su contexto ya es Perú
                 "intervalo_minutos": 10, "notificar": True, "notificar_horas": 24}
 
 # Entidades del sistema financiero, seguros y AFP del Perú (además de las monitoreadas). Las de nombre común
@@ -2754,15 +2755,15 @@ def _cfg_referentes():
     return {**X_REFERENTES, **CONFIG.get("x_referentes", {})}
 
 
-def evaluar_alerta_ciber(texto):
+def evaluar_alerta_ciber(texto, cuenta_peruana=False):
     """¿La alerta toca al sistema financiero, de seguros o AFP del Perú? Devuelve (entidades_monitoreadas, sector)
     o None. Si la alerta trae la ficha "Sector:", el sector se decide solo con esa línea (evita falsos positivos)."""
     t = normalizar(texto)
-    peru = CONTEXTO_PE.search(t) is not None or "🇵🇪" in (texto or "")
+    peru = cuenta_peruana or CONTEXTO_PE.search(t) is not None or "🇵🇪" in (texto or "")
     # sin una entidad nombrada, Perú debe ser el país de la víctima (titular o ficha), no un dato al pasar
     cabecera = (texto or "").split("\n", 1)[0]
     pais = re.search(r"(pais|country|ubicacion|location)\s*:\s*([^\n•|]{2,40})", t)
-    peru_victima = (CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
+    peru_victima = (cuenta_peruana or CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
                     or bool(pais and CONTEXTO_PE.search(pais.group(2))))
     monitoreadas = detectar_bancos(texto, peru)
     m = re.search(r"(?:industria\s*/\s*)?sector\s*:\s*([^\n•|]{2,80})", t)
@@ -2821,8 +2822,9 @@ def revisar_referentes_x():
         except Exception as e:
             errores.append(f"@{h}: {type(e).__name__}")
             continue
+        peruana = h.lower() in {c.lower() for c in cfg.get("cuentas_peru", [])}
         for p in posts:
-            ev = evaluar_alerta_ciber(p["texto"])
+            ev = evaluar_alerta_ciber(p["texto"], peruana)
             if ev:
                 nuevas.append({**p, **ev})
         time.sleep(2)

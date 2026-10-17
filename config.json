@@ -583,6 +583,7 @@
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
     "cuentas": [
       "alph4_SEC",
+      "peruhacking",
       "H4ckmanac",
       "FalconFeedsio",
       "DarkWebInformer",
@@ -593,6 +594,10 @@
     ],
     "intervalo_minutos": 10,
     "notificar": true,
-    "notificar_horas": 24
+    "notificar_horas": 24,
+    "cuentas_peru": [
+      "alph4_SEC",
+      "peruhacking"
+    ]
   }
 }
