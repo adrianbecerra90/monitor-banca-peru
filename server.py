@@ -37,6 +37,7 @@ import os
 import queue
 import re
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -2907,7 +2908,7 @@ def alertas_ciber(dias=30):
 # --------------------------------------------------------------------------
 
 FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhaus": 60, "threatfox": 60,
-                 "infostealers": 720}  # minutos
+                 "infostealers": 720, "telegram_sesion": 10}  # minutos
 CANALES_TELEGRAM = ["ransomfeednews", "ransomlook"]
 # Marcas a vigilar en dominios: (tokens, dominios oficiales). Las marcas globales exigen además "pe"/"peru" en el dominio
 MARCAS_DOMINIO = {
@@ -3004,7 +3005,7 @@ def ciber_telegram():
             texto = limpiar_html(re.sub(r"<br\s*/?>", "\n", cuerpo.group(1)))
             ev = evaluar_alerta_ciber(texto)
             if ev:
-                out.append({"id": "tg:" + post.group(1), "texto": texto, "url": "https://t.me/" + post.group(1),
+                out.append({"id": "tg:" + post.group(1), "texto": sin_datos_personales(texto), "url": "https://t.me/" + post.group(1),
                             "fecha": parse_fecha(fecha.group(1) if fecha else None), "cuenta": f"Telegram {canal}", **ev})
         time.sleep(2)
     return out
@@ -3145,8 +3146,95 @@ def resumen_infostealers():
     return sorted(out.values(), key=lambda x: (-x["empleados"], -x["usuarios"]))
 
 
+# Telegram con sesión (para CSIRT): lee los canales y grupos a los que la cuenta dedicada ya se unió. Solo texto: nunca
+# descarga archivos ni sigue enlaces, y borra datos personales antes de guardar. La sesión la inicia el usuario
+# (python server.py --telegram-login) y vive en TELEGRAM_SESSION; sin ella esta ruta queda inactiva
+_PII = [(re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "[correo]"),
+        (re.compile(r"\b(?:\d[ -]?){13,19}\b"), "[tarjeta/cuenta]"),
+        (re.compile(r"(?:\+?51[ -]?)?\b9\d{2}[ -]?\d{3}[ -]?\d{3}\b"), "[teléfono]"),
+        (re.compile(r"\b\d{8}\b"), "[DNI]"),
+        (re.compile(r"\b\d{9,}\b"), "[número]"),
+        (re.compile(r"(?i)\b(pass(word)?|clave|contraseña|pwd|token|cvv)\s*[:=]\s*\S+"), r"\1: [oculto]")]
+
+
+def sin_datos_personales(texto, maximo=800):
+    """Las filtraciones traen muestras de datos: se enmascaran antes de guardar y se recorta el texto."""
+    t = texto or ""
+    for patron, reemplazo in _PII:
+        t = patron.sub(reemplazo, t)
+    return t[:maximo] + ("…" if len(t) > maximo else "")
+
+
+def ciber_telegram_sesion():
+    api_id, api_hash, sesion = (os.environ.get(k, "").strip() for k in ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_SESSION"))
+    if not (api_id.isdigit() and api_hash and sesion):
+        raise RutaInactiva("Inactiva: falta iniciar sesión (python server.py --telegram-login)")
+    import asyncio
+    from telethon import TelegramClient
+    from telethon.sessions import StringSession
+    cfg = _cfg_ciber()
+    filtro = {str(c).lower().lstrip("@") for c in cfg.get("canales_sesion", [])}  # vacío: todos los de la cuenta
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS tg_ultimo (chat TEXT PRIMARY KEY, ultimo INTEGER)")
+        ultimos = {r[0]: r[1] for r in con.execute("SELECT chat, ultimo FROM tg_ultimo")}
+
+    async def leer():
+        out, marcas = [], {}
+        async with TelegramClient(StringSession(sesion), int(api_id), api_hash, receive_updates=False) as cli:
+            async for d in cli.iter_dialogs():
+                if not (d.is_channel or d.is_group):
+                    continue
+                usuario = (getattr(d.entity, "username", "") or "").lower()
+                if filtro and usuario not in filtro and d.name.lower() not in filtro:
+                    continue
+                clave = str(d.id)
+                previo = ultimos.get(clave)
+                async for m in cli.iter_messages(d.entity, limit=100 if previo else 30, min_id=previo or 0):
+                    marcas[clave] = max(marcas.get(clave, 0), m.id)
+                    texto = m.message or ""  # solo el texto: los archivos adjuntos nunca se descargan
+                    if len(texto) < 15:
+                        continue
+                    ev = evaluar_alerta_ciber(texto, True)
+                    if ev:
+                        out.append({"id": f"tgs:{d.id}:{m.id}", "texto": sin_datos_personales(texto),
+                                    "url": f"https://t.me/{usuario}/{m.id}" if usuario else "",
+                                    "fecha": iso(m.date), "cuenta": f"Telegram {d.name[:40]}",
+                                    **{**ev, "organizacion": sin_datos_personales(ev["organizacion"], 80)}})
+        return out, marcas
+
+    out, marcas = asyncio.run(leer())
+    with _db_lock, db() as con:
+        con.executemany("INSERT OR REPLACE INTO tg_ultimo VALUES (?,?)", list(marcas.items()))
+    return out
+
+
+def telegram_login():
+    """Inicio de sesión interactivo (lo hace el usuario en su terminal). La sesión queda en el portapapeles y en .env,
+    nunca se imprime."""
+    from telethon.sync import TelegramClient
+    from telethon.sessions import StringSession
+    api_id, api_hash = os.environ.get("TELEGRAM_API_ID", "").strip(), os.environ.get("TELEGRAM_API_HASH", "").strip()
+    if not (api_id.isdigit() and api_hash):
+        sys.exit("Primero pon TELEGRAM_API_ID y TELEGRAM_API_HASH en .env (se obtienen en https://my.telegram.org → API development tools)")
+    with TelegramClient(StringSession(), int(api_id), api_hash) as cli:
+        sesion = cli.session.save()
+        yo = cli.get_me()
+    ruta = os.path.join(BASE, ".env")
+    lineas = [l for l in open(ruta, encoding="utf-8").read().splitlines() if not l.startswith("TELEGRAM_SESSION=")] \
+        if os.path.exists(ruta) else []
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write("\n".join(lineas + [f"TELEGRAM_SESSION={sesion}"]) + "\n")
+    try:
+        subprocess.run(["pbcopy"], input=sesion.encode(), check=True)
+        extra = " y en el portapapeles (pégala en Railway como TELEGRAM_SESSION)"
+    except Exception:
+        extra = ""
+    print(f"Sesión de Telegram iniciada como {yo.first_name or ''} (@{yo.username or '—'}). Guardada en .env{extra}.")
+
+
 _CIBER_FN = {"ransomware_live": ciber_ransomware_live, "telegram": ciber_telegram, "dominios": ciber_dominios,
-             "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox, "infostealers": ciber_infostealers}
+             "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox, "infostealers": ciber_infostealers,
+             "telegram_sesion": ciber_telegram_sesion}
 _CIBER_ULTIMA = {}
 
 
@@ -3166,6 +3254,8 @@ def revisar_fuentes_ciber(forzar=False):
             estado[nombre] = {"ok": True, "revisado": iso(ahora()), "coincidencias": len(alertas), "nuevas": len(nuevas)}
             if nuevas:
                 print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad ({nombre}): {len(nuevas)} alertas nuevas", flush=True)
+        except RutaInactiva as e:
+            estado[nombre] = {"ok": None, "revisado": iso(ahora()), "inactiva": str(e)}
         except Exception as e:
             estado[nombre] = {"ok": False, "revisado": iso(ahora()), "error": f"{type(e).__name__}: {str(e)[:120]}"}
 
@@ -5600,4 +5690,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--telegram-login" in sys.argv:
+        telegram_login()
+    else:
+        main()

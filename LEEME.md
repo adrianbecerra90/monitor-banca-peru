@@ -153,3 +153,21 @@ El repositorio ya incluye un `Dockerfile`. Pasos:
 
 Notas: el plan Hobby de Railway cuesta unos US$5/mes. Desde servidores en la nube, Nitter (X) y Google Trends pueden
 bloquear más que desde una conexión doméstica; el monitor usa rutas de respaldo.
+
+## Ciberseguridad (CSIRT)
+
+La tarjeta «Ciberseguridad · alertas» junta, filtrado al sistema financiero, seguros, AFP y sus proveedores en Perú:
+cuentas referentes en X (@alph4_SEC, @peruhacking y otras), ransomware.live, canales públicos de Telegram
+(RansomFeed, Ransomlook), dominios que imitan a las entidades (crt.sh), URLhaus y ThreatFox (abuse.ch) e
+infostealers por entidad (Hudson Rock, solo conteos).
+
+**Telegram con sesión** (canales privados o por invitación, p. ej. los de grupos hacktivistas peruanos):
+
+1. Crea o usa una **cuenta de Telegram dedicada** del CSIRT (no la personal) y únete con ella a los canales.
+2. En https://my.telegram.org → *API development tools* crea una app y pega `TELEGRAM_API_ID` y `TELEGRAM_API_HASH` en `.env`.
+3. Ejecuta `.venv/bin/python server.py --telegram-login` (pide teléfono y código). La sesión queda en `.env` y en el portapapeles.
+4. En Railway agrega `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_SESSION`.
+
+El monitor solo lee el **texto** de los mensajes (nunca descarga archivos ni abre enlaces), guarda únicamente lo que
+toca al SF peruano y **enmascara datos personales** (correos, DNI, teléfonos, tarjetas, claves) antes de guardar.
+Para limitarlo a ciertos canales, pon sus nombres en `config.json` → `ciber.canales_sesion`.

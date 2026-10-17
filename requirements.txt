@@ -1,3 +1,4 @@
 # Opcional: sin ella el monitor funciona igual (solo con Python), pero sin las rutas gratuitas de TikTok y YouTube.
 yt-dlp[default,curl-cffi]   # TikTok (cuentas oficiales + comentarios) y YouTube (comentarios) sin claves ni créditos
 instaloader                 # Instagram con la sesión de una cuenta secundaria (opcional; ver LEEME)
+telethon                    # Telegram con sesión (CSIRT): canales privados de amenazas; solo texto, sin descargas
