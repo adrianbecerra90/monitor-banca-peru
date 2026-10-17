@@ -639,6 +639,8 @@ def guardar(items, en_vivo=True):
                                "texto": it["texto"][:3000], "url": it.get("url", ""), "fecha": fecha,
                                "es_queja": int(es_queja), "categorias": cats, "severidad": sev,
                                "sentimiento": sent, "tipo": it.get("tipo", ""), "cuenta": it.get("cuenta", "")})
+    if en_vivo and nuevos:  # lo grave se avisa al celular en el acto, sin esperar al umbral por hora
+        threading.Thread(target=avisar_graves, args=(nuevos,), daemon=True).start()
     # Solo se empujan al panel las publicaciones recientes (no las de una carga histórica)
     if en_vivo and nuevos:
         corte = iso(ahora() - timedelta(hours=24))
@@ -2870,6 +2872,57 @@ def _umbrales_por_hora(clave_fn, dias=7):
             res[k][franja] = (p, sd, n)
         res[k]["base"] = sum(por_hora.values())
     return res
+
+
+# Aviso inmediato de lo grave (no espera al umbral por hora): se dispara al capturar la publicación
+_GRAVES = {"vistos": {}, "ultimo_aviso": {}, "lock": threading.Lock()}
+
+
+def avisar_graves(nuevos):
+    cfg = CONFIG.get("notificaciones", {})
+    if not cfg.get("graves_inmediatos", True) or not os.environ.get("NOTIFY_NTFY_TOPIC"):
+        return
+    corte = iso(ahora() - timedelta(hours=2))  # solo lo reciente (no cargas históricas ni publicaciones viejas)
+    ventana, enfriar = cfg.get("graves_ventana_min", 15) * 60, cfg.get("graves_enfriamiento_min", 20) * 60
+    for n in nuevos:
+        if n.get("fecha", "") < corte or n.get("tipo") in ("post_oficial", "alerta_ciber"):
+            continue
+        aviso_oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(normalizar(n.get("texto", "")))
+        grave = n.get("es_queja") and (n.get("severidad") or 0) >= 3 and set(n.get("categorias") or []) & set(FOCO)
+        caida = n.get("es_queja") and "App / canales caídos" in (n.get("categorias") or [])
+        if not (grave or aviso_oficial or caida):
+            continue
+        for b in n.get("bancos") or []:
+            with _GRAVES["lock"]:
+                caidas = [t for t in _GRAVES["vistos"].get(("caida", b), []) if time.time() - t < ventana] + ([time.time()] if caida else [])
+                _GRAVES["vistos"][("caida", b)] = caidas
+                lista = [t for t in _GRAVES["vistos"].get(b, []) if time.time() - t < ventana] + ([time.time()] if grave else [])
+                _GRAVES["vistos"][b] = lista
+                # ráfaga de quejas de caída (aunque cada una sea leve): así se ve una caída real
+                rafaga = len(caidas) >= cfg.get("caidas_para_critico", 5)
+                critico = bool(aviso_oficial) or rafaga or len(lista) >= cfg.get("graves_para_critico", 3)
+                if not (grave or aviso_oficial or rafaga):
+                    continue
+                ultimo = _GRAVES["ultimo_aviso"].get(b, (0, False))
+                # un crítico siempre avisa si el anterior no lo era; si no, se respeta el enfriamiento por entidad
+                if time.time() - ultimo[0] < enfriar and not (critico and not ultimo[1]):
+                    continue
+                _GRAVES["ultimo_aviso"][b] = (time.time(), critico)
+            cats = ", ".join(c for c in (n.get("categorias") or []) if c in FOCO) or "queja grave"
+            if aviso_oficial:
+                titulo, cuerpo = f"CRÍTICO · {b}: aviso oficial de caída", n.get("texto", "")[:300]
+            else:
+                titulo = f"{'CRÍTICO' if critico else 'Grave'} · {b}: {cats}"
+                cuerpo = (f"{len(caidas)} quejas de caída en {ventana // 60} min. " if rafaga else
+                          f"{len(lista)} quejas graves en {ventana // 60} min. " if len(lista) > 1 else "") + \
+                         f"{n.get('fuente', '')} · {n.get('autor', '')}: {re.sub(r'\s+', ' ', n.get('texto', ''))[:260]}"
+            try:
+                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
+                                    etiquetas="rotating_light" if critico else "warning",
+                                    url=n.get("url") or cfg.get("enlace") or None)
+                print(f"[{datetime.now():%H:%M:%S}] Aviso inmediato: {titulo}", flush=True)
+            except Exception as e:
+                print(f"  Aviso inmediato fallido ({type(e).__name__}: {e})", flush=True)
 
 
 def revisar_umbral_notificar():
@@ -5179,6 +5232,141 @@ PRODUCTOS = [("App", r"\b(app|aplicativo|aplicacion|la apli)\b"), ("Banca por in
 _PRODUCTOS_RE = [(n, re.compile(p)) for n, p in PRODUCTOS]
 
 
+# --------------------------------------------------------------------------
+# Chat con el monitor: responde SOLO con lo que hay en la base (publicaciones, estadísticas y alertas), citando [n]
+# --------------------------------------------------------------------------
+
+_CHAT_USO = {}
+CHAT_PROMPT = """Eres el asistente del monitor de reputación y riesgo del sistema financiero peruano. Responde la pregunta
+usando EXCLUSIVAMENTE el CONTEXTO (publicaciones capturadas por el monitor, estadísticas calculadas y alertas de
+ciberseguridad). Reglas obligatorias:
+- No uses conocimiento propio ni supongas nada que no esté en el contexto. Si el contexto no alcanza para responder,
+  dilo claramente: "No tengo información en el monitor sobre eso para el periodo consultado".
+- Cita la evidencia de cada afirmación con el número de la publicación o alerta entre corchetes, p. ej. [3] o [2][7].
+- Las cifras solo pueden salir de ESTADÍSTICAS; no calcules ni estimes otras.
+- Si hay situaciones distintas con entidades distintas, menciónalas todas; no elijas una.
+- Distingue opiniones o rumores de hechos confirmados: lo que dice una publicación es lo que "reporta" o "afirma" su autor.
+- Responde en español, claro y breve (máximo 180 palabras), sin inventar enlaces."""
+
+
+def _periodo_pregunta(q, horas_def):
+    if re.search(r"\b(ultima hora|esta hora)\b", q):
+        return 1, "la última hora"
+    if re.search(r"\bhoy\b|\besta manana\b|\besta tarde\b|\besta noche\b", q):
+        h = max(1, ahora().astimezone(LIMA).hour + 1)
+        return h, "hoy"
+    if re.search(r"\bayer\b", q):
+        return 48, "desde ayer"
+    if re.search(r"\b(semana|7 dias)\b", q):
+        return 168, "los últimos 7 días"
+    if re.search(r"\b(mes|30 dias)\b", q):
+        return 720, "los últimos 30 días"
+    return horas_def, f"las últimas {horas_def} horas" if horas_def < 72 else f"los últimos {horas_def // 24} días"
+
+
+def chat_monitor(pregunta, usuario, filtros=None, historial=None):
+    pregunta = str(pregunta or "").strip()[:500]
+    if len(pregunta) < 3:
+        raise ValueError("Escribe una pregunta")
+    uso = [t for t in _CHAT_USO.get(usuario, []) if time.time() - t < 3600]
+    if len(uso) >= CONFIG.get("chat", {}).get("preguntas_por_hora", 30):
+        raise ValueError("Llegaste al límite de preguntas por hora; intenta en unos minutos")
+    _CHAT_USO[usuario] = uso + [time.time()]
+    filtros = filtros if isinstance(filtros, dict) else {}
+    q = normalizar(pregunta)
+    try:
+        horas_def = int(filtros.get("horas") or 72)
+    except ValueError:
+        horas_def = 72
+    horas, periodo = _periodo_pregunta(q, max(1, min(horas_def, 2160)))
+    desde = iso(ahora() - timedelta(hours=horas))
+    entidades = detectar_bancos(pregunta, True) or [b for b in str(filtros.get("banco") or "").split(",") if b in BANCOS]
+    alias = {w for c in BANCOS.values() for a in c["alias"] + c["buscar"] for w in re.findall(r"[a-z0-9ñ]{3,}", normalizar(a))}
+    claves = [w for w in re.findall(r"[a-zñ0-9]{4,}", q) if w not in PALABRAS_VACIAS and w not in alias and w not in
+              {"pasa", "pasando", "esta", "estan", "sucede", "sucediendo", "ocurre", "ahora", "quien", "quienes", "cuales",
+               "cual", "como", "donde", "cuando", "dime", "resumen", "resume", "hubo", "tiene", "tienen", "monitor"}]
+    sql = "SELECT id, fuente, bancos, autor, texto, url, fecha, sentimiento, es_queja, categorias FROM items " \
+          "WHERE oculto = 0 AND fecha >= ? AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'"
+    args = [desde]
+    if entidades:
+        sql += " AND (" + " OR ".join("bancos LIKE ?" for _ in entidades) + ")"
+        args += [f'%"{b}"%' for b in entidades]
+    with _db_lock, db() as con:
+        filas = [dict(r) for r in con.execute(sql + " ORDER BY fecha DESC LIMIT 4000", args)]
+        _tabla_ciber(con)
+        alertas = [dict(r) for r in con.execute("SELECT cuenta, texto, url, fecha, entidades, organizacion, sector FROM alertas_ciber "
+                                                "WHERE fecha >= ? ORDER BY fecha DESC LIMIT 60", (iso(ahora() - timedelta(hours=max(horas, 168))),))]
+    if entidades:
+        alertas = [a for a in alertas if set(json.loads(a["entidades"] or "[]")) & set(entidades)
+                   or any(normalizar(b) in normalizar(a["texto"]) for b in entidades)]
+    # estadísticas exactas (lo único de donde pueden salir cifras)
+    est, cats = {}, {}
+    for r in filas:
+        for b in json.loads(r["bancos"] or "[]"):
+            e = est.setdefault(b, {"menciones": 0, "negativas": 0, "quejas": 0})
+            e["menciones"] += 1
+            e["negativas"] += r["sentimiento"] == "negativo"
+            e["quejas"] += bool(r["es_queja"])
+        if r["es_queja"]:
+            for c in json.loads(r["categorias"] or "[]"):
+                cats[c] = cats.get(c, 0) + 1
+    # publicaciones más pertinentes: coincidencia con la pregunta, luego quejas/negativas, luego recencia
+    def puntaje(r):
+        t = normalizar(r["texto"] or "")
+        hits = sum(1 for w in claves if w in t)
+        return (hits * 4 + (2 if r["es_queja"] else 0) + (1 if r["sentimiento"] == "negativo" else 0), r["fecha"])
+    elegidas = sorted(filas, key=puntaje, reverse=True)[:CONFIG.get("chat", {}).get("publicaciones", 45)]
+    elegidas.sort(key=lambda r: r["fecha"], reverse=True)
+    fuentes, bloques = [], []
+    for r in elegidas:
+        n = len(fuentes) + 1
+        f = datetime.fromisoformat(r["fecha"]).astimezone(LIMA).strftime("%d/%m %H:%M")
+        bloques.append(f"[{n}] {f} · {r['fuente']} · {', '.join(json.loads(r['bancos'] or '[]'))} · {r['sentimiento']}"
+                       f"{' · queja' if r['es_queja'] else ''} · {', '.join(json.loads(r['categorias'] or '[]'))}: "
+                       f"{re.sub(chr(10), ' ', (r['texto'] or ''))[:300]}")
+        fuentes.append({"n": n, "url": r["url"], "fuente": r["fuente"], "fecha": r["fecha"], "autor": r["autor"],
+                        "texto": (r["texto"] or "")[:200], "entidades": json.loads(r["bancos"] or "[]")})
+    for a in alertas[:15]:
+        n = len(fuentes) + 1
+        f = datetime.fromisoformat(a["fecha"]).astimezone(LIMA).strftime("%d/%m %H:%M")
+        bloques.append(f"[{n}] {f} · ALERTA DE CIBERSEGURIDAD · {a['sector']} · vía {a['cuenta']}: "
+                       f"{re.sub(chr(10), ' ', a['texto'] or '')[:300]}")
+        fuentes.append({"n": n, "url": a["url"], "fuente": f"Alerta · {a['cuenta']}", "fecha": a["fecha"], "autor": a["cuenta"],
+                        "texto": (a["texto"] or "")[:200], "entidades": json.loads(a["entidades"] or "[]")})
+    estad = "\n".join(f"- {b}: {e['menciones']} menciones, {e['negativas']} negativas, {e['quejas']} quejas"
+                      for b, e in sorted(est.items(), key=lambda x: -x[1]["negativas"])[:15]) or "- sin menciones"
+    estad += "\nQuejas por categoría: " + (", ".join(f"{c} {v}" for c, v in sorted(cats.items(), key=lambda x: -x[1])[:8]) or "ninguna")
+    contexto = (f"PERIODO: {periodo} (hasta {ahora().astimezone(LIMA).strftime('%d/%m %H:%M')} hora de Lima)"
+                f"{' · entidades: ' + ', '.join(entidades) if entidades else ''}\n"
+                f"ESTADÍSTICAS ({len(filas)} publicaciones en el periodo):\n{estad}\n\n"
+                f"PUBLICACIONES Y ALERTAS (las más pertinentes):\n" + ("\n".join(bloques) or "(ninguna)"))
+    mensajes = [{"role": "system", "content": CHAT_PROMPT}]
+    for h in (historial or [])[-3:]:  # contexto de la conversación (solo para entender la pregunta, no como fuente)
+        if isinstance(h, dict) and h.get("p") and h.get("r"):
+            mensajes += [{"role": "user", "content": str(h["p"])[:400]}, {"role": "assistant", "content": str(h["r"])[:800]}]
+    mensajes.append({"role": "user", "content": f"CONTEXTO:\n{contexto}\n\nPREGUNTA: {pregunta}"})
+    for p in _ia_proveedores():
+        if _ia_falta_clave(p):
+            continue
+        for modelo in _ia_modelos(p)[:3]:
+            try:
+                resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0, "max_tokens": 2000,
+                                                         "messages": mensajes}, timeout=90)
+                if "choices" not in resp:
+                    continue
+                texto = re.sub(r"<think>.*?</think>", "", resp["choices"][0]["message"].get("content") or "", flags=re.S).strip()
+                if texto:
+                    citadas = {int(x) for x in re.findall(r"\[(\d{1,3})\]", texto)}
+                    return {"respuesta": texto, "fuentes": [f for f in fuentes if f["n"] in citadas], "modelo": modelo.split("/")[-1],
+                            "periodo": periodo, "analizadas": len(filas), "entidades": entidades}
+            except urllib.error.HTTPError as e:
+                if e.code == 410:
+                    _MODELOS_RETIRADOS.add(modelo)
+            except Exception as e:
+                print(f"  Chat ({modelo}): {type(e).__name__}", flush=True)
+    raise ValueError("No hay un modelo de IA disponible en este momento; intenta en unos minutos")
+
+
 _SINTESIS = {}  # huella de la nube -> (momento, resultado)
 
 
@@ -6050,6 +6238,9 @@ class Handler(BaseHTTPRequestHandler):
                 d = self._json_cuerpo()
                 cambiar_mi_clave(self.yo["usuario"], str(d.get("actual", "")), str(d.get("nueva", "")), ip)
                 return self._send({"ok": True})
+            if u.path == "/api/chat":  # cualquier usuario: solo lee la base
+                d = self._json_cuerpo(20_000)
+                return self._send(chat_monitor(d.get("pregunta"), self.yo["usuario"], d.get("filtros"), d.get("historial")))
             if self.yo["rol"] != "admin":  # el resto de acciones son solo para administradores
                 return self._send({"error": "Tu cuenta es de solo lectura"}, code=403)
             if u.path == "/api/usuarios":
