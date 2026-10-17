@@ -50,6 +50,8 @@ body[data-vista="ciber"] [data-vistas]:not([data-vistas~="ciber"]),body[data-vis
 body[data-vista="sistema"] .grid{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 body[data-vista="sistema"] .grid .col{display:contents}
 #ciber-resumen .alerta{cursor:pointer}
+.sintesis{margin-top:10px;padding:10px 12px;border-left:3px solid var(--ink2);background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:6px;font-size:14px;line-height:1.45}
+.sintesis .sub{display:block;margin-top:4px;font-size:11px}
 .ciber-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;margin-bottom:14px}
 @media(max-width:1000px){.ciber-grid{grid-template-columns:1fr}}
 #infost table{font-variant-numeric:tabular-nums}
@@ -236,6 +238,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="nb-excl" class="frow" style="margin-bottom:6px"></div>
         <div class="legend"><span style="--c:var(--neg)">Más negativa</span><span style="--c:var(--ink2)">Neutra o mixta</span><span style="--c:var(--pos)">Más positiva</span><span class="sub">· el tono indica qué tan marcada es</span></div>
         <div id="nube" aria-live="polite"></div>
+        <div id="nube-sintesis" class="sintesis" aria-live="polite"></div>
         <div class="hint">Tamaño = en cuántas publicaciones aparece. Clic en una palabra para ver esas publicaciones; ⌥+clic (Alt+clic) para excluirla de forma permanente. Respeta todos los filtros.</div>
       </div>
       <div data-vistas="analisis" class="card">
@@ -805,8 +808,15 @@ async function cargarNube(){
   $('#nb-config').onclick=e=>{e.preventDefault();cfgTab='nube';abrirConfig()};
   $('#nb-info').textContent=`· ${fmt(d.publicaciones)} publicaciones analizadas`;
   const ws=d.palabras;
-  if(!ws.length){$('#nube').innerHTML='<div class="empty">No hay suficientes publicaciones con estos filtros.</div>';return}
-  dibujarNube(ws)}
+  if(!ws.length){$('#nube').innerHTML='<div class="empty">No hay suficientes publicaciones con estos filtros.</div>';$('#nube-sintesis').innerHTML='';return}
+  dibujarNube(ws);cargarSintesis(p)}
+// Una frase de la IA con la idea global de hacia dónde va la conversación (según las palabras y su peso)
+let tSint,pSint='';function cargarSintesis(p){clearTimeout(tSint);tSint=setTimeout(async()=>{const q=p.toString();
+  if(q===pSint&&$('#nube-sintesis').textContent)return;pSint=q;
+  const el=$('#nube-sintesis');if(!el.textContent)el.innerHTML='<span class="sub">🧠 Resumiendo la conversación…</span>';
+  try{const r=await fetch('/api/nube/sintesis?'+q).then(r=>r.json());
+    el.innerHTML=r.frase?`🧠 <b>${esc(r.frase)}</b><span class="sub">Síntesis de la nube · ${esc(r.fuente)}${r.generada?' · hace '+hace(r.generada):''}</span>`:(r.motivo?`<span class="sub">${esc(r.motivo)}</span>`:'')}
+  catch(e){el.innerHTML=''}},800)}
 function dibujarNube(ws){
   // Distribución en espiral (tipo Wordle): la más frecuente al centro, el resto alrededor sin solaparse
   const W=900,H=Math.max(280,Math.min(460,180+ws.length*3)),cx=W/2,cy=H/2;

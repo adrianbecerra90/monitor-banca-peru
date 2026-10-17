@@ -3693,9 +3693,13 @@ def _ia_post(p, ruta, cuerpo=None, timeout=240):
         return json.load(r)
 
 
+_MODELOS_RETIRADOS = set()  # modelos que el proveedor dio de baja (HTTP 410): no se vuelven a probar
+
+
 def _ia_modelos(p):
     """Modelos a probar, en orden: el principal y luego los alternativos que la cuenta tenga disponibles."""
-    candidatos = [p.get("modelo")] + [m for m in p.get("modelos_alternativos", []) if m != p.get("modelo")]
+    candidatos = [m for m in [p.get("modelo")] + [m for m in p.get("modelos_alternativos", []) if m != p.get("modelo")]
+                  if m and m not in _MODELOS_RETIRADOS] or [p.get("modelo")]
     try:
         disponibles = {m["id"] for m in _ia_post(p, "/models", timeout=20).get("data", [])}
         if disponibles:
@@ -4192,6 +4196,9 @@ def trabajador_ia(k):
             time.sleep(p.get("pausa_seg", 1))
         except Exception as e:
             detalle = e.read()[:150].decode("utf-8", "ignore") if isinstance(e, urllib.error.HTTPError) else ""
+            if isinstance(e, urllib.error.HTTPError) and e.code == 410 and modelos:
+                _MODELOS_RETIRADOS.add(modelo)  # dado de baja por el proveedor: se pasa al siguiente y no se reintenta
+                modelos, idx_modelo = _ia_modelos(p), 0
             ruta_fallo("IA", nombre, RuntimeError(f"{type(e).__name__}: {e} {detalle}".strip()))
             print(f"[{datetime.now():%H:%M:%S}] IA {nombre}: {type(e).__name__}: {e} {detalle}", flush=True)
             fallos_modelo += 1
@@ -5103,6 +5110,62 @@ def guardar_nube_excluidas(lista):
     return sorted(limpia)
 
 
+_SINTESIS = {}  # huella de la nube -> (momento, resultado)
+
+
+def sintesis_nube(qs):
+    """Una frase que resume hacia dónde va la conversación, a partir de las palabras de la nube y su tono."""
+    g = lambda k, d="": qs.get(k, [d])[0]
+    d = palabras({**qs, "max": ["40"]})
+    ws = d.get("palabras", [])[:40]
+    if len(ws) < 5:
+        return {"frase": "", "fuente": "", "motivo": "Pocas publicaciones para resumir."}
+    huella = hashlib.sha256(json.dumps([(w["palabra"], w["total"] // 3) for w in ws] + [g("banco"), g("horas"), g("fuente")],
+                                       ensure_ascii=False).encode()).hexdigest()
+    previo = _SINTESIS.get(huella)
+    if previo and time.time() - previo[0] < 20 * 60:
+        return previo[1]
+    neg = sum(w["negativo"] for w in ws)
+    pos = sum(w["positivo"] for w in ws)
+    lista = "; ".join(f'{w["palabra"]} ({w["total"]}: {w["negativo"]} neg, {w["positivo"]} pos)' for w in ws)
+    ambito = g("banco").replace(",", ", ") or "todas las entidades monitoreadas"
+    periodo = {"1": "la última hora", "24": "las últimas 24 horas", "72": "los últimos 3 días", "168": "los últimos 7 días",
+               "720": "los últimos 30 días"}.get(g("horas"), "el periodo seleccionado")
+    prompt = (f"Eres analista de reputación y riesgo del sistema financiero peruano. Estas son las palabras y frases más "
+              f"frecuentes en redes sociales sobre {ambito} en {periodo}, con cuántas publicaciones las usan y su tono "
+              f"({d.get('publicaciones', 0)} publicaciones analizadas):\n{lista}\n\n"
+              "Escribe UNA sola frase en español (máximo 35 palabras) que diga hacia dónde va la conversación: el tema "
+              "dominante y el tono (si hay fallas, fraude, ciberseguridad o temas positivos, dilo). No inventes hechos que "
+              "no se deduzcan de las palabras, no nombres cifras exactas y no uses comillas ni viñetas.")
+    for p in _ia_proveedores():
+        if _ia_falta_clave(p):
+            continue
+        for modelo in _ia_modelos(p)[:3]:
+            try:
+                resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0.3, "max_tokens": 600,
+                                                         "messages": [{"role": "user", "content": prompt}]}, timeout=60)
+                if "choices" not in resp:
+                    continue  # p. ej. proveedor saturado: se prueba el siguiente modelo
+                frase = re.sub(r"<think>.*?</think>", "", resp["choices"][0]["message"].get("content") or "", flags=re.S)
+                frase = re.sub(r"\s+", " ", frase).strip().strip('"“”').strip()
+                if frase:
+                    res = {"frase": frase[:400], "fuente": f"IA · {modelo.split('/')[-1]}", "generada": iso(ahora())}
+                    _SINTESIS[huella] = (time.time(), res)
+                    return res
+            except urllib.error.HTTPError as e:
+                if e.code == 410:
+                    _MODELOS_RETIRADOS.add(modelo)
+            except Exception as e:
+                print(f"  Síntesis de la nube ({modelo}): {type(e).__name__}", flush=True)
+    # sin IA disponible: frase por reglas con los términos dominantes
+    tono = "mayormente negativo" if neg > pos * 1.5 else "mayormente positivo" if pos > neg * 1.5 else "mixto"
+    top = ", ".join(w["palabra"] for w in ws[:5])
+    res = {"frase": f"La conversación gira en torno a {top}, con un tono {tono}.", "fuente": "reglas (sin IA disponible)",
+           "generada": iso(ahora())}
+    _SINTESIS[huella] = (time.time(), res)
+    return res
+
+
 def palabras(qs):
     """Palabras (o pares de palabras) más frecuentes en las publicaciones que cumplen los filtros."""
     g = lambda k, d="": qs.get(k, [d])[0]
@@ -5725,6 +5788,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(datos_trends())
         if u.path == "/api/nube":
             return self._send({"excluidas": nube_excluidas(), "iniciales": sorted(NUBE_EXCLUIDAS_INICIALES)})
+        if u.path == "/api/nube/sintesis":
+            return self._send(sintesis_nube(qs))
         if u.path == "/api/palabras":
             return self._send(palabras(qs))
         if u.path == "/api/ejemplos":
