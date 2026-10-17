@@ -843,8 +843,8 @@ $('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim()
 // ---------- Panel de configuración ----------
 let CFG=null,cfgTab='general';
 const lista=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
-const TABS_ADMIN=[['general','General'],['ejemplos','Ejemplos de la IA'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
-const GRUPOS_CFG=[['general','General y alertas',['general']],['monitoreo','Qué se monitorea',['entidades','cuentas','trends','nube']],['ia','IA y presupuestos',['ejemplos','costos']],['datos','Datos y accesos',['archivo','accesos','cuenta']]];
+const TABS_ADMIN=[['resumen','Resumen'],['ciber','Ciberseguridad'],['general','General'],['ejemplos','Ejemplos de la IA'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
+const GRUPOS_CFG=[['general','General y alertas',['general']],['monitoreo','Qué se monitorea',['resumen','entidades','cuentas','ciber','trends','nube']],['ia','IA y presupuestos',['ejemplos','costos']],['datos','Datos y accesos',['archivo','accesos','cuenta']]];
 const tabsVisibles=()=>YO?.rol==='admin'?TABS_ADMIN:[['cuenta','Mi cuenta']];
 async function abrirConfig(){
   if(YO?.rol!=='admin'){CFG={};cfgTab='cuenta';$('#cfg-msg').textContent='';$('#cfg').classList.add('on');$('#cfg-guardar').style.display='none';pintarConfig();return}
@@ -854,7 +854,7 @@ async function abrirConfig(){
   CFG._ents=Object.entries(CFG.bancos).map(([n,b],i)=>({id:i,nombre:n,buscar:b.buscar.join(', '),alias:b.alias.join(', '),ambiguos:(b.ambiguos||[]).join(', '),cuentas:{...(CFG.cuentas_oficiales[n]||{})}}));
   CFG._grupos=Object.entries(CFG.trends.grupos).map(([g,t])=>({nombre:g,terminos:t.join(', ')}));
   $('#cfg-msg').textContent='';$('#cfg').classList.add('on');pintarConfig()}
-$('#cfg-abrir').addEventListener('click',()=>{cfgTab='general'},true);
+$('#cfg-abrir').addEventListener('click',()=>{cfgTab='resumen'},true);
 function pintarApagados(lista,avisos=[]){
   const el=$('#cfg-apagados');if(!el)return;
   const fecha=t=>new Date(t.length===10?t+'T12:00:00':t).toLocaleString('es-PE',t.length===10?{day:'numeric',month:'long'}:{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Lima'});
@@ -880,6 +880,36 @@ function pintarConfig(){
   $('#cfg-tabs').querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{cfgTab=grupos.find(x=>x[0]===b.dataset.g)[2][0];pintarConfig()});
   $('#cfg-tabs').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{cfgTab=b.dataset.k;pintarConfig()});
   const c=$('#cfg-cuerpo');
+  const lst=a=>(a||[]).join(', ');
+  if(cfgTab==='resumen'){ // todo lo que se vigila, en una sola vista (solo lectura; cada bloque enlaza a donde se edita)
+    const m=CFG.monitoreo||{},cb=CFG.ciber||{},ir=k=>`<a href="#" data-ir="${k}">editar</a>`;
+    const cada=n=>n>=60?(n%60?`${Math.floor(n/60)} h ${n%60} min`:`${n/60} h`):`${n} min`;
+    c.innerHTML=`<p class="ayuda">Todo lo que el monitor vigila ahora, 24x7 desde el servidor.</p>
+    <div class="bloque"><b>Entidades (${CFG._ents.length})</b> · ${ir('entidades')}
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><thead><tr><th style="text-align:left">Entidad</th><th style="text-align:left">Se busca</th><th style="text-align:left">Cuentas oficiales</th><th style="text-align:left">Dominios</th></tr></thead><tbody>
+      ${CFG._ents.map(e=>`<tr style="border-top:1px solid var(--line);vertical-align:top"><td><b>${esc(e.nombre)}</b></td><td>${esc(e.buscar)}</td><td>${Object.entries(e.cuentas||{}).map(([r,v])=>`${esc(r)}: ${esc(String(v).replace(/^https:\/\/(www\.)?/,''))}`).join('<br>')||'<span class="sub">—</span>'}</td><td>${esc(lst((cb.dominios||{})[e.nombre]))||'<span class="sub">—</span>'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="bloque"><b>Disponibilidad, fallas y quejas</b> · ${ir('general')}
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tbody>${(m.disponibilidad||[]).map(f=>`<tr style="border-top:1px solid var(--line)"><td style="white-space:nowrap"><b>${esc(f.fuente)}</b></td><td style="white-space:nowrap">cada ${cada(f.minutos)}</td><td class="sub">${esc(f.desc||'')}</td></tr>`).join('')}</tbody></table>
+      <div class="sub" style="margin-top:6px">Alerta al celular cuando la última hora supera promedio + 2σ (base ${m.notificaciones?.dias_base||7} días, mínimo ${m.notificaciones?.minimo_ultima_hora||5} negativas, sin repetir en ${m.notificaciones?.enfriamiento_minutos||120} min).</div></div>
+    <div class="bloque"><b>Ciberseguridad</b> · ${ir('ciber')}
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tbody>${(m.ciber||[]).map(f=>`<tr style="border-top:1px solid var(--line)"><td><b>${esc(f.fuente)}</b></td><td style="white-space:nowrap">cada ${cada(f.minutos)}</td></tr>`).join('')}</tbody></table>
+      <div class="sub" style="margin-top:6px">X: ${esc(lst((cb.referentes_x||[]).map(h=>'@'+h)))} · Telegram público: ${esc(lst(cb.canales_telegram))} · Actores vigilados: ${esc(lst(cb.actores))}</div></div>`;
+    c.querySelectorAll('[data-ir]').forEach(a=>a.onclick=e=>{e.preventDefault();cfgTab=a.dataset.ir;pintarConfig()});return}
+  if(cfgTab==='ciber'){
+    const cb=CFG.ciber;const campo=(k,t,ayuda)=>`<label class="campo"><b>${t}</b><textarea data-cb="${k}" rows="2" style="width:100%">${esc(lst(cb[k]))}</textarea><span class="sub">${ayuda}</span></label>`;
+    c.innerHTML=`<p class="ayuda">Fuentes de ciberseguridad. Escribe los valores separados por comas. Todo se filtra al sistema financiero, seguros, AFP y proveedores del Perú.</p>
+    <div class="bloque" style="display:grid;gap:10px">
+      ${campo('referentes_x','Cuentas referentes en X','Inteligencia de amenazas: solo se guardan sus alertas sobre el SF peruano (sin @).')}
+      ${campo('cuentas_peru','…de ellas, cuentas peruanas','Sus publicaciones se toman como contexto Perú aunque no lo digan.')}
+      ${campo('canales_telegram','Canales públicos de Telegram','Se leen sin cuenta (t.me/s/…). Solo el nombre del canal.')}
+      ${campo('canales_sesion','Canales con la sesión del CSIRT','Vacío = todos los canales de la cuenta dedicada. Nombre o @usuario del canal.')}
+      ${campo('actores','Actores vigilados','De ellos se registra todo lo que publican en Telegram (nombre del canal o del autor).')}
+      ${campo('alias_x','Alias de actores a buscar en X','Solo alias inconfundibles (mínimo 4 letras).')}</div>
+    <div class="bloque"><b>Dominios oficiales por entidad</b>
+      <p class="ayuda" style="margin-top:4px">Se usan para contar equipos infectados (Hudson Rock), detectar dominios que imitan a la entidad y buscarla en filtraciones de foros.</p>
+      <div style="display:grid;gap:6px">${CFG._ents.map(e=>`<label class="frow" style="gap:8px;align-items:center"><span style="min-width:150px"><b>${esc(e.nombre)}</b></span><input data-dom="${esc(e.nombre)}" value="${esc(lst((cb.dominios||{})[e.nombre]))}" placeholder="p. ej. viabcp.com, bcp.com.pe" style="flex:1"></label>`).join('')}</div></div>`;
+    c.querySelectorAll('[data-cb]').forEach(t=>t.oninput=()=>{cb[t.dataset.cb]=lista(t.value.replace(/\n/g,','))});
+    c.querySelectorAll('[data-dom]').forEach(t=>t.oninput=()=>{(cb.dominios=cb.dominios||{})[t.dataset.dom]=lista(t.value.replace(/\n/g,','))});return}
   if(cfgTab==='general'){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
@@ -1047,7 +1077,7 @@ async function guardarConfig(){
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
-    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,rapidapi:CFG.rapidapi,brightdata:CFG.brightdata,ia:CFG.ia};
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,rapidapi:CFG.rapidapi,brightdata:CFG.brightdata,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});

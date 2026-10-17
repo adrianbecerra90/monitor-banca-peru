@@ -180,7 +180,7 @@ CATEGORIAS = {
                              r"\bdenunci", r"\bdemand(a|ar|e)\b", r"\bmulta", r"\bsancion", r"defensoria"],
 }
 
-NEGATIVO = [r"\bqueja", r"\breclamo", r"\bpesim", r"\bterrible", r"\bhorrible", r"\bverguenza", r"\basco\b",
+NEGATIVO = [r"\b(te|los|las|lo|la) odio\b", r"\bodio (a |al )?(yape|plin|bcp|interbank|bbva|scotiabank)\b", r"\bqueja", r"\breclamo", r"\bpesim", r"\bterrible", r"\bhorrible", r"\bverguenza", r"\basco\b",
             r"\bfatal\b", r"\bnefast", r"\bindignad", r"\bharto\b|\bharta\b|\bhartos\b", r"cansad[oa]s? de",
             r"\babusiv", r"\babuso", r"\brateros?\b", r"\bladrones\b", r"\broban\b|\brobando\b", r"que tal raza",
             r"\bsinverguenza", r"\bincompetent", r"\bineptos?\b", r"nunca mas", r"me (voy a )?cambi(o|ar) de banco",
@@ -207,7 +207,7 @@ POSITIVO = [r"\bgracias\b", r"\bagradezco", r"\bagradecid", r"\bexcelente", r"\b
             r"\bsolucionado\b", r"\bresuelto\b", r"\bfelicit", r"\brecomiendo\b", r"\bel mejor\b", r"\bla mejor\b",
             r"\bgenial\b", r"\bsuper\b", r"\bencanta", r"\bfeliz\b", r"\bsatisfech", r"\b10/10\b", r"\bamable",
             r"\beficient", r"\bfacil\b", r"\bconfiable", r"\bbravo\b", r"\bchevere\b", r"\bbacan", r"lo maximo",
-            r"\bperfecto\b", r"\bbuenisim", r"\bbuen(a|isim[oa])?\s+(video|dato|info|informacion|contenido|iniciativa|trabajo)", r"\bmaravill", r"\bme gusta", r"[❤💙👏👍🙌😍🥰💪✅]"]
+            r"\bperfecto\b", r"\bbuenisim", r"\b(te|los|las|lo|la) (amo|adoro|quiero)\b", r"\bamo (a |al )?(yape|plin|bcp|interbank)\b", r"\bbuen(a|isim[oa])?\s+(video|dato|info|informacion|contenido|iniciativa|trabajo)", r"\bmaravill", r"\bme gusta", r"[❤💙👏👍🙌😍🥰💪✅]"]
 NEGACION_POS = re.compile(r"\b(no|nada|ni|nunca)\s+(\w+\s+)?(es |fue |me parece |)(excelente|buen|rapid|facil|amable|eficient|confiable)")
 
 GRAVE = [r"\bestafa", r"\bfraude", r"\bclonaron", r"me (robaron|sacaron|vaciaron)", r"vaciaron mi cuenta",
@@ -3139,7 +3139,9 @@ def marca_imitada(host):
     if not re.fullmatch(r"[a-z0-9.-]{3,253}", host):
         return None
     reg = dominio_registrado(host)
+    extra = CONFIG.get("ciber", {}).get("dominios", {})
     for ent, (toks, oficiales) in MARCAS_DOMINIO.items():
+        oficiales = list(oficiales) + extra.get(ent, [])
         if reg in oficiales or any(host == o or host.endswith("." + o) for o in oficiales):
             continue
         if any(_token_en(host, t) for t in toks):
@@ -3273,7 +3275,7 @@ def _tabla_infostealers(con):
 
 
 def ciber_infostealers():
-    mapa = {**DOMINIOS_INFOSTEALER, **CONFIG.get("ciber", {}).get("dominios_infostealer", {})}
+    mapa = {e: ds for e, ds in _dominios_entidades().items() if ds}
     dia, alertas = ahora().astimezone(LIMA).strftime("%Y-%m-%d"), []
     for ent, dominios in mapa.items():
         for dom in dominios:
@@ -4260,6 +4262,47 @@ URL_RED_OK = {"facebook": re.compile(r"^https://(www\.)?facebook\.com/[A-Za-z0-9
               "tiktok": re.compile(r"^https://(www\.)?tiktok\.com/@[A-Za-z0-9_.]{2,40}/?$")}
 
 
+DOMINIO_OK = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
+CANAL_TG_OK = re.compile(r"^\w{4,40}$")
+
+
+def _dominios_entidades():
+    """Dominios oficiales por entidad: los del código más los agregados en Configuración."""
+    out = {e: list(dict.fromkeys(MARCAS_DOMINIO.get(e, ([], []))[1] + DOMINIOS_INFOSTEALER.get(e, []))) for e in BANCOS}
+    for e, ds in CONFIG.get("ciber", {}).get("dominios", {}).items():
+        if e in out:
+            out[e] = list(dict.fromkeys(out[e] + ds))
+    return out
+
+
+def config_ciber_editable():
+    r, c = _cfg_referentes(), _cfg_ciber()
+    return {"referentes_x": r.get("cuentas", []), "cuentas_peru": r.get("cuentas_peru", []),
+            "canales_telegram": c.get("canales_telegram", []), "canales_sesion": c.get("canales_sesion", []),
+            "actores": c.get("actores", ACTORES_VIGILADOS), "alias_x": c.get("alias_x", ALIAS_X_VIGILADOS),
+            "dominios": _dominios_entidades()}
+
+
+def resumen_monitoreo():
+    """Qué se vigila y cada cuánto, para la vista de resumen de Configuración."""
+    iv = CONFIG.get("intervalos_minutos", {})
+    disp = [{"fuente": f, "minutos": iv.get(f, 30), "desc": d} for f, (_, d) in FUENTES.items()]
+    disp.append({"fuente": "Google Trends", "minutos": CONFIG.get("trends", {}).get("intervalo_minutos", 60),
+                 "desc": "Búsquedas de fallas («bcp caído», «yape no funciona»…) en Perú"})
+    disp.append({"fuente": "X · respuestas oficiales", "minutos": CONFIG.get("nitter", {}).get("respuestas_cada_min", 10),
+                 "desc": "Quejas a las que responden las cuentas oficiales y sus avisos de caída"})
+    nombres = {"ransomware_live": "ransomware.live (víctimas en Perú)", "telegram": "Canales públicos de Telegram",
+               "dominios": "Dominios que imitan a las entidades (crt.sh)", "urlhaus": "URLs maliciosas (URLhaus)",
+               "threatfox": "Indicadores maliciosos (ThreatFox)", "infostealers": "Equipos infectados (Hudson Rock)",
+               "telegram_sesion": "Telegram con sesión del CSIRT", "filtraciones": "Filtraciones en foros (Ransomlook)",
+               "actores_x": "Actores vigilados en X"}
+    fc = {**FUENTES_CIBER, **_cfg_ciber().get("fuentes", {})}
+    ciber = [{"fuente": "Cuentas referentes en X", "minutos": _cfg_referentes().get("intervalo_minutos", 10)}] + \
+            [{"fuente": nombres.get(k, k), "minutos": v} for k, v in fc.items() if v]
+    return {"disponibilidad": disp, "ciber": ciber,
+            "notificaciones": {k: CONFIG.get("notificaciones", {}).get(k) for k in ("dias_base", "minimo_ultima_hora", "enfriamiento_minutos")}}
+
+
 def config_editable():
     c = CONFIG
     return {
@@ -4275,6 +4318,8 @@ def config_editable():
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
         "brightdata": {k: c.get("brightdata", {}).get(k) for k in ("max_registros_mes", "intervalo_minutos", "posts_por_cuenta")},
+        "ciber": config_ciber_editable(),
+        "monitoreo": resumen_monitoreo(),
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
         "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "BRIGHTDATA_API_KEY", "NVIDIA_API_KEY",
@@ -4316,8 +4361,8 @@ def validar_config(d):
         nueva["intervalos_minutos"] = {f: _entero(d["intervalos_minutos"].get(f, 30), f"Frecuencia de {f}", 1, 1440)
                                        for f in FUENTES}
     if "bancos" in d:
-        if not isinstance(d["bancos"], dict) or not 1 <= len(d["bancos"]) <= 15:
-            raise ValueError("Entidades: entre 1 y 15")
+        if not isinstance(d["bancos"], dict) or not 1 <= len(d["bancos"]) <= 25:
+            raise ValueError("Entidades: entre 1 y 25")
         bancos = {}
         for nombre, b in d["bancos"].items():
             nombre = str(nombre).strip()
@@ -4368,6 +4413,25 @@ def validar_config(d):
         nueva.setdefault("trends", {})["grupos"] = grupos
         nueva["trends"]["grupo_alertas"] = [g for g in grupos if "falla" in normalizar(g)]
         nueva["trends"]["intervalo_minutos"] = _entero(t.get("intervalo_minutos", 60), "Frecuencia de Trends", 30, 1440)
+    if "ciber" in d:
+        cb = d["ciber"] if isinstance(d["ciber"], dict) else {}
+        handles = lambda v, campo, m: [h.lstrip("@") for h in _lista_textos(v, campo, m, re.compile(r"^@?[A-Za-z0-9_]{1,15}$"))]
+        refs = handles(cb.get("referentes_x", []), "Cuentas referentes en X", 40)
+        nueva["x_referentes"] = {**nueva.get("x_referentes", {}), "cuentas": refs,
+                                 "cuentas_peru": [h for h in handles(cb.get("cuentas_peru", []), "Cuentas peruanas", 40) if h in refs]}
+        dominios = {}
+        for e, ds in (cb.get("dominios") or {}).items():
+            if e in nueva["bancos"]:
+                ds = [x.lower() for x in _lista_textos(ds, f"{e} · dominios", 10)]
+                if any(not DOMINIO_OK.match(x) for x in ds):
+                    raise ValueError(f"{e}: dominio no válido (ejemplo correcto: viabcp.com)")
+                dominios[e] = ds
+        nueva["ciber"] = {**nueva.get("ciber", {}),
+                          "canales_telegram": _lista_textos(cb.get("canales_telegram", []), "Canales públicos de Telegram", 30, CANAL_TG_OK),
+                          "canales_sesion": _lista_textos(cb.get("canales_sesion", []), "Canales con sesión", 40),
+                          "actores": _lista_textos(cb.get("actores", []), "Actores vigilados", 30),
+                          "alias_x": [a for a in _lista_textos(cb.get("alias_x", []), "Alias en X", 15) if len(a) >= 4],
+                          "dominios": dominios}
     if "apify" in d:
         a = d["apify"]
         try:
