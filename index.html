@@ -40,6 +40,15 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px}
 @media(max-width:1000px){.grid{grid-template-columns:1fr}}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.vistas{display:flex;gap:4px;margin:0 0 14px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.vistas button{border:0;background:none;border-radius:0;padding:10px 14px;font-weight:600;color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer}
+.vistas button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.vistas .badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--neg);color:#fff;font-size:11px;line-height:18px;margin-left:4px}
+body[data-vista="monitoreo"] [data-vistas]:not([data-vistas~="monitoreo"]),body[data-vista="analisis"] [data-vistas]:not([data-vistas~="analisis"]),
+body[data-vista="ciber"] [data-vistas]:not([data-vistas~="ciber"]),body[data-vista="sistema"] [data-vistas]:not([data-vistas~="sistema"]){display:none}
+body[data-vista="sistema"] .grid{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+body[data-vista="sistema"] .grid .col{display:contents}
+#ciber-resumen .alerta{cursor:pointer}
 .ciber-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;margin-bottom:14px}
 @media(max-width:1000px){.ciber-grid{grid-template-columns:1fr}}
 #infost table{font-variant-numeric:tabular-nums}
@@ -129,7 +138,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span class="live" id="live"><i></i>EN VIVO</span>
-    <label class="sub"><input type="checkbox" id="notif"> Avisos de quejas graves</label>
+    <label class="sub" title="Solo mientras esta página está abierta. Las alertas 24x7 llegan al celular (ntfy) aunque nadie tenga el panel abierto."><input type="checkbox" id="notif"> Avisos en este navegador</label>
     <a id="csv" href="#"><button>Exportar CSV</button></a>
     <span class="sub" id="yo"></span>
     <button id="pausa-global" class="solo-admin" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
@@ -142,8 +151,12 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
 <div class="wrap">
   <div id="aviso-pausa"></div>
   <div id="picos"></div><div id="alerta-x"></div>
+  <nav class="vistas" role="tablist" aria-label="Secciones del panel">
+    <button role="tab" data-vista="monitoreo">Monitoreo</button><button role="tab" data-vista="ciber">🛡️ Ciberseguridad <span class="badge" id="vista-ciber-n" hidden></span></button><button role="tab" data-vista="analisis">Análisis</button><button role="tab" data-vista="sistema">Sistema</button>
+  </nav>
+  <div id="ciber-resumen" data-vistas="monitoreo analisis"></div>
 
-  <div class="card filters">
+  <div data-vistas="monitoreo analisis" class="card filters">
     <button id="f-plegar" class="solo-movil" style="float:right;margin-left:8px"></button>
     <div class="frow"><span class="lbl">Periodo</span><span id="f-periodo"></span>
       <span id="f-custom" style="display:none;gap:6px;align-items:center"><input type="datetime-local" id="f-desde"> → <input type="datetime-local" id="f-hasta"></span></div>
@@ -161,7 +174,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     </div>
   </div>
 
-  <div class="kpis">
+  <div data-vistas="monitoreo analisis" class="kpis">
     <div class="card kpi"><div class="n" id="k-total">–</div><div class="l">Menciones</div></div>
     <div class="card kpi"><div class="n" id="k-neg" style="color:var(--neg)">–</div><div class="l">Negativas</div></div>
     <div class="card kpi"><div class="n" id="k-neu">–</div><div class="l">Neutras</div></div>
@@ -170,7 +183,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <div class="card kpi"><div class="n" id="k-quejas">–</div><div class="l">Quejas · <b id="k-graves" style="color:var(--neg)">–</b> graves</div></div>
   </div>
 
-  <div class="ciber-grid" id="sec-ciber">
+  <div data-vistas="ciber" class="ciber-grid" id="sec-ciber">
     <div class="card"><h2>🛡️ Ciberseguridad · alertas <span class="sub" id="ciber-n" style="font-weight:400"></span></h2><div id="ciber"></div>
       <button id="ciber-mas" style="display:none;margin-top:6px"></button>
       <div class="sub" id="ciber-pie" style="margin-top:6px"></div></div>
@@ -180,7 +193,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
 
   <div class="grid">
     <div class="col">
-      <div class="card">
+      <div data-vistas="monitoreo" class="card">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
           <h2 id="t-serie">Evolución del sentimiento</h2>
           <label class="sub" style="display:flex;gap:6px;align-items:center">Monitorear
@@ -193,7 +206,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="chart"><div class="tip" id="tip"></div></div>
         <div id="serie-nota"></div><div class="hint">Clic en una barra para ver ese intervalo en detalle.</div>
       </div>
-      <div class="card">
+      <div data-vistas="monitoreo" class="card">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
           <h2 id="t-ent">Quejas por entidad</h2>
           <span class="frow" style="gap:8px">
@@ -210,7 +223,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="ent-tabla" hidden></div>
         <div class="hint">Clic en una entidad de la leyenda para mostrarla u ocultarla y comparar solo las que elijas.</div>
       </div>
-      <div class="card">
+      <div data-vistas="analisis" class="card">
         <h2>Nube de palabras <span class="sub" id="nb-info" style="text-transform:none;letter-spacing:0"></span></h2>
         <div class="frow" style="margin-bottom:8px">
           <select id="nb-max" aria-label="Cantidad de palabras"><option value="30">30 palabras</option><option value="60" selected>60 palabras</option><option value="100">100 palabras</option></select>
@@ -224,7 +237,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="nube" aria-live="polite"></div>
         <div class="hint">Tamaño = en cuántas publicaciones aparece. Clic en una palabra para ver esas publicaciones; ⌥+clic (Alt+clic) para excluirla de forma permanente. Respeta todos los filtros.</div>
       </div>
-      <div class="card">
+      <div data-vistas="analisis" class="card">
         <h2>Búsquedas en Google · Perú <span class="sub" id="tr-act" style="text-transform:none;letter-spacing:0"></span></h2>
         <div id="tr-alertas"></div>
         <div class="frow" id="tr-grupos" style="margin-bottom:6px"></div>
@@ -233,26 +246,26 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="tr-rel" style="margin-top:10px"></div>
         <div class="hint">Interés relativo de búsqueda (100 = el momento de mayor interés entre los términos del grupo, últimos 7 días, por hora). Fuente: Google Trends.</div>
       </div>
-      <div class="card">
+      <div data-vistas="analisis" class="card">
         <h2>Menciones negativas por día y hora (hora de Lima)</h2>
         <div id="calor"></div>
       </div>
-      <div class="card">
+      <div data-vistas="monitoreo" class="card">
         <h2>Publicaciones <span id="n-items" class="sub" style="text-transform:none;letter-spacing:0"></span></h2>
         <div id="lista"></div>
         <div id="centinela" class="sub" style="text-align:center;padding:12px"></div>
       </div>
     </div>
     <div class="col">
-      <div class="card">
+      <div data-vistas="monitoreo" class="card">
         <h2>Sentimiento por entidad</h2>
         <div class="legend"><span style="--c:var(--neg)">Neg.</span><span style="--c:var(--neu)">Neutro</span><span style="--c:var(--pos)">Pos.</span></div>
         <div id="entidades"></div>
         <div class="sub" style="margin-top:6px">Clic para filtrar. Mayús+clic para seleccionar varias.</div>
       </div>
-      <div class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
-      <div class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
-      <div class="card hist-card">
+      <div data-vistas="monitoreo" class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
+      <div data-vistas="analisis" class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
+      <div data-vistas="sistema" class="card hist-card">
         <h2>Carga histórica</h2>
         <div class="hist">
           <input type="date" id="h-desde"> → <input type="date" id="h-hasta">
@@ -262,8 +275,8 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div class="sub" id="h-msg" style="margin-top:8px"></div>
         <div class="sub" id="h-base" style="margin-top:4px"></div>
       </div>
-      <div class="card"><h2>Clasificación IA</h2><div class="src" id="ia-card"></div></div>
-      <div class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
+      <div data-vistas="sistema" class="card"><h2>Clasificación IA</h2><div class="src" id="ia-card"></div></div>
+      <div data-vistas="sistema" class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
     </div>
   </div>
 </div>
@@ -712,18 +725,28 @@ function pintarPausa(){
 $('#pausa-global').onclick=()=>pausa('todo',!ESTADO?.pausa?.todo);
 
 // Alertas de cuentas de inteligencia de amenazas: solo las del sistema financiero, seguros y AFP del Perú
-// En el celular: ciberseguridad va primero y los filtros se pliegan (solo queda el periodo)
-(function(){const mq=matchMedia('(max-width:1000px)'),sec=$('#sec-ciber'),fil=$('.filters'),ancla=document.createComment('ciber');
-  sec.parentNode.insertBefore(ancla,sec);
-  const ubicar=()=>{if(mq.matches)fil.parentNode.insertBefore(sec,fil);else ancla.parentNode.insertBefore(sec,ancla.nextSibling)};
-  ubicar();mq.addEventListener('change',ubicar);
+// Pestañas: Monitoreo · Ciberseguridad · Análisis · Sistema (se recuerda la última; #ciber en la URL abre esa)
+let VISTA='monitoreo';
+function abrirVista(v,guardar=true){if(!['monitoreo','ciber','analisis','sistema'].includes(v))v='monitoreo';VISTA=v;document.body.dataset.vista=v;
+  document.querySelectorAll('.vistas [role=tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.vista===v?'true':'false'));
+  if(guardar){try{localStorage.setItem('monitor.vista',v)}catch(e){}history.replaceState(null,'',v==='monitoreo'?location.pathname:'#'+v)}
+  if(v==='monitoreo'||v==='analisis')setTimeout(()=>window.dispatchEvent(new Event('resize')),0)}
+document.querySelectorAll('.vistas [role=tab]').forEach(b=>b.onclick=()=>{abrirVista(b.dataset.vista);window.scrollTo({top:0})});
+(function(){let v=location.hash.slice(1);if(!v){try{v=localStorage.getItem('monitor.vista')||''}catch(e){}}abrirVista(v||'monitoreo',false)})();
+window.addEventListener('hashchange',()=>abrirVista(location.hash.slice(1),false));
+// En el celular los filtros se pliegan (solo queda el periodo)
+(function(){const fil=$('.filters');
   const b=$('#f-plegar');fil.classList.add('plegado');
   const txt=()=>{b.textContent=fil.classList.contains('plegado')?'Más filtros ▾':'Menos filtros ▴'};txt();
   b.onclick=()=>{fil.classList.toggle('plegado');txt()}})();
 let CIBER_TODAS=false;
 async function cargarCiber(){
   try{const d=await fetch('/api/ciber').then(r=>r.json());const a=d.alertas||[];
-    const n7=a.filter(x=>Date.now()-new Date(x.fecha)<7*864e5).length;$('#ciber-n').textContent=`· ${n7} en 7 días · ${a.length} en 30 días`;
+    const n7=a.filter(x=>Date.now()-new Date(x.fecha)<7*864e5).length,h24=a.filter(x=>Date.now()-new Date(x.fecha)<864e5);
+    const bd=$('#vista-ciber-n');bd.hidden=!h24.length;bd.textContent=h24.length;
+    $('#ciber-resumen').innerHTML=h24.length?`<div class="alerta" role="button" tabindex="0">🛡️ <b>${h24.length} alerta${h24.length>1?'s':''} de ciberseguridad en 24 h:</b> ${esc([...new Set(h24.map(x=>x.entidades.join(', ')||x.organizacion||x.sector))].slice(0,5).join(' · '))} — <u>ver</u></div>`:'';
+    const cr=$('#ciber-resumen .alerta');if(cr){cr.onclick=()=>{abrirVista('ciber');window.scrollTo({top:0})};cr.onkeydown=e=>{if(e.key==='Enter')cr.onclick()}}
+    $('#ciber-n').textContent=`· ${n7} en 7 días · ${a.length} en 30 días`;
     const vis=CIBER_TODAS?a.slice(0,40):a.slice(0,4);
     $('#ciber-mas').style.display=a.length>4?'':'none';$('#ciber-mas').textContent=CIBER_TODAS?'Ver menos':`Ver todas (${a.length})`;
     $('#ciber').innerHTML=a.length?vis.map(x=>{const mon=x.entidades.length;
