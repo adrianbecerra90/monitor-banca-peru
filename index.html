@@ -234,8 +234,10 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="entidades"></div>
         <div class="sub" style="margin-top:6px">Clic para filtrar. Mayús+clic para seleccionar varias.</div>
       </div>
-      <div class="card"><h2>Ciberseguridad · referentes en X</h2><div id="ciber"></div>
+      <div class="card"><h2>Ciberseguridad · alertas</h2><div id="ciber"></div>
         <div class="sub" id="ciber-pie" style="margin-top:6px"></div></div>
+      <div class="card"><h2>Equipos infectados (infostealers)</h2><div id="infost"></div>
+        <div class="sub" style="margin-top:6px">Usuarios, empleados y terceros con credenciales de la entidad robadas por malware. Solo conteos, fuente Hudson Rock; se actualiza 2 veces al día. Variación frente a hace 7 días.</div></div>
       <div class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
       <div class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
       <div class="card hist-card">
@@ -706,9 +708,11 @@ async function cargarCiber(){
       return `<div style="padding:7px 0;border-top:1px solid var(--line)"><div style="font-size:13px">${dom?'<b style="color:var(--neg)">⚠ Posible phishing contra '+esc(x.entidades.join(', '))+':</b> <code>'+esc(x.organizacion)+'</code>':mon?'<b style="color:var(--neg)">● Monitoreada:</b> '+esc(x.entidades.join(', ')):'<b>'+esc(x.sector)+'</b>'}${x.organizacion&&!mon?' · '+esc(x.organizacion):''}</div>
       <div class="sub" style="margin-top:2px">${esc(tit)}</div>
       <div class="sub" style="margin-top:2px">${esc(x.cuenta)} · hace ${hace(x.fecha)}${x.url?` · <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">ver ↗</a>`:''}</div></div>`}).join(''):'<div class="sub">Sin alertas del sistema financiero peruano en los últimos 30 días.</div>';
-    const e=d.estado||{},f=d.fuentes||{},NOM={ransomware_live:'ransomware.live',telegram:'Telegram',dominios:'dominios (crt.sh)',urlhaus:'URLhaus',threatfox:'ThreatFox'};
+    const inf=d.infostealers||[],vr=v=>v==null?'':v>0?` <span style="color:var(--neg);font-weight:600">▲${fmt(v)}</span>`:v<0?` ▼${fmt(-v)}`:'';
+    $('#infost').innerHTML=inf.length?`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left">Entidad</th><th style="text-align:right">Empleados</th><th style="text-align:right">Usuarios</th><th style="text-align:right">Terceros</th></tr></thead><tbody>${inf.map(x=>`<tr style="border-top:1px solid var(--line)" title="${esc(x.dominios.join(', '))} · ${esc(x.dia)}"><td>${esc(x.entidad)}</td><td style="text-align:right">${fmt(x.empleados)}${vr(x.var_empleados)}</td><td style="text-align:right">${fmt(x.usuarios)}${vr(x.var_usuarios)}</td><td style="text-align:right">${fmt(x.terceros)}</td></tr>`).join('')}</tbody></table>`:'<div class="sub">Primera lectura en curso…</div>';
+    const e=d.estado||{},f=d.fuentes||{},NOM={ransomware_live:'ransomware.live',telegram:'Telegram',dominios:'dominios (crt.sh)',urlhaus:'URLhaus',threatfox:'ThreatFox',infostealers:'Hudson Rock'};
     const fal=Object.entries(f).filter(([k,v])=>!v.ok).map(([k])=>NOM[k]||k);
-    $('#ciber-pie').textContent=`X: ${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' (hace '+hace(e.ultima_revision)+')':''} · Telegram: ${(d.canales_telegram||[]).join(', ')} · también ransomware.live, certificados de dominios y abuse.ch${fal.length?' · sin respuesta: '+fal.join(', '):''}`}
+    $('#ciber-pie').textContent=`X: ${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' (hace '+hace(e.ultima_revision)+')':''} · Telegram: ${(d.canales_telegram||[]).join(', ')} · también ransomware.live, certificados de dominios, abuse.ch y Hudson Rock${fal.length?' · sin respuesta: '+fal.join(', '):''}`}
   catch(e){}}
 setInterval(cargarCiber,120000);
 let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube();cargarCiber()},120)}

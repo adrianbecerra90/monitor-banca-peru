@@ -2906,7 +2906,8 @@ def alertas_ciber(dias=30):
 # dominios que imitan a las entidades (certificados en crt.sh) y URLs/IOC maliciosos de abuse.ch
 # --------------------------------------------------------------------------
 
-FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhaus": 60, "threatfox": 60}  # minutos
+FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhaus": 60, "threatfox": 60,
+                 "infostealers": 720}  # minutos
 CANALES_TELEGRAM = ["ransomfeednews", "ransomlook"]
 # Marcas a vigilar en dominios: (tokens, dominios oficiales). Las marcas globales exigen además "pe"/"peru" en el dominio
 MARCAS_DOMINIO = {
@@ -3072,8 +3073,80 @@ def ciber_threatfox():
     return out
 
 
+# Infostealers (Hudson Rock, gratis): cuántos usuarios, empleados y terceros de cada entidad tienen equipos infectados
+# con robo de credenciales. Solo conteos (sin datos personales), guardados como serie diaria por entidad
+DOMINIOS_INFOSTEALER = {"BCP": ["viabcp.com", "bcp.com.pe"], "Yape": ["yape.com.pe"], "Plin": ["plin.pe"],
+                        "Interbank": ["interbank.pe"], "BBVA Perú": ["bbva.pe"], "Scotiabank Perú": ["scotiabank.com.pe"],
+                        "Banco de la Nación": ["bn.com.pe"], "SBS": ["sbs.gob.pe"], "Interseguro": ["interseguro.pe"],
+                        "Banco Pichincha": ["pichincha.pe", "pibank.pe"], "BCRP": ["bcrp.gob.pe"]}
+
+
+def _tabla_infostealers(con):
+    con.execute("""CREATE TABLE IF NOT EXISTS infostealers (dominio TEXT, entidad TEXT, dia TEXT, total INTEGER,
+                   usuarios INTEGER, empleados INTEGER, terceros INTEGER, ultimo_empleado TEXT, ultimo_usuario TEXT,
+                   PRIMARY KEY (dominio, dia))""")
+
+
+def ciber_infostealers():
+    mapa = {**DOMINIOS_INFOSTEALER, **CONFIG.get("ciber", {}).get("dominios_infostealer", {})}
+    dia, alertas = ahora().astimezone(LIMA).strftime("%Y-%m-%d"), []
+    for ent, dominios in mapa.items():
+        for dom in dominios:
+            if not re.fullmatch(r"[a-z0-9.-]{3,100}", dom):
+                continue
+            d = json.loads(http_get("https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-domain?domain="
+                                    + urllib.parse.quote(dom), timeout=60))
+            fila = (dom, ent, dia, int(d.get("total") or 0), int(d.get("users") or 0), int(d.get("employees") or 0),
+                    int(d.get("third_parties") or 0), str(d.get("last_employee_compromised") or "")[:40],
+                    str(d.get("last_user_compromised") or "")[:40])
+            with _db_lock, db() as con:
+                _tabla_infostealers(con)
+                prev = con.execute("SELECT usuarios, empleados, ultimo_empleado FROM infostealers WHERE dominio = ? AND dia < ? "
+                                   "ORDER BY dia DESC LIMIT 1", (dom, dia)).fetchone()
+                con.execute("INSERT OR REPLACE INTO infostealers VALUES (?,?,?,?,?,?,?,?,?)", fila)
+            if prev:  # la primera lectura es la línea base: no avisa
+                nuevos_emp, nuevos_us = fila[5] - prev[1], fila[4] - prev[0]
+                motivo = []
+                if nuevos_emp > 0:
+                    motivo.append(f"{nuevos_emp} empleado(s) más con equipo infectado (total {fila[5]})")
+                if nuevos_us >= max(50, prev[0] * 0.05):
+                    motivo.append(f"{nuevos_us} usuarios más con credenciales robadas (total {fila[4]})")
+                if motivo:
+                    alertas.append({"id": f"hr:{dom}:{dia}", "cuenta": "Hudson Rock", "fecha": iso(ahora()),
+                                    "url": "https://www.hudsonrock.com/threat-intelligence-cybercrime-tools",
+                                    "entidades": [ent], "organizacion": dom, "sector": "Infostealers",
+                                    "texto": f"Infostealers | {ent} ({dom})\n" + "; ".join(motivo)})
+            time.sleep(3)
+    return alertas
+
+
+def resumen_infostealers():
+    """Último conteo por entidad (sumando sus dominios) y variación frente a hace ~7 días."""
+    with _db_lock, db() as con:
+        _tabla_infostealers(con)
+        filas = con.execute("SELECT entidad, dominio, dia, usuarios, empleados, terceros FROM infostealers ORDER BY dia").fetchall()
+    ult, base = {}, {}
+    hace7 = (ahora().astimezone(LIMA) - timedelta(days=7)).strftime("%Y-%m-%d")
+    for r in filas:
+        ult[(r["entidad"], r["dominio"])] = r
+        if r["dia"] <= hace7:
+            base[(r["entidad"], r["dominio"])] = r
+    out = {}
+    for (ent, dom), r in ult.items():
+        o = out.setdefault(ent, {"entidad": ent, "dominios": [], "usuarios": 0, "empleados": 0, "terceros": 0,
+                                 "dia": r["dia"], "var_usuarios": None, "var_empleados": None})
+        o["dominios"].append(dom)
+        for k in ("usuarios", "empleados", "terceros"):
+            o[k] += r[k]
+        b = base.get((ent, dom))
+        if b:
+            o["var_usuarios"] = (o["var_usuarios"] or 0) + r["usuarios"] - b["usuarios"]
+            o["var_empleados"] = (o["var_empleados"] or 0) + r["empleados"] - b["empleados"]
+    return sorted(out.values(), key=lambda x: (-x["empleados"], -x["usuarios"]))
+
+
 _CIBER_FN = {"ransomware_live": ciber_ransomware_live, "telegram": ciber_telegram, "dominios": ciber_dominios,
-             "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox}
+             "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox, "infostealers": ciber_infostealers}
 _CIBER_ULTIMA = {}
 
 
@@ -5256,7 +5329,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/ciber":
             return self._send({"alertas": alertas_ciber(), "cuentas": _cfg_referentes().get("cuentas", []),
                                "estado": ESTADO.get("referentes_x", {}), "fuentes": ESTADO.get("ciber_fuentes", {}),
-                               "canales_telegram": _cfg_ciber().get("canales_telegram", [])})
+                               "canales_telegram": _cfg_ciber().get("canales_telegram", []),
+                               "infostealers": resumen_infostealers()})
         if u.path == "/api/estado":
             with _db_lock, db() as con:
                 r = con.execute("SELECT COUNT(*), MIN(fecha), MAX(fecha) FROM items WHERE oculto = 0").fetchone()
