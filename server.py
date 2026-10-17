@@ -477,8 +477,12 @@ def es_relevante(texto, tipo=""):
         return bool(detectar_bancos(texto, True))
     es = sum(1 for p in palabras if p in ES_FRECUENTES)
     hay_entidad = bool(detectar_bancos(texto, True))
+    if hay_entidad and es_incidente_ciber(texto):
+        return True  # titulares de incidentes ("Interseguro: ciberdelincuentes filtran base de datos…")
+    bajo = (texto or "").lower()
+    tildes = re.search(r"[áéíóú]", bajo) is not None and re.search(r"[ãõç]", bajo) is None  # no portugués
     if len(palabras) >= 4:
-        if es / len(palabras) < 0.12 and not re.search(r"[ñ¿¡]", (texto or "").lower()):
+        if es / len(palabras) < 0.12 and not re.search(r"[ñ¿¡]", bajo) and not (tildes and hay_entidad):
             return False  # no parece español
     elif es == 0 and not hay_entidad and not re.search(r"[ñ¿¡áéíóú]", (texto or "").lower()):
         return False  # texto corto sin ninguna palabra española ni la entidad ("Oh my God!")
@@ -529,15 +533,46 @@ def init_db():
         _aplicar_ia(con)
 
 
+# Incidente de ciberseguridad (no una charla o consejo sobre el tema): siempre visible y negativo para la entidad
+INCIDENTE_CIBER = re.compile(r"\b(filtr(o|aron|acion|aciones|ado|ada|ados|adas|an|ando)|hacke(o|os|aron|ado|ada|ar)|ransomware|"
+                             r"ciberataque|ataque informatico|vulnerad[oa]s?|brecha de (datos|seguridad)|datos expuestos|"
+                             r"exposicion de datos|secuestro de datos|incidente de (ciber)?seguridad|exfiltr\w*|"
+                             r"base de datos (robada|filtrada|expuesta|en venta))\b")
+CHARLA_CIBER = re.compile(r"\b(fortalec\w*|capacita\w*|congreso|taller|webinar|recomendaciones|consejos|como proteger(te|se)?|"
+                          r"evita(r)? ser|reune a expertos|resiliencia)\b")
+
+
+def es_incidente_ciber(texto):
+    t = normalizar(texto)
+    return INCIDENTE_CIBER.search(t) is not None and CHARLA_CIBER.search(t) is None
+
+
 def _aplicar_ia(con):
     """La clasificación de la IA, cuando existe, prevalece sobre las reglas."""
+    # La IA antes solo conocía bancos y SBS y descartó aseguradoras, BCRP, etc. como "no bancarias": se revisan de nuevo
+    con.execute("""UPDATE items SET ia_sentimiento = NULL, ia_relevante = NULL, ia_queja = NULL, ia_motivo = NULL, oculto = 0
+                   WHERE ia_relevante = 0 AND COALESCE(corregido, 0) = 0 AND bancos <> '[]' AND (
+                   ia_motivo LIKE '%no bancari%' OR ia_motivo LIKE '%no incluida%' OR ia_motivo LIKE '%no pertenece%'
+                   OR ia_motivo LIKE '%no relacionad% con banca%' OR ia_motivo LIKE '%no es un banco%'
+                   OR ia_motivo LIKE '%no es banco%' OR ia_motivo LIKE '%no es una entidad bancaria%')""")
     con.execute("""UPDATE items SET sentimiento = ia_sentimiento, es_queja = ia_queja, severidad = ia_severidad,
                    categorias = CASE WHEN ia_categorias IS NOT NULL AND ia_categorias <> '[]' THEN ia_categorias ELSE categorias END,
                    oculto = CASE WHEN ia_relevante = 0 THEN 1 WHEN corregido = 1 THEN 0 ELSE oculto END
                    WHERE ia_sentimiento IS NOT NULL""")
+    # Un incidente de ciberseguridad de una entidad monitoreada nunca queda oculto ni neutro (salvo corrección del analista)
+    for r in con.execute("SELECT id, texto, categorias FROM items WHERE bancos <> '[]' AND COALESCE(corregido, 0) = 0 "
+                         "AND (oculto = 1 OR sentimiento <> 'negativo' OR es_queja = 0)").fetchall():
+        if es_incidente_ciber(r[1]):
+            cats = json.loads(r[2] or "[]")
+            if "Ciberseguridad / hackeos" not in cats:
+                cats = ["Ciberseguridad / hackeos"] + cats[:2]
+            con.execute("UPDATE items SET oculto = 0, sentimiento = 'negativo', es_queja = 1, severidad = MAX(severidad, 2), "
+                        "categorias = ? WHERE id = ?", (json.dumps(cats, ensure_ascii=False), r[0]))
     # Lo no atribuible a la entidad, o que solo trata de marketing o diseño, no cuenta como negativo ni como queja
     for r in con.execute("SELECT id, categorias, ia_atribuible, texto FROM items WHERE (sentimiento = 'negativo' OR es_queja = 1) "
                          "AND oculto = 0 AND COALESCE(corregido, 0) = 0 AND meta NOT LIKE '%\"tipo\": \"alerta_ciber\"%'").fetchall():  # lo corregido a mano no se toca
+        if es_incidente_ciber(r[3]):
+            continue  # un incidente de seguridad de la entidad sí le es atribuible
         if fuera_del_servicio(json.loads(r[1] or "[]"), False if r[2] == 0 else True) or ajeno_a_la_entidad(r[3]):
             con.execute("UPDATE items SET sentimiento = CASE WHEN sentimiento = 'negativo' THEN 'neutro' ELSE sentimiento END, "
                         "es_queja = 0, severidad = 0 WHERE id = ?", (r[0],))
@@ -1290,9 +1325,12 @@ def fuente_x(rango=None):
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
 
 
+NITTER_EXTRA = ["https://nitter.click"]  # instancias sanas añadidas también a monitores con configuración antigua
+
+
 def _instancias_nitter(inicio=0):
     """Instancias disponibles, rotadas para repartir la carga (activo-activo)."""
-    todas = CONFIG.get("nitter", {}).get("instancias", [])
+    todas = list(dict.fromkeys(CONFIG.get("nitter", {}).get("instancias", []) + NITTER_EXTRA))
     sanas = [i for i in todas if ruta_disponible("X·Nitter", i)] or todas  # si todas están en pausa, se prueban igual
     k = inicio % len(sanas)
     return sanas[k:] + sanas[:k]
@@ -3440,8 +3478,13 @@ def cargar_historico(desde, hasta, fuentes):
 # Clasificación con IA (NVIDIA build.nvidia.com u otra API compatible con OpenAI)
 # --------------------------------------------------------------------------
 
-IA_PROMPT = """Eres analista de reputación de la banca peruana. Clasifica cada publicación de redes sociales o noticia
-sobre BCP (incluye Yape), Interbank, BBVA Perú, Scotiabank Perú, Banco de la Nación o la SBS.
+IA_PROMPT = """Eres analista de reputación y riesgo del sistema financiero peruano (bancos, billeteras, seguros, AFP,
+BCRP y SBS). Clasifica cada publicación de redes sociales o noticia sobre estas entidades monitoreadas: {entidades}.
+TODAS son relevantes aunque no sean bancos (p. ej. una aseguradora o el BCRP): nunca marques "relevante": false por
+el tipo de entidad.
+Un incidente de ciberseguridad que afecta a una entidad monitoreada (filtración o exposición de datos, ransomware,
+hackeo, acceso indebido, aviso de "incidente" a sus clientes), aunque sea una noticia o lo cuente un tercero, es
+"relevante": true, "atribuible": true, "queja": true, "sentimiento": "negativo" y lleva "Ciberseguridad / hackeos".
 Entiende jerga peruana ("se cayó", "malogrado", "k-gada", "qué tal raza", "rateros"), ironía y sarcasmo.
 
 Para cada elemento devuelve:
@@ -3916,7 +3959,7 @@ def _ia_lote(p, modelo, filas):
                 "entidades": json.loads(r["bancos"]), "texto": r["texto"][:1200]} for r in filas]
     resp = _ia_post(p, "/chat/completions", {
         "model": modelo, "temperature": 0, "max_tokens": 6000,
-        "messages": [{"role": "system", "content": IA_PROMPT.format(categorias=", ".join(CATEGORIAS)) + _bloque_ejemplos(filas)},
+        "messages": [{"role": "system", "content": IA_PROMPT.format(categorias=", ".join(CATEGORIAS), entidades=", ".join(BANCOS)) + _bloque_ejemplos(filas)},
                      {"role": "user", "content": json.dumps(entrada, ensure_ascii=False)}]})
     texto = resp["choices"][0]["message"].get("content") or ""
     texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.S)  # modelos que razonan en voz alta
