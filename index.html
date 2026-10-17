@@ -111,7 +111,7 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 #cfg.on{display:flex}
 #cfg .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
 #cfg header{position:static;border-radius:12px 12px 0 0}
-#cfg .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line)}
+#cfg .tabs{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding:10px 16px;border-bottom:1px solid var(--line)}
 #cfg .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
 #cfg .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
 #cfg label.campo{display:grid;gap:4px;font-size:12px;color:var(--ink2);margin-bottom:10px}
@@ -655,7 +655,9 @@ function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponi
     return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':/clasificando|iniciando/i.test(sinRes)?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?(/clasificando/i.test(r.msg||'')?r.msg:'OK'):r.ok===false?'falló':sinRes)}</div>`}).join('')+'</div>'}
 async function cargarEstado(){
   const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;
-  if(!primera&&es.version&&ESTADO.version&&es.version!==ESTADO.version&&!$('#cfg').classList.contains('on')){location.reload();return} // el monitor se actualizó
+  if(!primera&&es.version&&ESTADO.version&&es.version!==ESTADO.version){ // el panel se actualizó
+    if(document.visibilityState==='hidden'&&!$('#cfg').classList.contains('on')){location.reload();return}
+    if(!$('#aviso-version'))$('#aviso-pausa').insertAdjacentHTML('beforebegin','<div id="aviso-version" class="banner-pausa">✨ Hay una versión nueva del panel. <button class="pri" onclick="location.reload()">Actualizar</button></div>')}
   ESTADO=es;
   $('#alerta-x').innerHTML=(es.alerta_x||[]).filter(a=>!alertaCerrada('x:'+a.banco,a.quejas,2)).map(a=>`<div class="alerta">🚨 <b>Alerta en X: ${esc(a.banco)}</b> — ${a.quejas} quejas en ${a.minutos} min (lo normal: ${a.promedio}). ${a.revisado?'Se lanzó una revisión inmediata de sus cuentas en Facebook e Instagram.':'Revisión de Facebook e Instagram ya hecha hace poco; se repetirá si continúa.'}<button class="cerrar" data-k="${esc('x:'+a.banco)}" data-n="${a.quejas}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
   if(primera){es.categorias.forEach(c=>$('#f-cat').add(new Option(c,c)));leerF();if(!es.categorias.includes(F.categoria))F.categoria='';pintarFiltros();
@@ -709,20 +711,31 @@ document.addEventListener('click',e=>{const b=e.target.closest('.alerta .cerrar'
   b.closest('.alerta').remove()});
 
 // ---------- pausa ----------
-async function pausa(fuente,pausar){
-  const r=await post(`/api/pausa?fuente=${encodeURIComponent(fuente)}&accion=${pausar?'pausar':'reanudar'}`).then(r=>r.json());
+async function pausa(fuente,pausar,horas=0){
+  const r=await post(`/api/pausa?fuente=${encodeURIComponent(fuente)}&accion=${pausar?'pausar':'reanudar'}&horas=${horas}`).then(r=>r.json());
   if(r.error){alert(r.error);return}
   ESTADO.pausa=r.pausa;pintarPausa();cargarEstado();if(document.querySelector('#cfg.on')&&cfgTab==='general')pintarConfig()}
 const pausada=f=>ESTADO?.pausa&&(ESTADO.pausa.todo||ESTADO.pausa.fuentes.includes(f));
 function pintarPausa(){
   const p=ESTADO?.pausa;if(!p)return;
-  const b=$('#pausa-global');b.textContent=p.todo?'▶ Reanudar monitoreo':'⏸ Pausar';b.classList.toggle('pausado',p.todo);
-  $('#refresh').disabled=p.todo;
+  const b=$('#pausa-global');b.textContent=p.todo?'▶ Reanudar':'⏸ Pausar';b.classList.toggle('pausado',p.todo);
+  const hasta=p.hasta?new Date(p.hasta).toLocaleString('es-PE',{weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Lima'}):'';
+  $('#refresh').disabled=p.todo||!!$('#refresh').dataset.ocupado;
   $('#live').classList.toggle('pausa',p.todo);$('#live').lastChild.textContent=p.todo?'EN PAUSA':'EN VIVO';
-  $('#aviso-pausa').innerHTML=p.todo?`<div class="banner-pausa">⏸ <span><b>El monitoreo está en pausa.</b> No se consultan fuentes ni se clasifica con IA; los datos guardados siguen disponibles.</span><button class="pri" id="banner-reanudar">▶ Reanudar monitoreo</button></div>`:
+  $('#aviso-pausa').innerHTML=p.todo?`<div class="banner-pausa">⏸ <span><b>El monitoreo está en pausa${hasta?' hasta el '+esc(hasta)+' (se reanuda solo)':' sin límite'}${p.por?' · la pausó '+esc(p.por):''}.</b> No se consultan fuentes, ni ciberseguridad, ni se clasifica con IA, y no llegan alertas nuevas al celular.</span><button class="pri" id="banner-reanudar">▶ Reanudar monitoreo</button></div>`:
     (p.fuentes.length?`<div class="banner-pausa">⏸ En pausa: <b>${p.fuentes.map(esc).join(', ')}</b>. El resto sigue monitoreándose.</div>`:'');
   $('#banner-reanudar')?.addEventListener('click',()=>pausa('todo',false))}
-$('#pausa-global').onclick=()=>pausa('todo',!ESTADO?.pausa?.todo);
+// Pausar pide duración (por defecto 1 h): una pausa olvidada apaga el monitoreo 24x7
+$('#pausa-global').onclick=e=>{if(ESTADO?.pausa?.todo)return pausa('todo',false);
+  let m=$('#menu-pausa');if(m){m.remove();return}
+  const r=e.currentTarget.getBoundingClientRect();
+  document.body.insertAdjacentHTML('beforeend',`<div id="menu-pausa" class="card" role="menu" style="position:absolute;z-index:50;padding:8px;display:grid;gap:4px;min-width:200px;top:${window.scrollY+r.bottom+6}px;left:${Math.max(16,Math.min(window.scrollX+r.left,document.documentElement.clientWidth-232))}px">
+    <div class="sub" style="padding:2px 6px">Pausar todo el monitoreo…</div>
+    ${[[1,'1 hora'],[4,'4 horas'],[12,'12 horas'],[24,'24 horas'],[0,'Sin límite (reanudar a mano)']].map(([h,l])=>`<button role="menuitem" data-h="${h}" style="text-align:left">${l}</button>`).join('')}</div>`);
+  m=$('#menu-pausa');m.querySelectorAll('button').forEach(x=>x.onclick=()=>{m.remove();
+    if(x.dataset.h==='0'&&!confirm('Sin límite, el monitoreo queda detenido hasta que alguien lo reanude: no llegarán alertas al celular. ¿Pausar igual?'))return;
+    pausa('todo',true,+x.dataset.h)});
+  setTimeout(()=>document.addEventListener('click',function cerrar(ev){if(!m.contains(ev.target)){m.remove();document.removeEventListener('click',cerrar)}}),0)};
 
 // Alertas de cuentas de inteligencia de amenazas: solo las del sistema financiero, seguros y AFP del Perú
 // Pestañas: Monitoreo · Ciberseguridad · Análisis · Sistema (se recuerda la última; #ciber en la URL abre esa)
@@ -761,7 +774,7 @@ async function cargarCiber(){
     const fal=Object.entries(f).filter(([k,v])=>v.ok===false).map(([k])=>NOM[k]||k);
     $('#ciber-pie').textContent=`X: ${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' (hace '+hace(e.ultima_revision)+')':''} · Telegram: ${(d.canales_telegram||[]).join(', ')} · también ransomware.live, certificados de dominios, abuse.ch y Hudson Rock${fal.length?' · sin respuesta: '+fal.join(', '):''}${f.telegram_sesion&&f.telegram_sesion.ok===null?' · Telegram con sesión: falta iniciar sesión':''}`}
   catch(e){}}
-setInterval(cargarCiber,120000);
+setInterval(()=>{if(document.visibilityState==='visible')cargarCiber()},120000);
 $('#ciber-mas').onclick=()=>{CIBER_TODAS=!CIBER_TODAS;cargarCiber()};
 let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube();cargarCiber()},120)}
 
@@ -817,6 +830,7 @@ $('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim()
 let CFG=null,cfgTab='general';
 const lista=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
 const TABS_ADMIN=[['general','General'],['ejemplos','Ejemplos de la IA'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
+const GRUPOS_CFG=[['general','General y alertas',['general']],['monitoreo','Qué se monitorea',['entidades','cuentas','trends','nube']],['ia','IA y presupuestos',['ejemplos','costos']],['datos','Datos y accesos',['archivo','accesos','cuenta']]];
 const tabsVisibles=()=>YO?.rol==='admin'?TABS_ADMIN:[['cuenta','Mi cuenta']];
 async function abrirConfig(){
   if(YO?.rol!=='admin'){CFG={};cfgTab='cuenta';$('#cfg-msg').textContent='';$('#cfg').classList.add('on');$('#cfg-guardar').style.display='none';pintarConfig();return}
@@ -844,20 +858,25 @@ function pintarApagados(lista,avisos=[]){
   el.querySelectorAll('[data-enc]').forEach(b=>b.onclick=()=>{const a=lista[b.dataset.enc];enc({tipo:a.tipo,nombre:a.nombre,fuente:a.fuente||''})});
   const t=el.querySelector('#cfg-enc-todo');if(t)t.onclick=()=>enc({tipo:'todo'})}
 function pintarConfig(){
-  $('#cfg-tabs').innerHTML=tabsVisibles().map(([k,l])=>`<button class="tg ${k===cfgTab?'on':''}" data-k="${k}">${l}</button>`).join('');
-  $('#cfg-tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{cfgTab=b.dataset.k;pintarConfig()});
+  // 4 grupos; dentro de cada grupo, sus secciones (antes eran 10 pestañas sueltas)
+  const nom=Object.fromEntries(tabsVisibles()),grupos=YO?.rol==='admin'?GRUPOS_CFG:[['cuenta','Mi cuenta',['cuenta']]];
+  const g=grupos.find(x=>x[2].includes(cfgTab))||grupos[0];if(!g[2].includes(cfgTab))cfgTab=g[2][0];
+  $('#cfg-tabs').innerHTML=`<div class="frow" style="gap:6px">${grupos.map(([k,l,ts])=>`<button class="tg ${k===g[0]?'on':''}" data-g="${k}">${l}</button>`).join('')}</div>`+
+    (g[2].length>1?`<div class="frow sub-tabs" style="gap:4px;margin-top:8px;width:100%">${g[2].map(k=>`<button class="tg ${k===cfgTab?'on':''}" data-k="${k}" style="font-size:12px;padding:3px 10px">${nom[k]}</button>`).join('')}</div>`:'');
+  $('#cfg-tabs').querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{cfgTab=grupos.find(x=>x[0]===b.dataset.g)[2][0];pintarConfig()});
+  $('#cfg-tabs').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{cfgTab=b.dataset.k;pintarConfig()});
   const c=$('#cfg-cuerpo');
   if(cfgTab==='general'){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
-      <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI','BrightData']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
-      <div class="sub" style="margin-top:8px">El monitor arranca siempre en vivo; la pausa es solo manual.</div></div>
+      <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo 1 h'}</button>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI','BrightData']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      <div class="sub" style="margin-top:8px">La pausa general se mantiene aunque el servidor se reinicie; desde el botón ⏸ del encabezado puedes darle duración y se reanuda sola. Al pausar o reanudar llega un aviso al celular.</div></div>
     <div class="bloque" id="cfg-apagados"></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
     <div class="bloque"><b>Frecuencia de consulta (minutos)</b><div class="rej" style="margin-top:8px">${CFG.fuentes.map(f=>`<label class="campo">${esc(f)}<input type="number" min="1" max="1440" data-int="${esc(f)}" value="${CFG.intervalos_minutos[f]??30}"></label>`).join('')}</div></div>`;
     c.querySelector('[data-k=retencion_dias]').oninput=e=>CFG.retencion_dias=e.target.value;
-    $('#cfg-pausa-todo').onclick=()=>pausa('todo',!ESTADO.pausa.todo);
+    $('#cfg-pausa-todo').onclick=()=>pausa('todo',!ESTADO.pausa.todo,1);
     c.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>pausa(b.dataset.pf,!pausada(b.dataset.pf)));
     c.querySelectorAll('[data-int]').forEach(i=>i.oninput=()=>CFG.intervalos_minutos[i.dataset.int]=i.value);
     pintarApagados(ESTADO.apagados||[]);
@@ -1140,17 +1159,30 @@ $('#f-hasta').onchange=e=>{F.hasta=e.target.value;guardarF();recargar()};
 let tq;$('#f-q').oninput=e=>{clearTimeout(tq);tq=setTimeout(()=>{F.q=e.target.value.trim();guardarF();recargar()},300)};
 $('#f-reset').onclick=()=>{zoomPila=[];F={gran:'auto',periodo:'72',banco:[],fuente:[],sentimiento:[],tipo:'',categoria:'',sev:'',orden:'',q:'',desde:'',hasta:''};pintarFiltros();recargar()};
 $('#notif').onchange=e=>{if(e.target.checked&&'Notification'in window)Notification.requestPermission()};
-$('#refresh').onclick=async()=>{await post('/api/refresh');setTimeout(cargarEstado,800)};
+// Consultar ahora: muestra el avance y el resultado; al terminar refresca el panel
+$('#refresh').onclick=async()=>{const b=$('#refresh');if(b.dataset.ocupado)return;
+  const r=await post('/api/refresh').then(r=>r.json()).catch(()=>({error:'Sin conexión con el servidor'}));
+  if(r.error){b.textContent=r.error;setTimeout(()=>{b.textContent='Consultar ahora'},4000);return}
+  b.dataset.ocupado='1';b.disabled=true;const fs=r.fuentes||[],t0=Date.now();
+  const paso=async()=>{await cargarEstado();const est=ESTADO.fuentes||{};
+    const fin=fs.filter(n=>!est[n]?.ejecutando&&est[n]?.ultima&&est[n].ultima>=r.inicio||est[n]?.ok===false||est[n]?.ok===null&&!est[n]?.ejecutando&&Date.now()-t0>8000);
+    b.textContent=`Consultando… ${fin.length}/${fs.length}`;
+    if(fin.length<fs.length&&Date.now()-t0<240000)return setTimeout(paso,3000);
+    const nuevos=fs.reduce((a,n)=>a+(est[n]?.ultima>=r.inicio?(est[n].nuevos||0):0),0);
+    b.textContent=fin.length<fs.length?'Sigue consultando en segundo plano':`✓ ${nuevos} nuevo${nuevos===1?'':'s'}`;
+    delete b.dataset.ocupado;b.disabled=!!ESTADO.pausa?.todo;recargar();
+    setTimeout(()=>{b.textContent='Consultar ahora'},6000)};
+  b.textContent=`Consultando… 0/${fs.length}`;setTimeout(paso,2000)};
 $('#h-go').onclick=async()=>{const fuentes=[...$('#h-fuentes').querySelectorAll('input:checked')].map(i=>i.value).join(',');
   const r=await post(`/api/historico?desde=${$('#h-desde').value}&hasta=${$('#h-hasta').value}&fuentes=${encodeURIComponent(fuentes)}`).then(r=>r.json());
   if(r.error)alert(r.error);cargarEstado()};
 
 (async()=>{if(!await cargarSesion())return;await cargarEstado();pintarFiltros();recargar();conectarVivo();cargarTrends();setInterval(cargarTrends,300000);
-  setInterval(cargarEstado,10000);
+  setInterval(()=>{if(document.visibilityState==='visible')cargarEstado()},10000);
   setInterval(()=>{if(document.visibilityState==='visible')refrescarGraficos()},30000);
   // las clasificaciones de la IA llegan después: si estás al inicio de la lista, se refresca para mostrarlas
   setInterval(()=>{if(document.visibilityState==='visible'&&window.scrollY<300&&!window.getSelection().toString()&&!$('#cfg').classList.contains('on'))cargarItems()},60000);
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){refrescarGraficos();cargarTrends()}})})();
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){cargarEstado();refrescarGraficos();cargarTrends();cargarCiber()}})})();
 </script>
 </body>
 </html>

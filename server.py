@@ -2340,17 +2340,18 @@ _proxima = {n: 0.0 for n in FUENTES}
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
 PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "RapidAPI", "BrightData"]
-PAUSABLES = list(FUENTES) + ["Google Trends", "IA"] + PROVEEDORES_PAGO
+PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
     with open(RUTA_PAUSA, encoding="utf-8") as _f:
         PAUSA = json.load(_f)
-    PAUSA = {"todo": bool(PAUSA.get("todo")), "fuentes": [x for x in PAUSA.get("fuentes", []) if x in PAUSABLES]}
+    PAUSA = {"todo": bool(PAUSA.get("todo")), "hasta": PAUSA.get("hasta") if PAUSA.get("todo") else None,
+             "por": str(PAUSA.get("por") or "")[:40], "fuentes": [x for x in PAUSA.get("fuentes", []) if x in PAUSABLES]}
 except (FileNotFoundError, ValueError):
-    PAUSA = {"todo": False, "fuentes": []}
+    PAUSA = {"todo": False, "hasta": None, "por": "", "fuentes": []}
 # migración: quita las pausas que antes se añadían solas a los servicios de pago
 PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "CreatorCrawl", "Búsqueda Google")]
-PAUSA["todo"] = False  # el monitor siempre arranca en vivo; la pausa general es solo una acción del usuario
+# La pausa general sobrevive a los reinicios (antes cada despliegue la quitaba en silencio) y puede tener vencimiento
 ESTADO["pausa"] = PAUSA
 
 
@@ -2512,12 +2513,16 @@ def encender(tipo, nombre="", fuente=""):
 
 
 def en_pausa(nombre=None):
+    if PAUSA["todo"] and PAUSA.get("hasta") and iso(ahora()) >= PAUSA["hasta"]:
+        cambiar_pausa("todo", False, por="vencimiento")  # se reanuda sola al vencer
     return PAUSA["todo"] or (nombre in PAUSA["fuentes"])
 
 
-def cambiar_pausa(objetivo, pausar):
+def cambiar_pausa(objetivo, pausar, horas=0, por=""):
     if objetivo == "todo":
         PAUSA["todo"] = pausar
+        PAUSA["hasta"] = iso(ahora() + timedelta(hours=horas)) if pausar and horas else None
+        PAUSA["por"] = por[:40] if pausar else ""
         if not pausar:  # reanudar todo no reanuda los servicios de pago de uso manual
             for s_ in SIEMPRE_MANUAL:
                 if s_ not in PAUSA["fuentes"]:
@@ -2544,6 +2549,18 @@ def cambiar_pausa(objetivo, pausar):
             if not en_pausa(n):
                 ESTADO["fuentes"][n]["msg"] = "▶ Reanudando…"
     print(f"[{datetime.now():%H:%M:%S}] {'Pausa' if pausar else 'Reanudado'}: {objetivo}", flush=True)
+    if objetivo == "todo" and os.environ.get("NOTIFY_NTFY_TOPIC"):  # la pausa general afecta al 24x7: se avisa al celular
+        hasta = (datetime.fromisoformat(PAUSA["hasta"]).astimezone(LIMA).strftime("%d/%m %H:%M") if PAUSA.get("hasta") else "")
+        texto = (f"Monitoreo en pausa{' por ' + por if por else ''}{' hasta el ' + hasta + ' (se reanuda solo)' if hasta else ' sin límite: reanúdalo desde el panel'}."
+                 if pausar else f"Monitoreo reanudado{' (venció la pausa)' if por == 'vencimiento' else ''}.")
+        threading.Thread(target=lambda: _avisar_silencioso("Monitor de banca", texto), daemon=True).start()
+
+
+def _avisar_silencioso(titulo, texto):
+    try:
+        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="pause_button")
+    except Exception as e:
+        print(f"  Aviso de pausa fallido ({type(e).__name__})", flush=True)
 _locks = {n: threading.Lock() for n in FUENTES}
 
 
@@ -2562,7 +2579,7 @@ def escanear_fuente(nombre):
             est.update(ok=None, msg="Inactiva: falta clave")
         else:
             n = guardar(items)
-            est.update(ok=True, msg=f"{len(items)} leídos, {n} nuevos ({time.time() - t0:.0f}s)", ultima=iso(ahora()))
+            est.update(ok=True, msg=f"{len(items)} leídos, {n} nuevos ({time.time() - t0:.0f}s)", ultima=iso(ahora()), nuevos=n)
             if nombre == "X":
                 try:
                     revisar_alerta_x()
@@ -3263,6 +3280,10 @@ def revisar_fuentes_ciber(forzar=False):
 def trabajador_referentes():
     time.sleep(20)
     while True:
+        if en_pausa("Ciberseguridad"):
+            ESTADO["referentes_x"] = {**ESTADO.get("referentes_x", {}), "pausa": True}
+            time.sleep(60)
+            continue
         try:
             revisar_referentes_x()
         except Exception as e:
@@ -4638,6 +4659,7 @@ def datos_trends():
 def planificador():
     intervalos = CONFIG.get("intervalos_minutos", {})
     while True:
+        en_pausa()  # reanuda la pausa general si venció
         for nombre in FUENTES:
             if en_pausa(nombre):
                 ESTADO["fuentes"][nombre]["msg"] = "⏸ En pausa"
@@ -5557,7 +5579,8 @@ class Handler(BaseHTTPRequestHandler):
             if accion not in ("pausar", "reanudar"):
                 return self._send({"error": "accion debe ser pausar o reanudar"}, code=400)
             try:
-                cambiar_pausa(objetivo, accion == "pausar")
+                horas = min(max(float(qs.get("horas", ["0"])[0] or 0), 0), 24 * 30)
+                cambiar_pausa(objetivo, accion == "pausar", horas, self.yo["usuario"])
             except ValueError as e:
                 return self._send({"error": str(e)}, code=400)
             return self._send({"ok": True, "pausa": PAUSA})
@@ -5608,9 +5631,14 @@ class Handler(BaseHTTPRequestHandler):
             nombre = qs.get("fuente", [""])[0]
             if en_pausa(nombre or None):
                 return self._send({"error": "El monitoreo está en pausa"}, code=409)
-            for n in ([nombre] if nombre in FUENTES else [f for f in FUENTES if not en_pausa(f)]):
+            lanzadas = [nombre] if nombre in FUENTES else [f for f in FUENTES if not en_pausa(f)]
+            intervalos = CONFIG.get("intervalos_minutos", {})
+            for n in lanzadas:
+                _proxima[n] = time.time() + intervalos.get(n, 30) * 60  # la pasada programada no se repite enseguida
                 threading.Thread(target=escanear_fuente, args=(n,), daemon=True).start()
-            return self._send({"ok": True})
+            if not nombre and not en_pausa("Ciberseguridad"):
+                threading.Thread(target=revisar_referentes_x, daemon=True).start()
+            return self._send({"ok": True, "fuentes": lanzadas, "inicio": iso(ahora())})
         if u.path == "/api/config":
             if (self.headers.get("Content-Type") or "").split(";")[0] != "application/json":
                 return self._send({"error": "Se esperaba JSON"}, code=415)
