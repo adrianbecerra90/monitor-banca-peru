@@ -1323,6 +1323,77 @@ def x_apify(rango=None):
     return out
 
 
+# X gratis, complemento de la búsqueda: las cuentas oficiales responden a casi cada queja. Se leen sus respuestas
+# (el RSS de perfil de Nitter es mucho más estable que su búsqueda) y se recupera el tuit del cliente desde su perfil.
+# También se detectan sus avisos de caída ("intermitencia", "inconvenientes"…).
+AVISO_OFICIAL_CAIDA = re.compile(r"\b(intermitencia|inconvenientes? (con|en) (nuestr|la app|el app|la banca|los canales)|"
+                                 r"estamos (trabajando|presentando)|restablec\w*|fuera de servicio|mantenimiento programado|"
+                                 r"no (esta|estan) disponibles?)\b")
+
+
+_X_RESP = {"ultima": 0.0}
+
+
+def x_respuestas_oficiales():
+    oficiales = {h: b for h, b in cuentas("x").items()}
+    if not oficiales:
+        return []
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS x_respondidos (id TEXT PRIMARY KEY, visto TEXT)")
+        vistos = {r[0] for r in con.execute("SELECT id FROM x_respondidos")}
+    out, nuevos_ids, perfiles = [], [], {}
+    max_perfiles = CONFIG.get("nitter", {}).get("perfiles_por_pasada", 25)
+    for h, banco in oficiales.items():
+        try:
+            _, raiz, _ = _nitter_get(f"/{h}/with_replies/rss")
+        except RuntimeError:
+            continue
+        for i in raiz.iter("item"):
+            titulo, link = i.findtext("title", ""), i.findtext("link", "").split("#")[0]
+            rid = "x:" + link.rsplit("/", 1)[-1]
+            if rid in vistos:
+                continue
+            fecha = parse_fecha(i.findtext("pubDate"))
+            texto = limpiar_html(re.split(r"<blockquote|<hr", i.findtext("description", "") or "")[0]) or titulo
+            m = re.match(r"R to @(\w+):", titulo)
+            if not m:  # publicación propia: si anuncia una caída, se guarda como aviso oficial
+                if AVISO_OFICIAL_CAIDA.search(normalizar(texto)):
+                    out.append({"id": rid, "fuente": "X", "autor": "@" + h, "texto": texto, "fecha": fecha,
+                                "url": re.sub(r"^https?://[^/]+", "https://x.com", link), "tipo": "oficial",
+                                "bancos_fijos": [banco], "peru": True, "cuenta": banco, "via": "aviso oficial"})
+                nuevos_ids.append(rid)
+                continue
+            cliente = m.group(1)
+            if cliente.lower() == h.lower() or len(perfiles) >= max_perfiles and cliente not in perfiles:
+                continue
+            nuevos_ids.append(rid)
+            if cliente not in perfiles:
+                try:
+                    _, r2, _ = _nitter_get(f"/{cliente}/with_replies/rss")
+                    perfiles[cliente] = list(r2.iter("item"))
+                except RuntimeError:
+                    perfiles[cliente] = []
+                time.sleep(1)
+            desde = iso(datetime.fromisoformat(fecha) - timedelta(days=3))
+            for t in perfiles[cliente]:
+                cuerpo = t.findtext("title", "") + " " + (t.findtext("description", "") or "")
+                tf = parse_fecha(t.findtext("pubDate"))
+                if "@" + h.lower() not in cuerpo.lower() or not (desde <= tf <= fecha) or t.findtext("title", "").startswith("RT by"):
+                    continue
+                tl = t.findtext("link", "").split("#")[0]
+                tx = limpiar_html(re.split(r"<blockquote|<hr", t.findtext("description", "") or "")[0]) or t.findtext("title", "")
+                out.append({"id": "x:" + tl.rsplit("/", 1)[-1], "fuente": "X", "autor": "@" + cliente,
+                            "texto": re.sub(r"^R to @\w+:\s*", "", tx).strip(), "fecha": tf,
+                            "url": re.sub(r"^https?://[^/]+", "https://x.com", tl), "tipo": "comentario",
+                            "bancos_fijos": [banco], "peru": True, "cuenta": banco, "via": "respuesta oficial"})
+    with _db_lock, db() as con:
+        con.executemany("INSERT OR IGNORE INTO x_respondidos VALUES (?,?)", [(i, iso(ahora())) for i in nuevos_ids])
+    out = list({o["id"]: o for o in out}.values())  # un cliente puede haber recibido varias respuestas
+    if out:
+        print(f"  X · respuestas oficiales: {len(out)} tuits recuperados ({len(perfiles)} perfiles revisados)", flush=True)
+    return out
+
+
 def fuente_x(rango=None):
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
@@ -1445,6 +1516,12 @@ def x_nitter(rango=None):
         raise RuntimeError(f"Nitter no disponible ({errores[0]})")
     if errores:
         print(f"  nitter: {len(errores)} de {len(consultas)} consultas fallaron en todas las instancias", flush=True)
+    if not rango and time.time() - _X_RESP["ultima"] >= CONFIG.get("nitter", {}).get("respuestas_cada_min", 10) * 60:
+        _X_RESP["ultima"] = time.time()
+        try:
+            out += x_respuestas_oficiales()
+        except Exception as e:
+            print(f"  X · respuestas oficiales: {type(e).__name__}: {e}", flush=True)
     return out
 
 
