@@ -832,7 +832,7 @@ async function cargarNube(){
   $('#nb-config').onclick=e=>{e.preventDefault();cfgTab='nube';abrirConfig()};
   $('#nb-info').textContent=`· ${fmt(d.publicaciones)} publicaciones analizadas`;
   const ws=d.palabras;
-  if(!ws.length){$('#nube').innerHTML='<div class="empty">No hay suficientes publicaciones con estos filtros.</div>';$('#nube-sintesis').innerHTML='';return}
+  if(!ws.length){$('#nube').innerHTML='<div class="empty">Muy pocas palabras para una nube: abajo, el resumen de las publicaciones del periodo.</div>';cargarSintesis(p);return}
   dibujarNube(ws);cargarSintesis(p)}
 // Una frase de la IA con la idea global de hacia dónde va la conversación (según las palabras y su peso)
 let tSint,pSint='';function cargarSintesis(p){clearTimeout(tSint);tSint=setTimeout(async()=>{const q=p.toString();

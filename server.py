@@ -5370,13 +5370,71 @@ def chat_monitor(pregunta, usuario, filtros=None, historial=None):
 _SINTESIS = {}  # huella de la nube -> (momento, resultado)
 
 
+def _resumen_directo(qs):
+    """Resumen de TODAS las publicaciones del periodo cuando son muy pocas para una nube de palabras."""
+    sql, args = _filtrar(qs)
+    sql += """ AND meta NOT LIKE '%"tipo": "post_oficial"%'"""
+    with _db_lock, db() as con:
+        filas = [dict(r) for r in con.execute(f"SELECT fuente, bancos, autor, texto, fecha, sentimiento, es_queja, categorias "
+                                               f"FROM items{sql} ORDER BY fecha DESC LIMIT 60", args)]
+    if not filas:
+        return {"frase": "", "fuente": "", "motivo": "No hay publicaciones en este periodo con estos filtros."}
+    huella = hashlib.sha256(json.dumps([sorted((k, v[0]) for k, v in qs.items() if k not in ("gran", "orden", "max")),
+                                        [(r["fecha"], r["texto"][:40]) for r in filas]], ensure_ascii=False).encode()).hexdigest()
+    previo = _SINTESIS.get(huella)
+    if previo and time.time() - previo[0] < 20 * 60:
+        return previo[1]
+    lineas = "\n".join(f"- {datetime.fromisoformat(r['fecha']).astimezone(LIMA).strftime('%H:%M')} · {r['fuente']} · "
+                       f"{', '.join(json.loads(r['bancos'] or '[]'))} · {r['sentimiento']}"
+                       f"{' · queja: ' + ', '.join(json.loads(r['categorias'] or '[]')) if r['es_queja'] else ''}: "
+                       f"{re.sub(r'\s+', ' ', r['texto'] or '')[:280]}" for r in filas)
+    prompt = (f"Eres analista de reputación y riesgo del sistema financiero peruano. Estas son TODAS las publicaciones "
+              f"capturadas en el periodo ({len(filas)}):\n{lineas}\n\n"
+              "Resume en español, en dos o tres frases cortas (máximo 70 palabras), qué está pasando: si hay "
+              "interrupciones, incidentes operativos, eventos de ciberseguridad o fraude, con qué entidades y productos, y el "
+              "tono. Si pasan cosas distintas con actores distintos, menciónalas todas. Usa SOLO estas publicaciones: no "
+              "inventes nada; si son comentarios sueltos sin un patrón, dilo así. Sin comillas ni viñetas.")
+    temas = []
+    for t, c in (("Interrupción", "App / canales caídos"), ("Incidente operativo", "Errores operativos"),
+                 ("Evento de ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")):
+        if any(r["es_queja"] and c in json.loads(r["categorias"] or "[]") for r in filas):
+            temas.append(t)
+    for p in _ia_proveedores():
+        if _ia_falta_clave(p):
+            continue
+        for modelo in _ia_modelos(p)[:3]:
+            try:
+                resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0.2, "max_tokens": 1500,
+                                                         "messages": [{"role": "user", "content": prompt}]}, timeout=60)
+                if "choices" not in resp:
+                    continue
+                frase = re.sub(r"<think>.*?</think>", "", resp["choices"][0]["message"].get("content") or "", flags=re.S)
+                frase = re.sub(r"\s+", " ", frase).strip().strip('"“”').strip()
+                if frase:
+                    res = {"frase": frase[:700], "temas": temas, "productos": [], "directo": len(filas),
+                           "fuente": f"IA · resumen de las {len(filas)} publicaciones del periodo · {modelo.split('/')[-1]}",
+                           "generada": iso(ahora())}
+                    _SINTESIS[huella] = (time.time(), res)
+                    return res
+            except urllib.error.HTTPError as e:
+                if e.code == 410:
+                    _MODELOS_RETIRADOS.add(modelo)
+            except Exception as e:
+                print(f"  Resumen directo ({modelo}): {type(e).__name__}", flush=True)
+    neg = sum(r["sentimiento"] == "negativo" for r in filas)
+    ents = sorted({b for r in filas for b in json.loads(r["bancos"] or "[]")})
+    return {"frase": f"{len(filas)} publicaciones en el periodo ({neg} negativas) sobre {', '.join(ents) or 'las entidades'}; "
+                     f"muy pocas para un patrón claro.", "temas": temas, "productos": [], "fuente": "reglas (sin IA disponible)",
+            "generada": iso(ahora())}
+
+
 def sintesis_nube(qs):
     """Una frase que resume hacia dónde va la conversación, a partir de las palabras de la nube y su tono."""
     g = lambda k, d="": qs.get(k, [d])[0]
     d = palabras({**qs, "max": ["40"]})
     ws = d.get("palabras", [])[:40]
-    if len(ws) < 5:
-        return {"frase": "", "fuente": "", "motivo": "Pocas publicaciones para resumir."}
+    if len(ws) < 5:  # pocas palabras para una nube (p. ej. la última hora): se resumen directamente las publicaciones
+        return _resumen_directo(qs)
     # entidades más afectadas con los mismos filtros: menciones negativas y quejas por entidad
     sql, args = _filtrar(qs)
     with _db_lock, db() as con:
