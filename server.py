@@ -5110,6 +5110,19 @@ def guardar_nube_excluidas(lista):
     return sorted(limpia)
 
 
+# Productos y canales que se nombran en las quejas, para decir QUÉ está fallando
+PRODUCTOS = [("App", r"\b(app|aplicativo|aplicacion|la apli)\b"), ("Banca por internet", r"\bbanca (por )?(internet|web|online)\b|\bweb del banco\b"),
+             ("Cajeros", r"\bcajeros?\b|\batm\b|\bglobal ?net\b"), ("Agentes", r"\bagentes?\b"),
+             ("Tarjeta de débito", r"\btarjeta de debito\b|\bdebito\b"), ("Tarjeta de crédito", r"\btarjeta de credito\b|\bcredito (de|con) la tarjeta\b"),
+             ("Transferencias", r"\btransferencias?\b|\btransferir\b|\binterbancari"), ("Pagos con QR / Yape-Plin", r"\b(yapeo|yapear|plineo|plinear|pago con qr|qr)\b"),
+             ("Retiros", r"\bretir(o|os|ar|e)\b"), ("Depósitos", r"\bdeposit(o|os|ar|e)\b"),
+             ("Token / clave digital", r"\btoken\b|\bclave digital\b|\bcodigo de (seguridad|verificacion)\b|\bsms\b"),
+             ("Banca empresas / Telecrédito", r"\btelecredito\b|\bbanca empresa"), ("Atención telefónica / chat", r"\bcall ?center\b|\bbanca (por )?telefon|\bwhatsapp\b|\bchat ?bot\b|\bbot\b"),
+             ("Préstamos", r"\bprestamos?\b|\bcreditos? (personal|vehicular|hipotecari)"), ("Pólizas / seguros", r"\bpolizas?\b|\bsiniestros?\b"),
+             ("Cobros / comisiones", r"\bcobros?\b|\bcomision"), ("Notificaciones", r"\bnotificacion")]
+_PRODUCTOS_RE = [(n, re.compile(p)) for n, p in PRODUCTOS]
+
+
 _SINTESIS = {}  # huella de la nube -> (momento, resultado)
 
 
@@ -5123,22 +5136,38 @@ def sintesis_nube(qs):
     # entidades más afectadas con los mismos filtros: menciones negativas y quejas por entidad
     sql, args = _filtrar(qs)
     with _db_lock, db() as con:
-        filas = con.execute(f"SELECT bancos, sentimiento, es_queja FROM items{sql}", args).fetchall()
-    afect = {}
+        filas = con.execute(f"SELECT bancos, sentimiento, es_queja, categorias, texto FROM items{sql}", args).fetchall()
+    afect, cat_neg, n_neg, prod = {}, {}, 0, {}
     for r in filas:
+        if r["sentimiento"] == "negativo" or r["es_queja"]:
+            n_neg += 1
+            t = normalizar(r["texto"] or "")
+            for n, rx in _PRODUCTOS_RE:
+                if rx.search(t):
+                    prod[n] = prod.get(n, 0) + 1
+            for c in json.loads(r["categorias"] or "[]"):
+                cat_neg[c] = cat_neg.get(c, 0) + 1
         for b in json.loads(r["bancos"] or "[]"):
             a = afect.setdefault(b, {"neg": 0, "quejas": 0, "total": 0})
             a["total"] += 1
             a["neg"] += r["sentimiento"] == "negativo"
             a["quejas"] += bool(r["es_queja"])
     afectados = sorted(((b, a) for b, a in afect.items() if a["neg"]), key=lambda x: -x[1]["neg"])[:5]
+    # tipo de tema, por datos: categoría del foco con peso relevante entre lo negativo (≥15 %, o la mayor si ninguna llega)
+    TEMAS = [("Interrupción", "App / canales caídos"), ("Incidente operativo", "Errores operativos"),
+             ("Evento de ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")]
+    pesos = {t: cat_neg.get(c, 0) / n_neg for t, c in TEMAS} if n_neg else {}
+    productos = [n for n, c in sorted(prod.items(), key=lambda x: -x[1]) if c >= max(2, n_neg * 0.05)][:4]
+    temas = [t for t, _ in TEMAS if pesos.get(t, 0) >= 0.15]
+    if not temas and pesos and max(pesos.values()) >= 0.05:
+        temas = [max(pesos, key=pesos.get)]
     neg = sum(w["negativo"] for w in ws)
     pos = sum(w["positivo"] for w in ws)
     lista = "; ".join(f'{w["palabra"]} ({w["total"]}: {w["negativo"]} neg, {w["positivo"]} pos)' for w in ws)
     lista_af = "; ".join(f'{b} ({a["neg"]} negativas, {a["quejas"]} quejas de {a["total"]} menciones)' for b, a in afectados)
     # la huella cambia con cualquier filtro o cambio de la nube: así la frase se regenera cuando cambia lo que se ve
     filtros = sorted((k, v[0]) for k, v in qs.items() if k not in ("gran", "orden", "max", "_"))
-    huella = hashlib.sha256(json.dumps([filtros, [(w["palabra"], w["total"]) for w in ws], [(b, a["neg"]) for b, a in afectados]],
+    huella = hashlib.sha256(json.dumps([filtros, [(w["palabra"], w["total"]) for w in ws], [(b, a["neg"]) for b, a in afectados], productos],
                                        ensure_ascii=False).encode()).hexdigest()
     previo = _SINTESIS.get(huella)
     if previo and time.time() - previo[0] < 20 * 60:
@@ -5159,9 +5188,13 @@ def sintesis_nube(qs):
     prompt = (f"Eres analista de reputación y riesgo del sistema financiero peruano. Estas son las palabras y frases más "
               f"frecuentes en redes sociales sobre {ambito} en {periodo}, con cuántas publicaciones las usan y su tono "
               f"({d.get('publicaciones', 0)} publicaciones analizadas):\n{lista}\n\n"
-              f"Entidades con más menciones negativas: {lista_af or 'ninguna destacada'}.\n\n"
-              "Escribe UNA sola frase en español (máximo 40 palabras) que diga hacia dónde va la conversación: el tema "
-              "dominante, el tono (si hay fallas, fraude, ciberseguridad o temas positivos, dilo) y quiénes son los "
+              f"Entidades con más menciones negativas: {lista_af or 'ninguna destacada'}.\n"
+              f"Tipo de tema según los datos: {' + '.join(temas) or 'ninguno del foco (atención, producto u otros)'}.\n"
+              f"Productos o canales más nombrados en lo negativo: {', '.join(f'{n} ({prod[n]})' for n in productos) or 'ninguno destacado'}.\n\n"
+              "Escribe UNA sola frase en español (máximo 45 palabras) que diga hacia dónde va la conversación: el tema "
+              "dominante dejando claro si es una interrupción del servicio, un incidente operativo y/o un evento de "
+              "ciberseguridad (según el tipo de tema indicado), qué productos o canales fallan SOLO si se indican arriba "
+              "(si dice 'ninguno destacado', no los menciones), el tono y quiénes son los "
               "principales afectados (las entidades con más negativas; si una concentra la mayoría, dilo). No inventes "
               "hechos que no se deduzcan de los datos, no nombres cifras exactas y no uses comillas ni viñetas.")
     for p in _ia_proveedores():
@@ -5169,14 +5202,16 @@ def sintesis_nube(qs):
             continue
         for modelo in _ia_modelos(p)[:3]:
             try:
-                resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0.3, "max_tokens": 600,
+                resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0.3, "max_tokens": 1200,
                                                          "messages": [{"role": "user", "content": prompt}]}, timeout=60)
                 if "choices" not in resp:
                     continue  # p. ej. proveedor saturado: se prueba el siguiente modelo
                 frase = re.sub(r"<think>.*?</think>", "", resp["choices"][0]["message"].get("content") or "", flags=re.S)
                 frase = re.sub(r"\s+", " ", frase).strip().strip('"“”').strip()
+                if resp["choices"][0].get("finish_reason") == "length" and not frase.endswith("."):
+                    continue  # frase cortada: se prueba otro modelo antes que mostrarla a medias
                 if frase:
-                    res = {"frase": frase[:400], "fuente": f"IA · {modelo.split('/')[-1]}", "generada": iso(ahora())}
+                    res = {"frase": frase[:450], "temas": temas, "productos": productos, "fuente": f"IA · {modelo.split('/')[-1]}", "generada": iso(ahora())}
                     _SINTESIS[huella] = (time.time(), res)
                     return res
             except urllib.error.HTTPError as e:
@@ -5188,7 +5223,9 @@ def sintesis_nube(qs):
     tono = "mayormente negativo" if neg > pos * 1.5 else "mayormente positivo" if pos > neg * 1.5 else "mixto"
     top = ", ".join(w["palabra"] for w in ws[:5])
     quien = (" Los más afectados: " + ", ".join(b for b, _ in afectados[:3]) + ".") if afectados else ""
-    res = {"frase": f"La conversación gira en torno a {top}, con un tono {tono}.{quien}", "fuente": "reglas (sin IA disponible)",
+    fallan = (" Fallan sobre todo: " + ", ".join(productos[:3]) + ".") if productos else ""
+    res = {"frase": f"La conversación gira en torno a {top}, con un tono {tono}.{quien}{fallan}", "temas": temas, "productos": productos,
+           "fuente": "reglas (sin IA disponible)",
            "generada": iso(ahora())}
     _SINTESIS[huella] = (time.time(), res)
     return res

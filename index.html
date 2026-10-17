@@ -51,6 +51,9 @@ body[data-vista="sistema"] .grid{grid-template-columns:repeat(auto-fit,minmax(32
 body[data-vista="sistema"] .grid .col{display:contents}
 #ciber-resumen .alerta{cursor:pointer}
 .sintesis{margin-top:10px;padding:10px 12px;border-left:3px solid var(--ink2);background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:6px;font-size:14px;line-height:1.45}
+.sintesis .temas{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.sintesis .tema{font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+.sintesis .tema.prod{font-weight:500;border-style:dashed}
 .sintesis .sub{display:block;margin-top:4px;font-size:11px}
 .ciber-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;margin-bottom:14px}
 @media(max-width:1000px){.ciber-grid{grid-template-columns:1fr}}
@@ -819,7 +822,10 @@ let tSint,pSint='';function cargarSintesis(p){clearTimeout(tSint);tSint=setTimeo
   else{el.style.opacity='.45';el.querySelector('.sub')?.replaceChildren('Actualizando la síntesis con los filtros actuales…')}
   try{const r=await fetch('/api/nube/sintesis?'+q).then(r=>r.json());if(q!==pSint)return; // llegó tarde: ya hay otra pedida
     el.style.opacity='';
-    el.innerHTML=r.frase?`🧠 <b>${esc(r.frase)}</b><span class="sub">Síntesis de la nube · ${esc(r.fuente)}${r.generada?' · hace '+hace(r.generada):''}</span>`:(r.motivo?`<span class="sub">${esc(r.motivo)}</span>`:'')}
+    const ICT={'Interrupción':'⛔','Incidente operativo':'⚙️','Evento de ciberseguridad':'🛡️','Fraude':'💳'};
+    const chips=(r.temas||[]).map(t=>`<span class="tema">${ICT[t]||''} ${esc(t)}</span>`).join('')+
+      (r.productos||[]).map(p=>`<span class="tema prod">${esc(p)}</span>`).join('');
+    el.innerHTML=r.frase?`${chips?`<div class="temas">${chips}</div>`:''}🧠 <b>${esc(r.frase)}</b><span class="sub">Síntesis de la nube · ${esc(r.fuente)}${r.generada?' · hace '+hace(r.generada):''}</span>`:(r.motivo?`<span class="sub">${esc(r.motivo)}</span>`:'')}
   catch(e){el.innerHTML='';el.style.opacity=''}},800)}
 function dibujarNube(ws){
   // Distribución en espiral (tipo Wordle): la más frecuente al centro, el resto alrededor sin solaparse
