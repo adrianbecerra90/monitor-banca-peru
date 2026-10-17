@@ -2741,7 +2741,7 @@ SECTOR_SF = re.compile(r"\b(banca|banco|bancari\w*|bank\w*|financ\w*|seguros?|as
 # Proveedores del sistema financiero: un ataque a ellos también expone a bancos, aseguradoras y AFP
 PROVEEDORES_SF = re.compile(r"\b(niubiz|visanet|izipay|culqi|procesos mc|unibanca|global ?net|multired|kasnet|western union peru|"
                             r"equifax( peru)?|infocorp|sentinel|experian peru|xchange|cavali|bvl|bolsa de valores de lima|"
-                            r"prosegur|hermes( transportes)?|liderman|cobiscorp|topaz|bantotal|canvia|gmd|stefanini|"
+                            r"prosegur|hermes( transportes)?|liderman|italtel|cobiscorp|topaz|bantotal|canvia|gmd|stefanini|"
                             r"ntt data peru|everis peru|indra peru|atento|konecta|teleperformance|tata consultancy peru|"
                             r"kushki|payu|mercado pago peru|safetypay|pagoefectivo|tarjeta oh|diners club peru|"
                             r"visa peru|mastercard peru|american express peru|asbanc|apeseg|asociacion de afp)\b")
@@ -2828,7 +2828,20 @@ def revisar_referentes_x():
             if ev:
                 nuevas.append({**p, **ev})
         time.sleep(2)
-    al_panel, para_avisar = [], []
+    para_avisar = _registrar_alertas(nuevas, al_panel=True)
+    _avisar_ciber(para_avisar, cfg)
+    ESTADO["referentes_x"] = {"ultima_revision": iso(ahora()), "cuentas": len(cfg.get("cuentas", [])),
+                              "nuevas": len(para_avisar), "errores": errores}
+    if para_avisar:
+        print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad (X referentes): {len(para_avisar)} alertas nuevas del SF peruano",
+              flush=True)
+    return para_avisar
+
+
+def _registrar_alertas(nuevas, al_panel=False):
+    """Guarda alertas de ciberseguridad (sin duplicar) y devuelve las nuevas. Con al_panel, las que nombran una
+    entidad monitoreada entran además al panel como Ciberseguridad / hackeos (solo para posts de X)."""
+    panel, para_avisar = [], []
     with _db_lock, db() as con:
         _tabla_ciber(con)
         for a in nuevas:
@@ -2841,8 +2854,8 @@ def revisar_referentes_x():
             else:  # si se sumó una entidad después (p.ej. BCRP), la alerta ya guardada se actualiza
                 con.execute("UPDATE alertas_ciber SET entidades = ?, organizacion = ?, sector = ? WHERE id = ?",
                             (json.dumps(a["entidades"], ensure_ascii=False), a["organizacion"], a["sector"], a["id"]))
-            if a["entidades"]:
-                al_panel.append(a)
+            if al_panel and a["entidades"]:
+                panel.append(a)
                 # si ya entró por la búsqueda general de X, pasa a ser alerta (salvo que el analista lo haya corregido)
                 fila = con.execute("SELECT meta FROM items WHERE id = ? AND COALESCE(corregido, 0) = 0", (a["id"],)).fetchone()
                 if fila and '"alerta_ciber"' not in (fila[0] or ""):
@@ -2852,16 +2865,10 @@ def revisar_referentes_x():
                                 "categorias=?, bancos=? WHERE id=?",
                                 (json.dumps(meta, ensure_ascii=False), json.dumps(["Ciberseguridad / hackeos"], ensure_ascii=False),
                                  json.dumps(a["entidades"], ensure_ascii=False), a["id"]))
-    if al_panel:
+    if panel:
         guardar([{"id": a["id"], "fuente": "X", "tipo": "alerta_ciber", "peru": True, "bancos_fijos": a["entidades"],
                   "via": a["cuenta"], "autor": a["cuenta"], "texto": a["texto"], "url": a["url"], "fecha": a["fecha"]}
-                 for a in al_panel])
-    _avisar_ciber(para_avisar, cfg)
-    ESTADO["referentes_x"] = {"ultima_revision": iso(ahora()), "cuentas": len(cfg.get("cuentas", [])),
-                              "nuevas": len(para_avisar), "errores": errores}
-    if para_avisar:
-        print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad (X referentes): {len(para_avisar)} alertas nuevas del SF peruano",
-              flush=True)
+                 for a in panel])
     return para_avisar
 
 
@@ -2894,6 +2901,202 @@ def alertas_ciber(dias=30):
     return [{**dict(r), "entidades": json.loads(r["entidades"] or "[]")} for r in filas]
 
 
+# --------------------------------------------------------------------------
+# Más inteligencia de amenazas (gratis y sin cuenta): ransomware.live, canales públicos de Telegram,
+# dominios que imitan a las entidades (certificados en crt.sh) y URLs/IOC maliciosos de abuse.ch
+# --------------------------------------------------------------------------
+
+FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhaus": 60, "threatfox": 60}  # minutos
+CANALES_TELEGRAM = ["ransomfeednews", "ransomlook"]
+# Marcas a vigilar en dominios: (tokens, dominios oficiales). Las marcas globales exigen además "pe"/"peru" en el dominio
+MARCAS_DOMINIO = {
+    "BCP": (["viabcp", "bcp"], ["viabcp.com", "bcp.com.pe", "bcp.com", "bcpzonasegura.com", "credicorp.com", "credicorpcapital.com"]),
+    "Yape": (["yape"], ["yape.com.pe", "yape.pe"]),
+    "Plin": (["plin"], ["plin.pe"]),
+    "Interbank": (["interbank"], ["interbank.pe", "interbank.com.pe", "interbank.com", "ibk.pe"]),
+    "BBVA Perú": (["bbva"], ["bbva.pe", "bbva.com", "bbva.com.pe", "bbvaexperience.com"]),
+    "Scotiabank Perú": (["scotiabank"], ["scotiabank.com.pe", "scotiabank.com", "scotiabankchile.cl", "scotiabank.cl"]),
+    "Banco de la Nación": (["bancodelanacion", "bancanacion", "bnperu", "bn-pe"], ["bn.com.pe"]),
+    "Banco Pichincha": (["pichincha", "pibank"], ["pichincha.pe", "bancopichincha.pe", "pibank.pe", "pichincha.com",
+                                                  "bancopichincha.com.ec", "pichincha.com.co"]),
+    "Interseguro": (["interseguro"], ["interseguro.pe", "interseguro.com.pe"]),
+    "SBS": (["sbsperu", "sbs-peru", "sbs-pe"], ["sbs.gob.pe"]),
+    "BCRP": (["bcrp"], ["bcrp.gob.pe"]),
+}
+MARCAS_GLOBALES = {"BBVA Perú", "Scotiabank Perú", "Banco Pichincha"}
+_SEÑUELO = ("pe", "peru", "zona", "segura", "seguro", "banca", "app", "online", "login", "clientes", "cliente", "bono",
+            "token", "valida", "validar", "web", "digital", "movil", "pagos", "pago", "premio", "soporte", "verifica",
+            "acceso", "cuenta", "promo", "oferta", "net", "virtual", "inicio", "sesion", "beneficio")
+_SLD = {"com.pe", "gob.pe", "org.pe", "net.pe", "edu.pe", "nom.pe", "com.br", "com.mx", "com.co", "com.ar", "com.ec",
+        "co.uk", "com.au", "com.es"}
+
+
+def dominio_registrado(host):
+    partes = host.lower().strip(".").split(".")
+    return ".".join(partes[-3:]) if ".".join(partes[-2:]) in _SLD and len(partes) >= 3 else ".".join(partes[-2:])
+
+
+def _token_en(host, tok):
+    """El token aparece como palabra (bcp-pe, zonasegurabcp, viabcp.xyz), no dentro de otra (p.ej. 'plinth')."""
+    for m in re.finditer(re.escape(tok), host):
+        izq, der = host[:m.start()], host[m.end():]
+        ok_i = not izq or not izq[-1].isalpha() or len(tok) >= 6 or any(izq.endswith(w) for w in _SEÑUELO + ("via", "mi", "tu"))
+        ok_d = not der or not der[0].isalpha() or len(tok) >= 6 or any(der.startswith(w) for w in _SEÑUELO)
+        if ok_i and ok_d:
+            return True
+    return False
+
+
+def marca_imitada(host):
+    """Entidad cuyo nombre usa un host que no es suyo (posible phishing), o None."""
+    host = (host or "").lower().strip(".")
+    if not re.fullmatch(r"[a-z0-9.-]{3,253}", host):
+        return None
+    reg = dominio_registrado(host)
+    for ent, (toks, oficiales) in MARCAS_DOMINIO.items():
+        if reg in oficiales or any(host == o or host.endswith("." + o) for o in oficiales):
+            continue
+        if any(_token_en(host, t) for t in toks):
+            if ent in MARCAS_GLOBALES and not re.search(r"(^|[^a-z])pe(ru)?([^a-z]|$)|peru", host):
+                continue
+            return ent
+    return None
+
+
+def desactivar(u):
+    """hxxp://dominio[.]com: el enlace queda legible pero no clicable."""
+    return re.sub(r"\.", "[.]", re.sub(r"^http", "hxxp", u or "", flags=re.I))
+
+
+def _cfg_ciber():
+    return {"fuentes": FUENTES_CIBER, "canales_telegram": CANALES_TELEGRAM, **CONFIG.get("ciber", {})}
+
+
+def ciber_ransomware_live():
+    datos = json.loads(http_get("https://api.ransomware.live/v2/countryvictims/PE", timeout=60))
+    out = []
+    for v in datos if isinstance(datos, list) else []:
+        titulo, grupo = str(v.get("post_title") or "")[:120], str(v.get("group_name") or "")[:60]
+        texto = (f"🚨 Ransomware | {titulo} – Perú 🇵🇪\nGrupo: {grupo}\n"
+                 f"Industria / Sector: {v.get('activity') or ''} · {v.get('description') or ''}\nSitio: {v.get('website') or '—'}")
+        ev = evaluar_alerta_ciber(texto, True)
+        if ev:
+            ev["organizacion"] = titulo
+            out.append({"id": "rwl:" + hashlib.sha1(f"{grupo}|{titulo}".encode()).hexdigest()[:16], "texto": texto,
+                        "url": f"https://www.ransomware.live/group/{urllib.parse.quote(grupo)}",
+                        "fecha": parse_fecha(v.get("discovered") or v.get("published")), "cuenta": "ransomware.live", **ev})
+    return out
+
+
+def ciber_telegram():
+    out = []
+    for canal in _cfg_ciber().get("canales_telegram", []):
+        if not re.fullmatch(r"\w{4,40}", str(canal)):
+            continue
+        pagina = http_get(f"https://t.me/s/{canal}", timeout=30).decode("utf-8", "ignore")
+        for bloque in re.split(r'(?=<div class="tgme_widget_message_wrap)', pagina)[1:]:
+            post = re.search(r'data-post="([\w/]+)"', bloque)
+            cuerpo = re.search(r'tgme_widget_message_text[^>]*>(.*?)</div>', bloque, re.S)
+            fecha = re.search(r'datetime="([^"]+)"', bloque)
+            if not (post and cuerpo):
+                continue
+            texto = limpiar_html(re.sub(r"<br\s*/?>", "\n", cuerpo.group(1)))
+            ev = evaluar_alerta_ciber(texto)
+            if ev:
+                out.append({"id": "tg:" + post.group(1), "texto": texto, "url": "https://t.me/" + post.group(1),
+                            "fecha": parse_fecha(fecha.group(1) if fecha else None), "cuenta": f"Telegram {canal}", **ev})
+        time.sleep(2)
+    return out
+
+
+def _alerta_dominio(ent, host, fuente, ident, fecha, url, detalle):
+    return {"id": f"{fuente.lower()}:{ident}", "cuenta": fuente, "url": url, "fecha": fecha, "entidades": [ent],
+            "organizacion": desactivar(host), "sector": "Dominio que imita",
+            "texto": f"Posible phishing contra {ent}: {desactivar(host)}\n{detalle}"}
+
+
+def ciber_dominios():
+    """Certificados TLS recientes (crt.sh) de dominios con el nombre de una entidad que no son suyos."""
+    out, vistos, corte = [], set(), iso(ahora() - timedelta(days=14))
+    # "bbva" y "scotiabank" a secas traen miles de certificados de otros países: solo sus variantes peruanas
+    tokens = sorted({t for toks, _ in MARCAS_DOMINIO.values() for t in toks if len(t) >= 4} - {"bbva", "scotiabank"} |
+                    {"bcp-", "-bcp", "bcpperu", "bcp-pe", "yapeperu", "bbvaperu", "bbva-pe", "scotiabankperu"})
+    for tok in tokens:
+        try:
+            certs = json.loads(http_get(f"https://crt.sh/?q=%25{tok}%25&output=json&exclude=expired", timeout=120))
+        except Exception as e:
+            print(f"  crt.sh ({tok}): {type(e).__name__}", flush=True)
+            continue
+        for c in certs:
+            fecha = parse_fecha(c.get("not_before"))
+            if fecha < corte:
+                continue
+            for host in str(c.get("name_value") or "").lower().split("\n"):
+                host = host.strip().lstrip("*.")
+                ent = marca_imitada(host)
+                if ent and host not in vistos:
+                    vistos.add(host)
+                    out.append(_alerta_dominio(ent, host, "crt.sh", host, fecha, f"https://crt.sh/?id={c.get('id')}",
+                                               f"Certificado emitido el {fecha[:10]} por {str(c.get('issuer_name') or '')[:80]}"))
+        time.sleep(5)
+    return out
+
+
+def ciber_urlhaus():
+    texto = http_get("https://urlhaus.abuse.ch/downloads/csv_recent/", timeout=120).decode("utf-8", "ignore")
+    out = []
+    for f in csv.reader(l for l in texto.splitlines() if l and not l.startswith("#")):
+        if len(f) < 8:
+            continue
+        host = urllib.parse.urlparse(f[2]).hostname or ""
+        ent = marca_imitada(host)
+        if ent:
+            out.append(_alerta_dominio(ent, host, "URLhaus", f[0], parse_fecha(f[1].replace(" ", "T") + "+00:00"),
+                                       f[7] if f[7].startswith("https://urlhaus.abuse.ch/") else "",
+                                       f"URL maliciosa ({f[4]}, {f[5]}): {desactivar(f[2])[:200]}"))
+    return out
+
+
+def ciber_threatfox():
+    datos = json.loads(http_get("https://threatfox.abuse.ch/export/json/recent/", timeout=120))
+    out = []
+    for ident, iocs in (datos.items() if isinstance(datos, dict) else []):
+        for i in iocs:
+            valor = str(i.get("ioc_value") or "")
+            host = urllib.parse.urlparse(valor).hostname if "://" in valor else valor.split(":")[0]
+            ent = marca_imitada(host)
+            if ent:
+                out.append(_alerta_dominio(ent, host, "ThreatFox", ident, parse_fecha(str(i.get("first_seen_utc") or "").replace(" ", "T") + "+00:00"),
+                                           f"https://threatfox.abuse.ch/ioc/{ident}/",
+                                           f"IOC {i.get('threat_type') or ''} · {i.get('malware_printable') or ''}: {desactivar(valor)[:200]}"))
+    return out
+
+
+_CIBER_FN = {"ransomware_live": ciber_ransomware_live, "telegram": ciber_telegram, "dominios": ciber_dominios,
+             "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox}
+_CIBER_ULTIMA = {}
+
+
+def revisar_fuentes_ciber(forzar=False):
+    cfg = _cfg_ciber()
+    estado = ESTADO.setdefault("ciber_fuentes", {})
+    for nombre, minutos in {**FUENTES_CIBER, **cfg.get("fuentes", {})}.items():
+        if nombre not in _CIBER_FN or not minutos:
+            continue
+        if not forzar and time.time() - _CIBER_ULTIMA.get(nombre, 0) < minutos * 60:
+            continue
+        _CIBER_ULTIMA[nombre] = time.time()
+        try:
+            alertas = _CIBER_FN[nombre]()
+            nuevas = _registrar_alertas(alertas)
+            _avisar_ciber(nuevas, _cfg_referentes())
+            estado[nombre] = {"ok": True, "revisado": iso(ahora()), "coincidencias": len(alertas), "nuevas": len(nuevas)}
+            if nuevas:
+                print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad ({nombre}): {len(nuevas)} alertas nuevas", flush=True)
+        except Exception as e:
+            estado[nombre] = {"ok": False, "revisado": iso(ahora()), "error": f"{type(e).__name__}: {str(e)[:120]}"}
+
+
 def trabajador_referentes():
     time.sleep(20)
     while True:
@@ -2901,6 +3104,10 @@ def trabajador_referentes():
             revisar_referentes_x()
         except Exception as e:
             print(f"  Referentes X: {type(e).__name__}: {e}", flush=True)
+        try:
+            revisar_fuentes_ciber()
+        except Exception as e:
+            print(f"  Fuentes de ciberseguridad: {type(e).__name__}: {e}", flush=True)
         time.sleep(max(5, int(_cfg_referentes().get("intervalo_minutos", 10))) * 60)
 
 
@@ -5048,7 +5255,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(estadisticas(qs))
         if u.path == "/api/ciber":
             return self._send({"alertas": alertas_ciber(), "cuentas": _cfg_referentes().get("cuentas", []),
-                               "estado": ESTADO.get("referentes_x", {})})
+                               "estado": ESTADO.get("referentes_x", {}), "fuentes": ESTADO.get("ciber_fuentes", {}),
+                               "canales_telegram": _cfg_ciber().get("canales_telegram", [])})
         if u.path == "/api/estado":
             with _db_lock, db() as con:
                 r = con.execute("SELECT COUNT(*), MIN(fecha), MAX(fecha) FROM items WHERE oculto = 0").fetchone()

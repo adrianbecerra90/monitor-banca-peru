@@ -700,12 +700,15 @@ $('#pausa-global').onclick=()=>pausa('todo',!ESTADO?.pausa?.todo);
 // Alertas de cuentas de inteligencia de amenazas: solo las del sistema financiero, seguros y AFP del Perú
 async function cargarCiber(){
   try{const d=await fetch('/api/ciber').then(r=>r.json());const a=d.alertas||[];
-    $('#ciber').innerHTML=a.length?a.slice(0,8).map(x=>{const mon=x.entidades.length;
+    $('#ciber').innerHTML=a.length?a.slice(0,10).map(x=>{const mon=x.entidades.length;
       const tit=(x.texto.split('\n')[0]||'').replace(/^\W+/,'').slice(0,140);
-      return `<div style="padding:7px 0;border-top:1px solid var(--line)"><div style="font-size:13px">${mon?'<b style="color:var(--neg)">● Monitoreada:</b> '+esc(x.entidades.join(', ')):'<b>'+esc(x.sector)+'</b>'}${x.organizacion&&!mon?' · '+esc(x.organizacion):''}</div>
+      const dom=x.sector==='Dominio que imita';
+      return `<div style="padding:7px 0;border-top:1px solid var(--line)"><div style="font-size:13px">${dom?'<b style="color:var(--neg)">⚠ Posible phishing contra '+esc(x.entidades.join(', '))+':</b> <code>'+esc(x.organizacion)+'</code>':mon?'<b style="color:var(--neg)">● Monitoreada:</b> '+esc(x.entidades.join(', ')):'<b>'+esc(x.sector)+'</b>'}${x.organizacion&&!mon?' · '+esc(x.organizacion):''}</div>
       <div class="sub" style="margin-top:2px">${esc(tit)}</div>
       <div class="sub" style="margin-top:2px">${esc(x.cuenta)} · hace ${hace(x.fecha)}${x.url?` · <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">ver ↗</a>`:''}</div></div>`}).join(''):'<div class="sub">Sin alertas del sistema financiero peruano en los últimos 30 días.</div>';
-    const e=d.estado||{};$('#ciber-pie').textContent=`${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' · revisado hace '+hace(e.ultima_revision):''}${(e.errores||[]).length?' · sin respuesta: '+e.errores.length:''}`}
+    const e=d.estado||{},f=d.fuentes||{},NOM={ransomware_live:'ransomware.live',telegram:'Telegram',dominios:'dominios (crt.sh)',urlhaus:'URLhaus',threatfox:'ThreatFox'};
+    const fal=Object.entries(f).filter(([k,v])=>!v.ok).map(([k])=>NOM[k]||k);
+    $('#ciber-pie').textContent=`X: ${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' (hace '+hace(e.ultima_revision)+')':''} · Telegram: ${(d.canales_telegram||[]).join(', ')} · también ransomware.live, certificados de dominios y abuse.ch${fal.length?' · sin respuesta: '+fal.join(', '):''}`}
   catch(e){}}
 setInterval(cargarCiber,120000);
 let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube();cargarCiber()},120)}
