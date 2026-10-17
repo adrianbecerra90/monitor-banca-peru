@@ -40,6 +40,13 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px}
 @media(max-width:1000px){.grid{grid-template-columns:1fr}}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ciber-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;margin-bottom:14px}
+@media(max-width:1000px){.ciber-grid{grid-template-columns:1fr}}
+#infost table{font-variant-numeric:tabular-nums}
+#infost th:not(:first-child),#infost td:not(:first-child){padding-left:10px}
+#ciber,#ciber-pie{overflow-wrap:anywhere}
+.solo-movil{display:none}
+@media(max-width:600px){header{position:static}.solo-movil{display:inline-block}.filters.plegado .frow:not(:first-of-type){display:none}}
 .legend i{font-style:normal}.legend .lin::before{content:"";display:inline-block;width:18px;border-top:2px dashed var(--ink2);margin-right:5px;vertical-align:3px}
 .legend .lin.umb::before{border-top:2px dotted var(--ink)}.legend .noche::before{content:"";display:inline-block;width:12px;height:10px;background:var(--chip);border:1px solid var(--line);margin-right:5px;vertical-align:-1px}.legend .mk::before{content:"▲";font-size:9px;margin-right:4px;color:var(--ink)}
 #serie-nota{font-size:12px;color:var(--ink2);margin-top:4px}
@@ -137,6 +144,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
   <div id="picos"></div><div id="alerta-x"></div>
 
   <div class="card filters">
+    <button id="f-plegar" class="solo-movil" style="float:right;margin-left:8px"></button>
     <div class="frow"><span class="lbl">Periodo</span><span id="f-periodo"></span>
       <span id="f-custom" style="display:none;gap:6px;align-items:center"><input type="datetime-local" id="f-desde"> → <input type="datetime-local" id="f-hasta"></span></div>
     <div class="frow"><span class="lbl">Detalle</span><span id="f-gran" class="frow"></span><button id="zoom-back" style="display:none">← Deshacer zoom</button></div>
@@ -160,6 +168,14 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <div class="card kpi"><div class="n" id="k-pos" style="color:var(--pos)">–</div><div class="l">Positivas</div></div>
     <div class="card kpi"><div class="n" id="k-net">–</div><div class="l">Sentimiento neto (% positivas − % negativas)</div><div class="sub" id="k-net-var" style="margin-top:2px"></div><div id="k-net-spark" style="margin-top:4px"></div></div>
     <div class="card kpi"><div class="n" id="k-quejas">–</div><div class="l">Quejas · <b id="k-graves" style="color:var(--neg)">–</b> graves</div></div>
+  </div>
+
+  <div class="ciber-grid" id="sec-ciber">
+    <div class="card"><h2>🛡️ Ciberseguridad · alertas <span class="sub" id="ciber-n" style="font-weight:400"></span></h2><div id="ciber"></div>
+      <button id="ciber-mas" style="display:none;margin-top:6px"></button>
+      <div class="sub" id="ciber-pie" style="margin-top:6px"></div></div>
+    <div class="card"><h2>Equipos infectados (infostealers)</h2><div id="infost"></div>
+      <div class="sub" style="margin-top:6px">Usuarios, empleados y terceros con credenciales de la entidad robadas por malware. Solo conteos, fuente Hudson Rock; se actualiza 2 veces al día. Variación frente a hace 7 días.</div></div>
   </div>
 
   <div class="grid">
@@ -234,10 +250,6 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
         <div id="entidades"></div>
         <div class="sub" style="margin-top:6px">Clic para filtrar. Mayús+clic para seleccionar varias.</div>
       </div>
-      <div class="card"><h2>Ciberseguridad · alertas</h2><div id="ciber"></div>
-        <div class="sub" id="ciber-pie" style="margin-top:6px"></div></div>
-      <div class="card"><h2>Equipos infectados (infostealers)</h2><div id="infost"></div>
-        <div class="sub" style="margin-top:6px">Usuarios, empleados y terceros con credenciales de la entidad robadas por malware. Solo conteos, fuente Hudson Rock; se actualiza 2 veces al día. Variación frente a hace 7 días.</div></div>
       <div class="card"><h2>Quejas por categoría</h2><div id="cats"></div></div>
       <div class="card"><h2>Menciones por red</h2><div id="redes"></div></div>
       <div class="card hist-card">
@@ -700,9 +712,21 @@ function pintarPausa(){
 $('#pausa-global').onclick=()=>pausa('todo',!ESTADO?.pausa?.todo);
 
 // Alertas de cuentas de inteligencia de amenazas: solo las del sistema financiero, seguros y AFP del Perú
+// En el celular: ciberseguridad va primero y los filtros se pliegan (solo queda el periodo)
+(function(){const mq=matchMedia('(max-width:1000px)'),sec=$('#sec-ciber'),fil=$('.filters'),ancla=document.createComment('ciber');
+  sec.parentNode.insertBefore(ancla,sec);
+  const ubicar=()=>{if(mq.matches)fil.parentNode.insertBefore(sec,fil);else ancla.parentNode.insertBefore(sec,ancla.nextSibling)};
+  ubicar();mq.addEventListener('change',ubicar);
+  const b=$('#f-plegar');fil.classList.add('plegado');
+  const txt=()=>{b.textContent=fil.classList.contains('plegado')?'Más filtros ▾':'Menos filtros ▴'};txt();
+  b.onclick=()=>{fil.classList.toggle('plegado');txt()}})();
+let CIBER_TODAS=false;
 async function cargarCiber(){
   try{const d=await fetch('/api/ciber').then(r=>r.json());const a=d.alertas||[];
-    $('#ciber').innerHTML=a.length?a.slice(0,10).map(x=>{const mon=x.entidades.length;
+    const n7=a.filter(x=>Date.now()-new Date(x.fecha)<7*864e5).length;$('#ciber-n').textContent=`· ${n7} en 7 días · ${a.length} en 30 días`;
+    const vis=CIBER_TODAS?a.slice(0,40):a.slice(0,4);
+    $('#ciber-mas').style.display=a.length>4?'':'none';$('#ciber-mas').textContent=CIBER_TODAS?'Ver menos':`Ver todas (${a.length})`;
+    $('#ciber').innerHTML=a.length?vis.map(x=>{const mon=x.entidades.length;
       const tit=(x.texto.split('\n')[0]||'').replace(/^\W+/,'').slice(0,140);
       const dom=x.sector==='Dominio que imita';
       return `<div style="padding:7px 0;border-top:1px solid var(--line)"><div style="font-size:13px">${dom?'<b style="color:var(--neg)">⚠ Posible phishing contra '+esc(x.entidades.join(', '))+':</b> <code>'+esc(x.organizacion)+'</code>':mon?'<b style="color:var(--neg)">● Monitoreada:</b> '+esc(x.entidades.join(', ')):'<b>'+esc(x.sector)+'</b>'}${x.organizacion&&!mon?' · '+esc(x.organizacion):''}</div>
@@ -715,6 +739,7 @@ async function cargarCiber(){
     $('#ciber-pie').textContent=`X: ${(d.cuentas||[]).map(c=>'@'+c).join(', ')}${e.ultima_revision?' (hace '+hace(e.ultima_revision)+')':''} · Telegram: ${(d.canales_telegram||[]).join(', ')} · también ransomware.live, certificados de dominios, abuse.ch y Hudson Rock${fal.length?' · sin respuesta: '+fal.join(', '):''}${f.telegram_sesion&&f.telegram_sesion.ok===null?' · Telegram con sesión: falta iniciar sesión':''}`}
   catch(e){}}
 setInterval(cargarCiber,120000);
+$('#ciber-mas').onclick=()=>{CIBER_TODAS=!CIBER_TODAS;cargarCiber()};
 let tRec;function recargar(){clearTimeout(tRec);tRec=setTimeout(()=>{cargarItems();cargarStats();cargarNube();cargarCiber()},120)}
 
 // ---------- Nube de palabras ----------
