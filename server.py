@@ -5994,10 +5994,10 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError(f"Entidad no válida: {nombre}")
                     nueva.setdefault("bancos", {})[nombre] = {k: [str(x)[:60] for x in b.get(k, [])][:20]
                                                               for k in ("buscar", "alias", "ambiguos")}
-                for nombre, cu in (d.get("cuentas") or {}).items():
-                    nueva.setdefault("cuentas_oficiales", {})[nombre] = {
+                for nombre, cu in (d.get("cuentas") or {}).items():  # suma o actualiza redes; no borra las demás
+                    nueva.setdefault("cuentas_oficiales", {}).setdefault(nombre, {}).update({
                         red: str(url)[:200] for red, url in (cu or {}).items()
-                        if red == "x" and HANDLE_X_OK.match(str(url)) or red in URL_RED_OK and URL_RED_OK[red].match(str(url))}
+                        if red == "x" and HANDLE_X_OK.match(str(url)) or red in URL_RED_OK and URL_RED_OK[red].match(str(url))})
                 excl = nueva.setdefault("contexto_excluir", [])
                 excl += [str(x)[:40] for x in d.get("contexto_excluir") or [] if str(x)[:40] not in excl]
                 guardar_config(nueva)
