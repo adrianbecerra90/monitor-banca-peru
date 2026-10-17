@@ -1999,6 +1999,60 @@ def _rapid_facebook(rango):
     return out
 
 
+def fuente_linkedin(rango=None):
+    """Publicaciones de las páginas de empresa en LinkedIn y sus comentarios visibles (Bright Data, mismo tope)."""
+    if not os.environ.get("BRIGHTDATA_API_KEY"):
+        return None
+    if en_pausa("BrightData"):
+        raise RutaInactiva("⏸ En pausa")
+    cfg = CONFIG.get("brightdata", {})
+    exigir_disponible("BrightData")
+    mapa = cuentas("linkedin")
+    if not mapa:
+        raise RutaInactiva("Inactiva: ninguna entidad tiene página de LinkedIn en Configuración")
+    if not rango and time.time() - _bd_ultima("linkedin") < cfg.get("linkedin_intervalo_minutos", 720) * 60:
+        return []
+    restante = bd_restante_hoy()
+    if restante <= 0:
+        raise RutaInactiva("Cuota de Bright Data del día usada; sigue mañana")
+    n = cfg.get("linkedin_posts_por_pagina", 2)
+    mapa = dict(list(mapa.items())[:max(1, restante // n)])
+    if not rango:
+        _bd_ultima("linkedin", marcar=True)
+    # LinkedIn solo responde con la dirección regional (pe.linkedin.com); con www. Bright Data la da por página muerta
+    por_slug = {u.rstrip("/").rsplit("/", 1)[-1].lower(): b for u, b in mapa.items()}
+    entradas = [{"url": f"https://pe.linkedin.com/company/{slug}"} for slug in por_slug]
+    if rango:
+        for e in entradas:
+            e.update(start_date=rango[0] + "T00:00:00.000Z", end_date=rango[1] + "T23:59:59.000Z")
+    posts = bd_scrape("gd_lyy3tktm25m4avu764", entradas, asincrono=True, type="discover_new",
+                      discover_by="company_url", limit_per_input=str(10 if rango else n))
+    out = []
+    for p in posts:
+        origen = str((p.get("discovery_input") or {}).get("url") or p.get("use_url") or "")
+        slug = re.sub(r"[?#].*$", "", origen).rstrip("/").rsplit("/", 1)[-1].lower()
+        banco = por_slug.get(slug)
+        purl = p.get("url") or ""
+        if not banco or not purl:
+            continue
+        pid = str(p.get("id") or purl)
+        out.append({"id": f"linkedin:post:{pid}", "fuente": "LinkedIn", "tipo": "post_oficial", "peru": True,
+                    "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "url": purl, "fecha": p.get("date_posted"),
+                    "texto": p.get("post_text") or p.get("title") or "(publicación sin texto)",
+                    "metricas": {"comentarios": p.get("num_comments"), "reacciones": p.get("num_likes")}})
+        comentarios = p.get("top_visible_comments")
+        for c in comentarios if isinstance(comentarios, list) else []:
+            texto = str(c.get("comment") or c.get("text") or c.get("comment_text") or "").strip()
+            if not texto:
+                continue
+            out.append({"id": f"linkedin:c:{pid}:{c.get('user_id', '')}:{hashlib.sha1(texto.encode()).hexdigest()[:10]}",
+                        "fuente": "LinkedIn", "tipo": "comentario", "peru": True, "bancos_fijos": [banco], "cuenta": banco,
+                        "autor": str(c.get("user_name") or ""), "url": purl, "texto": texto,
+                        "fecha": c.get("comment_date") or p.get("date_posted")})
+    print(f"  LinkedIn · BrightData: {len(posts)} publicaciones de {len(entradas)} páginas", flush=True)
+    return out
+
+
 def fuente_facebook(rango=None):
     return ejecutar_rutas("Facebook", [
         ("BrightData", lambda r: _bd_red("facebook", "Facebook", r), "activo"),
@@ -2061,7 +2115,7 @@ def _bd_sumar(n):
     _bd_uso()
 
 
-def bd_scrape(dataset, entradas, **params):
+def bd_scrape(dataset, entradas, asincrono=False, **params):
     """Una consulta a un scraper de Bright Data. Si tarda, Bright Data devuelve un snapshot y se espera el resultado."""
     exigir_disponible("BrightData")
     usados_mes, usados_hoy, tope, cuota_hoy = _bd_uso()
@@ -2070,7 +2124,7 @@ def bd_scrape(dataset, entradas, **params):
     if usados_hoy >= cuota_hoy:  # límite diario estricto: nada más hasta mañana (ni consultas manuales)
         raise RutaInactiva(f"Límite diario alcanzado ({usados_hoy} de {cuota_hoy} registros); sigue mañana")
     h = {"Authorization": f"Bearer {os.environ['BRIGHTDATA_API_KEY']}", "Content-Type": "application/json"}
-    url = ("https://api.brightdata.com/datasets/v3/scrape?" +
+    url = (f"https://api.brightdata.com/datasets/v3/{'trigger' if asincrono else 'scrape'}?" +
            urllib.parse.urlencode({"dataset_id": dataset, "format": "json", **params}))
     try:
         d = json.loads(http_get(url, h, data=json.dumps(entradas).encode(), timeout=300))
@@ -2469,6 +2523,7 @@ FUENTES = {
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) + yt-dlp (gratis, con comentarios) + búsqueda web"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
+    "LinkedIn": (fuente_linkedin, "Publicaciones de las páginas de empresa y sus comentarios visibles (Bright Data, cada 12 h)"),
     "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía ScrapingBee (de pago)"),
 }
 
@@ -4273,7 +4328,8 @@ TERMINO_OK = re.compile(r"^[^<>{}\\`]{1,60}$")
 HANDLE_X_OK = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 URL_RED_OK = {"facebook": re.compile(r"^https://(www\.)?facebook\.com/[A-Za-z0-9_.-]{2,80}/?$"),
               "instagram": re.compile(r"^https://(www\.)?instagram\.com/[A-Za-z0-9_.]{1,40}/?$"),
-              "tiktok": re.compile(r"^https://(www\.)?tiktok\.com/@[A-Za-z0-9_.]{2,40}/?$")}
+              "tiktok": re.compile(r"^https://(www\.)?tiktok\.com/@[A-Za-z0-9_.]{2,40}/?$"),
+              "linkedin": re.compile(r"^https://([a-z]{2}\.|www\.)?linkedin\.com/company/[A-Za-z0-9_.-]{2,80}/?$")}
 
 
 DOMINIO_OK = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")

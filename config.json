@@ -283,7 +283,8 @@
     "YouTube": 30,
     "Noticias": 5,
     "Bluesky": 5,
-    "Búsqueda Google": 30
+    "Búsqueda Google": 30,
+    "LinkedIn": 60
   },
   "noticias_rss": [
     "https://rpp.pe/feed",
@@ -299,28 +300,33 @@
     "Yape": {
       "facebook": "https://www.facebook.com/yapeoficial",
       "instagram": "https://www.instagram.com/yapeoficial/",
-      "tiktok": "https://www.tiktok.com/@yapeoficial"
+      "tiktok": "https://www.tiktok.com/@yapeoficial",
+      "linkedin": "https://www.linkedin.com/company/yape/"
     },
     "Plin": {
       "facebook": "https://www.facebook.com/plin.peru",
-      "instagram": "https://www.instagram.com/plin.peru/"
+      "instagram": "https://www.instagram.com/plin.peru/",
+      "linkedin": "https://www.linkedin.com/company/plin/"
     },
     "BCP": {
       "x": "BCPComunica",
       "facebook": "https://www.facebook.com/bancodecreditobcp",
-      "instagram": "https://www.instagram.com/bcpbancodecredito/"
+      "instagram": "https://www.instagram.com/bcpbancodecredito/",
+      "linkedin": "https://www.linkedin.com/company/bcp/"
     },
     "Interbank": {
       "x": "interbank",
       "facebook": "https://www.facebook.com/InterbankPeru",
       "instagram": "https://www.instagram.com/interbank/",
-      "tiktok": "https://www.tiktok.com/@interbankpe"
+      "tiktok": "https://www.tiktok.com/@interbankpe",
+      "linkedin": "https://www.linkedin.com/company/interbank/"
     },
     "BBVA Perú": {
       "x": "bbva_peru",
       "facebook": "https://www.facebook.com/BBVAenPeru",
       "instagram": "https://www.instagram.com/bbva_peru/",
-      "tiktok": "https://www.tiktok.com/@bbvaenperu"
+      "tiktok": "https://www.tiktok.com/@bbvaenperu",
+      "linkedin": "https://www.linkedin.com/company/bbva-peru/"
     },
     "Scotiabank Perú": {
       "x": "scotiabankpe",
@@ -332,13 +338,15 @@
       "x": "BancodelaNacion",
       "facebook": "https://www.facebook.com/BancoDeLaNacion",
       "instagram": "https://www.instagram.com/bancodelanacionperu/",
-      "tiktok": "https://www.tiktok.com/@bancodelanacionperu"
+      "tiktok": "https://www.tiktok.com/@bancodelanacionperu",
+      "linkedin": "https://www.linkedin.com/company/bancodelanacionperu/"
     },
     "SBS": {
       "x": "SBSPERU",
       "facebook": "https://www.facebook.com/sbsperu",
       "instagram": "https://www.instagram.com/sbsperu/",
-      "tiktok": "https://www.tiktok.com/@sbsperu"
+      "tiktok": "https://www.tiktok.com/@sbsperu",
+      "linkedin": "https://www.linkedin.com/company/sbsperu/"
     },
     "Banco Pichincha": {
       "facebook": "https://www.facebook.com/BancoPichinchaPeru/",
@@ -346,7 +354,8 @@
       "tiktok": "https://www.tiktok.com/@bancopichinchaperu"
     },
     "BCRP": {
-      "x": "BCRPOficial"
+      "x": "BCRPOficial",
+      "linkedin": "https://www.linkedin.com/company/bcrpoficial/"
     }
   },
   "apify": {
@@ -599,7 +608,9 @@
     "posts_por_cuenta_historico": 10,
     "posts_comentarios_por_pasada": 8,
     "comentarios_max_por_post": 30,
-    "dia_renovacion": 1
+    "dia_renovacion": 1,
+    "linkedin_intervalo_minutos": 720,
+    "linkedin_posts_por_pagina": 2
   },
   "alerta_x": {
     "_nota": "Alerta temprana: si en X una entidad suma 'min_quejas' quejas en 'ventana_minutos' y triplica ('factor') su promedio de 48 h, se revisan de inmediato sus cuentas de Facebook e Instagram (Bright Data). Se reserva 'reserva_diaria_pct' de la cuota diaria para esto.",

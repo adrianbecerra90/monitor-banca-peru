@@ -973,7 +973,8 @@ function pintarConfig(){
       <label class="campo">X (usuario, sin @)<input type="text" data-r="x" value="${esc(e.cuentas.x||'')}" placeholder="usuario (vacío si no tiene)"></label>
       <label class="campo">Facebook<input type="text" data-r="facebook" value="${esc(e.cuentas.facebook||'')}" placeholder="https://www.facebook.com/…"></label>
       <label class="campo">Instagram<input type="text" data-r="instagram" value="${esc(e.cuentas.instagram||'')}" placeholder="https://www.instagram.com/…"></label>
-      <label class="campo">TikTok<input type="text" data-r="tiktok" value="${esc(e.cuentas.tiktok||'')}" placeholder="https://www.tiktok.com/@…"></label></div></div>`).join('');
+      <label class="campo">TikTok<input type="text" data-r="tiktok" value="${esc(e.cuentas.tiktok||'')}" placeholder="https://www.tiktok.com/@…"></label>
+      <label class="campo">LinkedIn<input type="text" data-r="linkedin" value="${esc(e.cuentas.linkedin||'')}" placeholder="https://www.linkedin.com/company/…"></label></div></div>`).join('');
     c.querySelectorAll('.bloque').forEach(b=>{const e=CFG._ents[+b.dataset.i];b.querySelectorAll('[data-r]').forEach(x=>x.oninput=()=>e.cuentas[x.dataset.r]=x.value)})}
   if(cfgTab==='trends'){
     c.innerHTML=`<p class="ayuda">Cada grupo admite hasta 5 términos, que se comparan en la misma escala (0–100). Los grupos cuyo nombre contiene "fallas" generan alertas cuando suben. Máximo 6 grupos: Google limita las consultas.</p>
