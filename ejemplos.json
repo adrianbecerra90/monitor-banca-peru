@@ -1,5 +1,67 @@
 [
  {
+  "id": "x:2111241256894599439",
+  "texto": "No está funcionando Mesia. No está funcionando. \nTal vez un incendio en el banco de la Nación o una virgen que llora…ya sabes, cómo en los 90s",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T02:35:01.895041+00:00"
+ },
+ {
+  "id": "x:2111230026058268681",
+  "texto": "Ese día mi yape la sufría",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T02:34:39.326239+00:00"
+ },
+ {
+  "id": "x:2111243611291766880",
+  "texto": "Si no recibes dinero porque pides Yape por TikTok 😆",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Cuentas / transferencias"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T02:33:44.740660+00:00"
+ },
+ {
+  "id": "x:2111278338429829516",
+  "texto": "Me acaban de pagar por enseñarle algo tan básico. Bueno más 100 so en mi Yape",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T02:28:45.839547+00:00"
+ },
+ {
   "id": "x:2111264422953976133",
   "texto": "JJAJ que le cuesta responder? o no sabe que responder porque todo es la plata del yape y de sueldaso del cargo que su partido que se invento para su bancada",
   "entidades": [
