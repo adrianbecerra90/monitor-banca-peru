@@ -2915,7 +2915,7 @@ def _avisar_ciber(alertas, cfg):
         return
     corte = iso(ahora() - timedelta(hours=cfg.get("notificar_horas", 24)))
     for a in alertas:
-        if a["fecha"] < corte:
+        if a["fecha"] < corte or (a.get("sector") == "Actor vigilado" and not a.get("entidades")):
             continue
         quien = ", ".join(a["entidades"]) or a["organizacion"] or a["sector"]
         tipo = re.search(r"\|\s*([^|]{3,40}?)\s*\|", a["texto"])
@@ -2945,8 +2945,16 @@ def alertas_ciber(dias=30):
 # --------------------------------------------------------------------------
 
 FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhaus": 60, "threatfox": 60,
-                 "infostealers": 720, "telegram_sesion": 10, "filtraciones": 360}  # minutos
+                 "infostealers": 720, "telegram_sesion": 10, "filtraciones": 360, "actores_x": 30}  # minutos
 CANALES_TELEGRAM = ["ransomfeednews", "ransomlook"]
+# Actores y canales vigilados: de ellos se registra todo (no solo lo que toca al SF) y se buscan sus alias en X
+ACTORES_VIGILADOS = ["NULLEDPE", "Loco Dave", "STARS 2", "CIAC"]  # nombres de canal/autor en Telegram
+ALIAS_X_VIGILADOS = ["NULLEDPE"]  # en X solo alias inconfundibles ("Loco Dave" a secas es un personaje de videojuego)
+
+
+def _es_vigilado(*nombres):
+    vig = [normalizar(a) for a in _cfg_ciber().get("actores", ACTORES_VIGILADOS)]
+    return next((a for a in vig for n in nombres if a and a in normalizar(n or "")), None)
 # Marcas a vigilar en dominios: (tokens, dominios oficiales). Las marcas globales exigen además "pe"/"peru" en el dominio
 MARCAS_DOMINIO = {
     "BCP": (["viabcp", "bcp"], ["viabcp.com", "bcp.com.pe", "bcp.com", "bcpzonasegura.com", "credicorp.com", "credicorpcapital.com"]),
@@ -3232,6 +3240,9 @@ def ciber_telegram_sesion():
                     if len(texto) < 15:
                         continue
                     ev = evaluar_alerta_ciber(texto, True)
+                    vig = _es_vigilado(d.name, usuario, texto)
+                    if not ev and vig:  # actor vigilado: se registra aunque no nombre al SF
+                        ev = {"entidades": detectar_bancos(texto, True), "organizacion": d.name[:60], "sector": "Actor vigilado"}
                     if ev:
                         out.append({"id": f"tgs:{d.id}:{m.id}", "texto": sin_datos_personales(texto),
                                     "url": f"https://t.me/{usuario}/{m.id}" if usuario else "",
@@ -3289,9 +3300,32 @@ def ciber_filtraciones():
     return out
 
 
+def ciber_actores_x():
+    """Busca en X (Nitter) los alias de los actores vigilados: lo que publiquen o lo que se diga de ellos."""
+    out = []
+    for alias in _cfg_ciber().get("alias_x", ALIAS_X_VIGILADOS):
+        if len(str(alias)) < 4:
+            continue
+        _, raiz, _ = _nitter_get("/search/rss?" + urllib.parse.urlencode({"f": "tweets", "q": f'"{alias}"'}))
+        for i in raiz.iter("item"):
+            desc = re.split(r"<blockquote|<hr", i.findtext("description", "") or "")[0]
+            texto = re.sub(r"\s*[—-]*\s*https?://\S*nitter\S*", "", limpiar_html(desc) or i.findtext("title", ""))
+            if normalizar(str(alias)) not in normalizar(texto + " " + i.findtext("title", "")):
+                continue
+            link = re.sub(r"^https?://[^/]+", "https://x.com", i.findtext("link", "")).split("#")[0]
+            ev = evaluar_alerta_ciber(texto, True) or {"entidades": detectar_bancos(texto, True), "organizacion": str(alias)[:60],
+                                                       "sector": "Actor vigilado"}
+            out.append({"id": "x:" + link.rsplit("/", 1)[-1], "texto": sin_datos_personales(texto), "url": link,
+                        "fecha": parse_fecha(i.findtext("pubDate")),
+                        "cuenta": i.findtext("{http://purl.org/dc/elements/1.1/}creator", "") or "X", **ev})
+        time.sleep(3)
+    return out
+
+
 _CIBER_FN = {"ransomware_live": ciber_ransomware_live, "telegram": ciber_telegram, "dominios": ciber_dominios,
              "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox, "infostealers": ciber_infostealers,
-             "telegram_sesion": ciber_telegram_sesion, "filtraciones": ciber_filtraciones}
+             "telegram_sesion": ciber_telegram_sesion, "filtraciones": ciber_filtraciones,
+             "actores_x": ciber_actores_x}
 _CIBER_ULTIMA = {}
 
 
