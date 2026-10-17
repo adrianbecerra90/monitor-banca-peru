@@ -5120,23 +5120,38 @@ def sintesis_nube(qs):
     ws = d.get("palabras", [])[:40]
     if len(ws) < 5:
         return {"frase": "", "fuente": "", "motivo": "Pocas publicaciones para resumir."}
-    huella = hashlib.sha256(json.dumps([(w["palabra"], w["total"] // 3) for w in ws] + [g("banco"), g("horas"), g("fuente")],
-                                       ensure_ascii=False).encode()).hexdigest()
-    previo = _SINTESIS.get(huella)
-    if previo and time.time() - previo[0] < 20 * 60:
-        return previo[1]
+    # entidades más afectadas con los mismos filtros: menciones negativas y quejas por entidad
+    sql, args = _filtrar(qs)
+    with _db_lock, db() as con:
+        filas = con.execute(f"SELECT bancos, sentimiento, es_queja FROM items{sql}", args).fetchall()
+    afect = {}
+    for r in filas:
+        for b in json.loads(r["bancos"] or "[]"):
+            a = afect.setdefault(b, {"neg": 0, "quejas": 0, "total": 0})
+            a["total"] += 1
+            a["neg"] += r["sentimiento"] == "negativo"
+            a["quejas"] += bool(r["es_queja"])
+    afectados = sorted(((b, a) for b, a in afect.items() if a["neg"]), key=lambda x: -x[1]["neg"])[:5]
     neg = sum(w["negativo"] for w in ws)
     pos = sum(w["positivo"] for w in ws)
     lista = "; ".join(f'{w["palabra"]} ({w["total"]}: {w["negativo"]} neg, {w["positivo"]} pos)' for w in ws)
+    lista_af = "; ".join(f'{b} ({a["neg"]} negativas, {a["quejas"]} quejas de {a["total"]} menciones)' for b, a in afectados)
+    huella = hashlib.sha256(json.dumps([(w["palabra"], w["total"] // 3) for w in ws] + [(b, a["neg"] // 3) for b, a in afectados]
+                                       + [g("banco"), g("horas"), g("fuente")], ensure_ascii=False).encode()).hexdigest()
+    previo = _SINTESIS.get(huella)
+    if previo and time.time() - previo[0] < 20 * 60:
+        return previo[1]
     ambito = g("banco").replace(",", ", ") or "todas las entidades monitoreadas"
     periodo = {"1": "la última hora", "24": "las últimas 24 horas", "72": "los últimos 3 días", "168": "los últimos 7 días",
                "720": "los últimos 30 días"}.get(g("horas"), "el periodo seleccionado")
     prompt = (f"Eres analista de reputación y riesgo del sistema financiero peruano. Estas son las palabras y frases más "
               f"frecuentes en redes sociales sobre {ambito} en {periodo}, con cuántas publicaciones las usan y su tono "
               f"({d.get('publicaciones', 0)} publicaciones analizadas):\n{lista}\n\n"
-              "Escribe UNA sola frase en español (máximo 35 palabras) que diga hacia dónde va la conversación: el tema "
-              "dominante y el tono (si hay fallas, fraude, ciberseguridad o temas positivos, dilo). No inventes hechos que "
-              "no se deduzcan de las palabras, no nombres cifras exactas y no uses comillas ni viñetas.")
+              f"Entidades con más menciones negativas: {lista_af or 'ninguna destacada'}.\n\n"
+              "Escribe UNA sola frase en español (máximo 40 palabras) que diga hacia dónde va la conversación: el tema "
+              "dominante, el tono (si hay fallas, fraude, ciberseguridad o temas positivos, dilo) y quiénes son los "
+              "principales afectados (las entidades con más negativas; si una concentra la mayoría, dilo). No inventes "
+              "hechos que no se deduzcan de los datos, no nombres cifras exactas y no uses comillas ni viñetas.")
     for p in _ia_proveedores():
         if _ia_falta_clave(p):
             continue
@@ -5160,7 +5175,8 @@ def sintesis_nube(qs):
     # sin IA disponible: frase por reglas con los términos dominantes
     tono = "mayormente negativo" if neg > pos * 1.5 else "mayormente positivo" if pos > neg * 1.5 else "mixto"
     top = ", ".join(w["palabra"] for w in ws[:5])
-    res = {"frase": f"La conversación gira en torno a {top}, con un tono {tono}.", "fuente": "reglas (sin IA disponible)",
+    quien = (" Los más afectados: " + ", ".join(b for b, _ in afectados[:3]) + ".") if afectados else ""
+    res = {"frase": f"La conversación gira en torno a {top}, con un tono {tono}.{quien}", "fuente": "reglas (sin IA disponible)",
            "generada": iso(ahora())}
     _SINTESIS[huella] = (time.time(), res)
     return res
