@@ -743,10 +743,16 @@ $('#pausa-global').onclick=e=>{if(ESTADO?.pausa?.todo)return pausa('todo',false)
 
 // Alertas de cuentas de inteligencia de amenazas: solo las del sistema financiero, seguros y AFP del Perú
 // Pestañas: Monitoreo · Ciberseguridad · Análisis · Sistema (se recuerda la última; #ciber en la URL abre esa)
+let CIBER_TODAS=false,CIBER_IDS=[],CIBER_VISTOS=new Set();
+try{CIBER_VISTOS=new Set(JSON.parse(localStorage.getItem('monitor.ciber.vistos')||'[]'))}catch(e){}
+function marcarCiberVisto(){let cambio=false;CIBER_IDS.forEach(i=>{if(!CIBER_VISTOS.has(i)){CIBER_VISTOS.add(i);cambio=true}});
+  if(!cambio)return;try{localStorage.setItem('monitor.ciber.vistos',JSON.stringify([...CIBER_VISTOS].slice(-1000)))}catch(e){}
+  const bd=$('#vista-ciber-n');bd.hidden=true;$('#ciber-resumen').innerHTML=''}
 let VISTA='monitoreo';
 function abrirVista(v,guardar=true){if(!['monitoreo','ciber','analisis','sistema'].includes(v))v='monitoreo';VISTA=v;document.body.dataset.vista=v;
   document.querySelectorAll('.vistas [role=tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.vista===v?'true':'false'));
   if(guardar){try{localStorage.setItem('monitor.vista',v)}catch(e){}history.replaceState(null,'',v==='monitoreo'?location.pathname:'#'+v)}
+  if(v==='ciber'&&typeof marcarCiberVisto==='function')marcarCiberVisto();
   if(v==='monitoreo'||v==='analisis')setTimeout(()=>window.dispatchEvent(new Event('resize')),0)}
 document.querySelectorAll('.vistas [role=tab]').forEach(b=>b.onclick=()=>{abrirVista(b.dataset.vista);window.scrollTo({top:0})});
 (function(){let v=location.hash.slice(1);if(!v){try{v=localStorage.getItem('monitor.vista')||''}catch(e){}}abrirVista(v||'monitoreo',false)})();
@@ -756,12 +762,15 @@ window.addEventListener('hashchange',()=>abrirVista(location.hash.slice(1),false
   const b=$('#f-plegar');fil.classList.add('plegado');
   const txt=()=>{b.textContent=fil.classList.contains('plegado')?'Más filtros ▾':'Menos filtros ▴'};txt();
   b.onclick=()=>{fil.classList.toggle('plegado');txt()}})();
-let CIBER_TODAS=false;
+
 async function cargarCiber(){
   try{const d=await fetch('/api/ciber').then(r=>r.json());const a=d.alertas||[];
-    const n7=a.filter(x=>Date.now()-new Date(x.fecha)<7*864e5).length,h24=a.filter(x=>Date.now()-new Date(x.fecha)<864e5);
+    const n7=a.filter(x=>Date.now()-new Date(x.fecha)<7*864e5).length;
+    CIBER_IDS=a.map(x=>x.id);if(VISTA==='ciber'&&document.visibilityState==='visible')marcarCiberVisto();
+    // contador y franja: solo las alertas recientes (7 días) que aún no viste en este navegador
+    const h24=a.filter(x=>Date.now()-new Date(x.fecha)<7*864e5&&!CIBER_VISTOS.has(x.id));
     const bd=$('#vista-ciber-n');bd.hidden=!h24.length;bd.textContent=h24.length;
-    $('#ciber-resumen').innerHTML=h24.length?`<div class="alerta" role="button" tabindex="0">🛡️ <b>${h24.length} alerta${h24.length>1?'s':''} de ciberseguridad en 24 h:</b> ${esc([...new Set(h24.map(x=>x.entidades.join(', ')||x.organizacion||x.sector))].slice(0,5).join(' · '))} — <u>ver</u></div>`:'';
+    $('#ciber-resumen').innerHTML=h24.length?`<div class="alerta" role="button" tabindex="0">🛡️ <b>${h24.length} alerta${h24.length>1?'s':''} de ciberseguridad nueva${h24.length>1?'s':''}:</b> ${esc([...new Set(h24.map(x=>x.entidades.join(', ')||x.organizacion||x.sector))].slice(0,5).join(' · '))} — <u>ver</u></div>`:'';
     const cr=$('#ciber-resumen .alerta');if(cr){cr.onclick=()=>{abrirVista('ciber');window.scrollTo({top:0})};cr.onkeydown=e=>{if(e.key==='Enter')cr.onclick()}}
     $('#ciber-n').textContent=`· ${n7} en 7 días · ${a.length} en 30 días`;
     const vis=CIBER_TODAS?a.slice(0,40):a.slice(0,4);
