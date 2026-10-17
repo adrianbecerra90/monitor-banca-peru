@@ -1345,7 +1345,7 @@ def _nitter_get(ruta, inicio=0):
     for inst in _instancias_nitter(inicio):
         try:
             req = urllib.request.Request(inst + ruta, headers={"User-Agent": UA, "Accept-Language": "es-PE,es"})
-            with urllib.request.urlopen(req, timeout=25) as r:
+            with urllib.request.urlopen(req, timeout=15) as r:
                 cuerpo, cursor = r.read(), r.headers.get("Min-Id")
             raiz = ET.fromstring(cuerpo)  # falla si devolvió una página anti-bot
             ruta_ok("X·Nitter", inst, "Responde")
@@ -1354,6 +1354,9 @@ def _nitter_get(ruta, inicio=0):
             ultimo = e
             ruta_fallo("X·Nitter", inst, e)
     raise RuntimeError(f"Ninguna instancia de Nitter respondió ({ultimo})")
+
+
+_X_ULTIMO = {}  # consulta -> fecha del tuit más nuevo visto en la pasada anterior
 
 
 def x_nitter(rango=None):
@@ -1376,9 +1379,18 @@ def x_nitter(rango=None):
     def una_consulta(k_q):
         k, q = k_q
         out, cursor = [], None
-        for _ in range(paginas):
+        # En vivo se sigue paginando hasta alcanzar lo ya visto en la pasada anterior (antes solo 1 página: ~20 tuits;
+        # con más actividad se perdían). Tope de páginas para no saturar Nitter
+        visto = None if rango else _X_ULTIMO.get(q)
+        max_pag = paginas if rango else max(paginas, cfg.get("paginas_max_tiempo_real", 5))
+        mas_nuevo = None
+        for n_pag in range(max_pag):
             ruta = "/search/rss?" + urllib.parse.urlencode({"f": "tweets", "q": q, **({"cursor": cursor} if cursor else {})})
-            inst, raiz, cursor = _nitter_get(ruta, inicio=k)
+            try:
+                inst, raiz, cursor = _nitter_get(ruta, inicio=k)
+            except RuntimeError:
+                time.sleep(15)  # todas las instancias fallaron: un reintento antes de perder la consulta
+                inst, raiz, cursor = _nitter_get(ruta, inicio=k + 1)
             items = list(raiz.iter("item"))
             mas_antiguo = None
             for i in items:
@@ -1409,9 +1421,15 @@ def x_nitter(rango=None):
                     if destino:
                         it.update(tipo="comentario", bancos_fijos=destino, peru=True, cuenta=destino[0])
                 out.append(it)
+            if out:
+                mas_nuevo = max(mas_nuevo or "", max(o["fecha"] for o in out))
             if not items or not cursor or (limite and mas_antiguo and mas_antiguo < limite):
                 break
+            if not rango and (n_pag + 1 >= paginas) and (not visto or (mas_antiguo and mas_antiguo <= visto)):
+                break  # ya se alcanzó lo visto (o es la primera pasada): no hace falta otra página
             time.sleep(cfg.get("pausa_seg", 3))
+        if not rango and mas_nuevo:
+            _X_ULTIMO[q] = mas_nuevo
         return out
 
     hilos = max(1, min(len(_instancias_nitter()), cfg.get("consultas_en_paralelo", 3)))
