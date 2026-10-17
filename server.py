@@ -339,6 +339,8 @@ def clasificar(texto, tipo=""):
     cats = [k for k, pats in _cat_re.items() if any(p.search(t) for p in pats)]
     if tipo in ("oficial", "post_oficial") or RESPUESTA_OFICIAL.search(t):  # respuesta de la propia cuenta del banco/SBS
         return False, cats, 0, "neutro"
+    if es_incidente_ciber(texto):  # filtración, ransomware, hackeo de la entidad: negativo aunque sea noticia
+        return True, ["Ciberseguridad / hackeos"] + [c for c in cats if c != "Ciberseguridad / hackeos"][:2], 2, "negativo"
     if ajeno_a_la_entidad(texto):
         return False, cats, 0, "neutro"  # no es atribuible a la entidad ni a sus servicios
     neg = sum(1 for p in _neg_re if p.search(t))
@@ -370,7 +372,7 @@ def clasificar(texto, tipo=""):
     if tipo == "noticia":
         # Los titulares usan muletillas ("¿hasta cuándo…?", "otra vez") sin carga negativa: solo cuenta la queja
         neg = neg if es_queja else 0
-    if not es_queja and set(cats) & {"Errores operativos", "Ciberseguridad / hackeos"}:
+    if not es_queja and ("Errores operativos" in cats or ("Ciberseguridad / hackeos" in cats and not CHARLA_CIBER.search(t))):
         es_queja = True  # un error en la operación o un incidente de seguridad de la entidad ya es un reclamo
     if fuera_del_servicio(cats) or entidad_como_alternativa(texto):
         es_queja, neg = False, 0  # solo marketing/diseño, o la entidad es la alternativa: no es negativo ni queja
@@ -1381,9 +1383,12 @@ def x_nitter(rango=None):
             mas_antiguo = None
             for i in items:
                 titulo = i.findtext("title", "")
-                if titulo.startswith("RT by"):
-                    continue
                 autor = i.findtext("{http://purl.org/dc/elements/1.1/}creator", "")
+                if titulo.startswith("RT by"):
+                    # la búsqueda a veces devuelve el retuit en vez del original: se guarda el original con su autor
+                    titulo = re.sub(r"^RT by @\w+:\s*", "", titulo)
+                    m_aut = re.search(r"https?://[^/]+/(\w+)/status/", i.findtext("link", ""))
+                    autor = "@" + m_aut.group(1) if m_aut else autor
                 desc = i.findtext("description", "") or ""
                 desc = re.split(r"<blockquote|<hr", desc)[0] or desc  # sin el tweet citado
                 texto = re.sub(r"^R to @\w+:\s*", "", limpiar_html(desc) or titulo)
