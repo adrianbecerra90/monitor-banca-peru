@@ -2945,7 +2945,7 @@ def alertas_ciber(dias=30):
 # --------------------------------------------------------------------------
 
 FUENTES_CIBER = {"ransomware_live": 60, "telegram": 15, "dominios": 360, "urlhaus": 60, "threatfox": 60,
-                 "infostealers": 720, "telegram_sesion": 10}  # minutos
+                 "infostealers": 720, "telegram_sesion": 10, "filtraciones": 360}  # minutos
 CANALES_TELEGRAM = ["ransomfeednews", "ransomlook"]
 # Marcas a vigilar en dominios: (tokens, dominios oficiales). Las marcas globales exigen además "pe"/"peru" en el dominio
 MARCAS_DOMINIO = {
@@ -3269,9 +3269,29 @@ def telegram_login():
     print(f"Sesión de Telegram iniciada como {yo.first_name or ''} (@{yo.username or '—'}). Guardada en .env{extra}.")
 
 
+def ciber_filtraciones():
+    """Índice público de bases de datos filtradas en foros (Ransomlook): avisa si aparece el dominio de una entidad
+    monitoreada o del sistema financiero peruano. Solo el nombre del dominio; nunca se descargan los datos."""
+    datos = json.loads(http_get("https://www.ransomlook.io/api/leaks/leaks", timeout=90))
+    propios = {d: e for e, (_, ofs) in MARCAS_DOMINIO.items() for d in ofs}
+    propios.update({d: e for e, ds in DOMINIOS_INFOSTEALER.items() for d in ds})
+    out = []
+    for x in datos if isinstance(datos, list) else []:
+        nombre = str(x.get("name") or "").lower().strip()
+        reg = dominio_registrado(nombre) if "." in nombre else nombre
+        ent = propios.get(reg) or propios.get(nombre)
+        sf = nombre.endswith(".pe") and SF_PERU.search(normalizar(nombre.replace(".", " ").replace("-", " ")))
+        if ent or sf:
+            out.append({"id": f"leak:{x.get('id')}", "cuenta": "Ransomlook (foros)", "fecha": iso(ahora()),
+                        "url": f"https://www.ransomlook.io/leak/{x.get('id')}", "entidades": [ent] if ent else [],
+                        "organizacion": nombre[:80], "sector": "Filtración en foros",
+                        "texto": f"Filtración en foros | {nombre}\nBase de datos de {nombre} listada en el índice de filtraciones de Ransomlook."})
+    return out
+
+
 _CIBER_FN = {"ransomware_live": ciber_ransomware_live, "telegram": ciber_telegram, "dominios": ciber_dominios,
              "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox, "infostealers": ciber_infostealers,
-             "telegram_sesion": ciber_telegram_sesion}
+             "telegram_sesion": ciber_telegram_sesion, "filtraciones": ciber_filtraciones}
 _CIBER_ULTIMA = {}
 
 
