@@ -6332,6 +6332,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True, "entidades": list(nueva["bancos"])})
             except (ValueError, OSError) as e:
                 return self._send({"error": str(e)[:200]}, code=400)
+        if u.path == "/api/sync/avisos/prueba":  # prueba de avisos lanzada por el monitor local (diagnóstico)
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            try:
+                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular y/o Teams).",
+                                    prioridad="default", etiquetas="white_check_mark")
+            except Exception as e:
+                print(f"  Prueba de avisos: {e}", flush=True)
+            return self._send(diagnostico_avisos())
         if u.path == "/api/sync/mensajes":
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
