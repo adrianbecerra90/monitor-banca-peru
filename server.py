@@ -6509,11 +6509,19 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 d = {}
             hasta = ahora().astimezone(LIMA)
-            titulo, texto, nivel = reporte_periodico(_reporte_anterior(hasta, _cfg_reportes()), hasta)
+            try:
+                horas = float(d.get("horas") or 0)
+            except (TypeError, ValueError):
+                horas = 0
+            desde = hasta - timedelta(hours=min(horas, 72)) if horas > 0 else _reporte_anterior(hasta, _cfg_reportes())
+            titulo, texto, nivel = reporte_periodico(desde, hasta)
+            if horas > 0:
+                titulo = f"Reporte de la última {'hora' if horas == 1 else f'{horas:g} horas'} · {hasta:%H:%M}"
             if d.get("enviar") is True:
                 enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
                                     url=CONFIG.get("notificaciones", {}).get("enlace") or None)
-            return self._send({"titulo": titulo, "texto": texto, "nivel": nivel, "enviado": d.get("enviar") is True})
+            return self._send({"titulo": titulo, "texto": texto, "nivel": nivel, "enviado": d.get("enviar") is True,
+                               "desde": iso(desde)})
         if u.path == "/api/sync/avisos/prueba":  # prueba de avisos lanzada por el monitor local (diagnóstico)
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
