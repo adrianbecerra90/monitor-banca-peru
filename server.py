@@ -3133,9 +3133,9 @@ def _reporte_anterior(t, cfg):
     return t - timedelta(hours=12)
 
 
-def reporte_periodico(desde, hasta):
-    """(titulo, texto, nivel) con lo ocurrido entre desde y hasta (datetimes con zona)."""
-    qs = {"desde": [iso(desde)], "hasta": [iso(hasta)]}
+def reporte_periodico(desde, hasta, banco=None):
+    """(titulo, texto, nivel) con lo ocurrido entre desde y hasta (datetimes con zona); opcionalmente de una entidad."""
+    qs = {"desde": [iso(desde)], "hasta": [iso(hasta)], **({"banco": [banco]} if banco else {})}
     sql, args = _filtrar(qs)
     sql += """ AND meta NOT LIKE '%"tipo": "post_oficial"%'"""
     with _db_lock, db() as con:
@@ -3144,6 +3144,8 @@ def reporte_periodico(desde, hasta):
         alertas = [dict(r) for r in con.execute("SELECT cuenta, texto, entidades, organizacion, sector FROM alertas_ciber "
                                                 "WHERE capturado >= ? AND capturado < ? ORDER BY fecha DESC",
                                                 (iso(desde), iso(hasta)))]
+    if banco:  # alertas de ciberseguridad de esa entidad (asignadas o que la nombran)
+        alertas = [a for a in alertas if banco in json.loads(a["entidades"] or "[]") or banco in detectar_bancos(a["texto"], True)]
     neg = sum(r["sentimiento"] == "negativo" for r in filas)
     quejas = sum(bool(r["es_queja"]) for r in filas)
     graves = sum(bool(r["es_queja"]) and (r["severidad"] or 0) >= 3 for r in filas)
@@ -6532,10 +6534,20 @@ class Handler(BaseHTTPRequestHandler):
                 horas = float(d.get("horas") or 0)
             except (TypeError, ValueError):
                 horas = 0
-            desde = hasta - timedelta(hours=min(horas, 72)) if horas > 0 else _reporte_anterior(hasta, _cfg_reportes())
-            titulo, texto, nivel = reporte_periodico(desde, hasta)
-            if horas > 0:
-                titulo = f"Reporte de la última {'hora' if horas == 1 else f'{horas:g} horas'} · {hasta:%H:%M}"
+            banco = d.get("banco") if d.get("banco") in BANCOS else None
+            if d.get("desde"):
+                try:
+                    desde = datetime.fromisoformat(str(d["desde"]))
+                    desde = desde if desde.tzinfo else desde.replace(tzinfo=LIMA)
+                except ValueError:
+                    return self._send({"error": "desde no válido"}, code=400)
+            else:
+                desde = hasta - timedelta(hours=min(horas, 72)) if horas > 0 else _reporte_anterior(hasta, _cfg_reportes())
+            titulo, texto, nivel = reporte_periodico(desde, hasta, banco)
+            if banco or d.get("desde") or horas > 0:
+                titulo = (f"Reporte {banco + ' · ' if banco else ''}" +
+                          (f"última {'hora' if horas == 1 else f'{horas:g} horas'}" if horas > 0 and not d.get("desde")
+                           else f"desde {desde.astimezone(LIMA):%d/%m %H:%M}") + f" hasta {hasta:%d/%m %H:%M}")
             if d.get("enviar") is True:
                 enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
                                     url=CONFIG.get("notificaciones", {}).get("enlace") or None)
