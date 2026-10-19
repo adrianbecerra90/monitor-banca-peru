@@ -3654,6 +3654,8 @@ def resumen_infostealers():
         filas = con.execute("SELECT entidad, dominio, dia, usuarios, empleados, terceros FROM infostealers ORDER BY dia").fetchall()
     ult, base = {}, {}
     hace7 = (ahora().astimezone(LIMA) - timedelta(days=7)).strftime("%Y-%m-%d")
+    vigentes = {(e, d) for e, ds in _dominios_entidades().items() for d in ds}
+    filas = [r for r in filas if (r["entidad"], r["dominio"]) in vigentes]  # sin dominios globales o retirados
     for r in filas:
         ult[(r["entidad"], r["dominio"])] = r
         if r["dia"] <= hace7:
@@ -4619,11 +4621,15 @@ CANAL_TG_OK = re.compile(r"^\w{4,40}$")
 
 
 def _dominios_entidades():
-    """Dominios oficiales por entidad: los del código más los agregados en Configuración."""
-    out = {e: list(dict.fromkeys(MARCAS_DOMINIO.get(e, ([], []))[1] + DOMINIOS_INFOSTEALER.get(e, []))) for e in BANCOS}
+    """Dominios propios de cada entidad EN PERÚ (infostealers, filtraciones): los del código más los de Configuración.
+    No incluye dominios globales del grupo (p. ej. scotiabank.com), que solo sirven para no confundirlos con phishing."""
+    out = {e: list(DOMINIOS_INFOSTEALER.get(e, [])) for e in BANCOS}
+    globales = {"scotiabank.com", "scotiabankchile.cl", "scotiabank.cl", "bbva.com", "bbva.es", "bbvaexperience.com", "bcp.com",
+                "credicorp.com", "credicorpcapital.com", "interbank.com", "pichincha.com", "bancopichincha.com.ec",
+                "pichincha.com.co", "bcpzonasegura.com"}
     for e, ds in CONFIG.get("ciber", {}).get("dominios", {}).items():
         if e in out:
-            out[e] = list(dict.fromkeys(out[e] + ds))
+            out[e] = list(dict.fromkeys(out[e] + [d for d in ds if d not in globales]))
     return out
 
 
