@@ -6490,6 +6490,10 @@ class Handler(BaseHTTPRequestHandler):
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
             return self._send({"ejemplos": ejemplos()})
+        if u.path == "/api/sync/stream":  # diagnóstico del canal en vivo a través del proxy (con la clave de sincronización)
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            return self._stream()
         if u.path == "/api/sync/avisos":  # diagnóstico de avisos (sin secretos), servidor a servidor
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
