@@ -2895,10 +2895,18 @@ TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", 
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
 
 
+URL_PANEL = "https://monitor-banca-peru-production.up.railway.app/"
+
+
+def _url_panel():
+    return (os.environ.get("PANEL_URL") or CONFIG.get("notificaciones", {}).get("enlace") or URL_PANEL).rstrip("/") + "/"
+
+
 def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None):
     """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
     tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»)."""
     enviados, errores = 0, []
+    mensaje = f"{mensaje.rstrip()}\n\nMás información: {_url_panel()}"  # pie fijo en todos los avisos
     if nivel in NIVELES:
         prioridad = NIVELES[nivel][1] if prioridad in ("high", "default") else prioridad
     etiqueta_txt = " · ".join(x for x in (f"🏷️ {tipo}" if tipo else "", f"{NIVELES[nivel][0]} {nivel}" if nivel in NIVELES else "") if x)
