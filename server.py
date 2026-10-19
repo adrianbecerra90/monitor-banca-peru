@@ -2889,7 +2889,8 @@ def diagnostico_avisos():
             "ia": {"proveedores": [{"nombre": p.get("nombre"), "modelo": p.get("modelo"), "sin_clave": _ia_falta_clave(p),
                                     "salud": {k: SALUD.get("IA", {}).get(p.get("nombre"), {}).get(k) for k in ("ok", "msg")}}
                                    for p in _ia_proveedores()],
-                   "retirados": sorted(_MODELOS_RETIRADOS), "pendientes": ESTADO.get("ia", {}).get("pendientes")}}
+                   "retirados": sorted(_MODELOS_RETIRADOS), "pendientes": ESTADO.get("ia", {}).get("pendientes"),
+                   "errores_sintesis": list(_ERR_SINTESIS)}}
 
 
 # Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
@@ -5635,6 +5636,7 @@ def chat_monitor(pregunta, usuario, filtros=None, historial=None):
     raise ValueError("No hay un modelo de IA disponible en este momento; intenta en unos minutos")
 
 
+_ERR_SINTESIS = []  # últimos errores de la IA al resumir (diagnóstico)
 _SINTESIS = {}  # huella de la nube -> (momento, resultado)
 
 
@@ -5675,6 +5677,7 @@ def _resumen_directo(qs):
                 resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0.2, "max_tokens": 1500,
                                                          "messages": [{"role": "user", "content": prompt}]}, timeout=60)
                 if "choices" not in resp:
+                    _ERR_SINTESIS.append(f"{iso(ahora())[11:19]} {modelo}: sin respuesta ({str(resp.get('error'))[:120]})")
                     continue
                 frase = re.sub(r"<think>.*?</think>", "", resp["choices"][0]["message"].get("content") or "", flags=re.S)
                 frase = re.sub(r"\s+", " ", frase).strip().strip('"“”').strip()
@@ -5687,8 +5690,12 @@ def _resumen_directo(qs):
             except urllib.error.HTTPError as e:
                 if e.code == 410:
                     _MODELOS_RETIRADOS.add(modelo)
+                _ERR_SINTESIS.append(f"{iso(ahora())[11:19]} {modelo}: {_error_http(e)[:140]}")
+                del _ERR_SINTESIS[:-10]
             except Exception as e:
                 print(f"  Resumen directo ({modelo}): {type(e).__name__}", flush=True)
+                _ERR_SINTESIS.append(f"{iso(ahora())[11:19]} {modelo}: {_error_http(e)[:140]}")
+                del _ERR_SINTESIS[:-10]
     neg = sum(r["sentimiento"] == "negativo" for r in filas)
     ents = sorted({b for r in filas for b in json.loads(r["bancos"] or "[]")})
     return {"frase": f"{len(filas)} publicaciones en el periodo ({neg} negativas) sobre {', '.join(ents) or 'las entidades'}; "
@@ -5796,8 +5803,9 @@ def sintesis_nube(qs):
             try:
                 resp = _ia_post(p, "/chat/completions", {"model": modelo, "temperature": 0.2, "max_tokens": 1500,
                                                          "messages": [{"role": "user", "content": prompt}]}, timeout=60)
-                if "choices" not in resp:
-                    continue  # p. ej. proveedor saturado: se prueba el siguiente modelo
+                if "choices" not in resp:  # p. ej. proveedor saturado: se prueba el siguiente modelo
+                    _ERR_SINTESIS.append(f"{iso(ahora())[11:19]} {modelo}: sin respuesta ({str(resp.get('error'))[:120]})")
+                    continue
                 frase = re.sub(r"<think>.*?</think>", "", resp["choices"][0]["message"].get("content") or "", flags=re.S)
                 frase = re.sub(r"\s+", " ", frase).strip().strip('"“”').strip()
                 if resp["choices"][0].get("finish_reason") == "length" and not frase.endswith("."):
@@ -5809,8 +5817,12 @@ def sintesis_nube(qs):
             except urllib.error.HTTPError as e:
                 if e.code == 410:
                     _MODELOS_RETIRADOS.add(modelo)
+                _ERR_SINTESIS.append(f"{iso(ahora())[11:19]} {modelo}: {_error_http(e)[:140]}")
+                del _ERR_SINTESIS[:-10]
             except Exception as e:
                 print(f"  Síntesis de la nube ({modelo}): {type(e).__name__}", flush=True)
+                _ERR_SINTESIS.append(f"{iso(ahora())[11:19]} {modelo}: {_error_http(e)[:140]}")
+                del _ERR_SINTESIS[:-10]
     # sin IA disponible: frase por reglas con los términos dominantes
     tono = "mayormente negativo" if neg > pos * 1.5 else "mayormente positivo" if pos > neg * 1.5 else "mixto"
     top = ", ".join(w["palabra"] for w in ws[:5])
