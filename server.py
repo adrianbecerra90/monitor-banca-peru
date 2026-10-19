@@ -2774,7 +2774,7 @@ def cambiar_pausa(objetivo, pausar, horas=0, por=""):
 
 def _avisar_silencioso(titulo, texto):
     try:
-        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="pause_button")
+        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="pause_button", tipo="Pausa", nivel="Informativo")
     except Exception as e:
         print(f"  Aviso de pausa fallido ({type(e).__name__})", flush=True)
 _locks = {n: threading.Lock() for n in FUENTES}
@@ -2845,12 +2845,14 @@ def _hay_canal_aviso():
                 or _urls_teams())
 
 
-def _enviar_teams(destino, titulo, mensaje, prioridad, url):
+def _enviar_teams(destino, titulo, mensaje, prioridad, url, tipo=None, nivel=None):
     """Tarjeta en Teams vía Workflows: plantillas "Publicar en un chat / en un canal cuando se recibe una solicitud de
     webhook"."""
-    color = "Attention" if prioridad in ("urgent", "max", "high") else "Default"
+    color = NIVELES[nivel][2] if nivel in NIVELES else ("Attention" if prioridad in ("urgent", "max", "high") else "Default")
+    chips = [x for x in (f"🏷️ **{tipo}**" if tipo else "", f"{NIVELES[nivel][0]} **{nivel}**" if nivel in NIVELES else "") if x]
     tarjeta = {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
-               "body": [{"type": "TextBlock", "text": titulo, "weight": "Bolder", "size": "Medium", "wrap": True, "color": color},
+               "body": ([{"type": "TextBlock", "text": "  ·  ".join(chips), "wrap": True, "size": "Small", "color": color}] if chips else []) +
+                       [{"type": "TextBlock", "text": titulo, "weight": "Bolder", "size": "Medium", "wrap": True, "color": color},
                         {"type": "TextBlock", "text": mensaje, "wrap": True},
                         {"type": "TextBlock", "text": f"Monitor de banca · {ahora().astimezone(LIMA):%d/%m %H:%M} (Lima)",
                          "isSubtle": True, "size": "Small", "wrap": True}]}
@@ -2886,18 +2888,34 @@ def diagnostico_avisos():
             "intentos": list(reversed(_AVISOS_LOG))}
 
 
-def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None):
-    """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno."""
+# Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
+NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
+           "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
+TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico por hora": "pico-por-hora",
+               "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
+
+
+def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None):
+    """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
+    tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»)."""
     enviados, errores = 0, []
+    if nivel in NIVELES:
+        prioridad = NIVELES[nivel][1] if prioridad in ("high", "default") else prioridad
+    etiqueta_txt = " · ".join(x for x in (f"🏷️ {tipo}" if tipo else "", f"{NIVELES[nivel][0]} {nivel}" if nivel in NIVELES else "") if x)
+    if tipo or nivel:
+        etiquetas = ",".join(x for x in (etiquetas, TIPOS_AVISO.get(tipo, ""),
+                                         "nivel-" + normalizar(nivel or "").replace(" ", "-") if nivel else "") if x)
     tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
     if re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema):
         servidor = os.environ.get("NOTIFY_NTFY_SERVER", "https://ntfy.sh").rstrip("/")
-        h = {"Title": titulo.encode("utf-8").decode("latin-1", "ignore"), "Priority": prioridad, "Tags": etiquetas,
-             "Content-Type": "text/plain; charset=utf-8"}
+        titulo_n = (f"[{nivel.upper()}] " if nivel else "") + titulo
+        h = {"Title": "=?UTF-8?B?" + base64.b64encode(titulo_n.encode("utf-8")).decode() + "?=", "Priority": prioridad,
+             "Tags": etiquetas, "Content-Type": "text/plain; charset=utf-8"}
         if url:
             h["Click"] = url
         try:
-            http_get(f"{servidor}/{tema}", h, data=mensaje.encode("utf-8"), timeout=30)
+            http_get(f"{servidor}/{tema}", h, data=((etiqueta_txt + "\n") if etiqueta_txt else "").encode("utf-8")
+                     + mensaje.encode("utf-8"), timeout=30)
             enviados += 1
             _log_aviso("ntfy", titulo, True)
         except Exception as e:
@@ -2910,7 +2928,7 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
     for i, destino in enumerate(destinos, 1):
         canal = "Teams" if len(destinos) == 1 else f"Teams {i}"
         try:
-            _enviar_teams(destino, titulo, mensaje, prioridad, url)
+            _enviar_teams(destino, titulo, mensaje, prioridad, url, tipo, nivel)
             enviados += 1
             _log_aviso(canal, titulo, True)
         except Exception as e:
@@ -2999,6 +3017,7 @@ def avisar_graves(nuevos):
                          f"{n.get('fuente', '')} · {n.get('autor', '')}: {re.sub(r'\s+', ' ', n.get('texto', ''))[:260]}"
             try:
                 enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
+                                    tipo="Queja crítica" if critico else "Queja grave", nivel="Crítico" if critico else "Grave",
                                     etiquetas="rotating_light" if critico else "warning",
                                     url=n.get("url") or cfg.get("enlace") or None)
                 print(f"[{datetime.now():%H:%M:%S}] Aviso inmediato: {titulo}", flush=True)
@@ -3061,13 +3080,130 @@ def revisar_umbral_notificar():
                  f"{'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora · "
                  f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
         try:
-            enviar_notificacion(f"Alerta: {quien}", texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None)
+            nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
+            enviar_notificacion(f"Pico por hora: {quien}", texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None,
+                                tipo="Pico por hora", nivel=nivel_p)
             enviadas.append({"clave": k, "n": n, "umbral": round(umbral, 1)})
             print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {texto}", flush=True)
         except Exception as e:
             print(f"  Notificación fallida ({type(e).__name__}: {e})", flush=True)
     ESTADO["notificaciones"] = {"ultima_revision": iso(ahora()), "enviadas": enviadas or ESTADO.get("notificaciones", {}).get("enviadas", [])}
     return enviadas
+
+
+# ---------------- Reportes programados (lunes a viernes 10:30 y 15:30, hora de Lima) ----------------
+# Resumen de lo ocurrido desde el reporte anterior: síntesis de la conversación, cifras, entidades más afectadas,
+# quejas graves y alertas de ciberseguridad nuevas. Se envía por los mismos canales (Teams y/o celular).
+REPORTES = {"activos": True, "horas": ["10:30", "15:30"], "dias": [0, 1, 2, 3, 4]}  # 0 = lunes
+
+
+def _cfg_reportes():
+    return {**REPORTES, **CONFIG.get("notificaciones", {}).get("reportes", {})}
+
+
+def _horarios_reporte(cfg):
+    out = []
+    for hhmm in cfg.get("horas", []):
+        try:
+            h, m = (int(x) for x in str(hhmm).split(":"))
+            out.append((h, m))
+        except ValueError:
+            continue
+    return sorted(out)
+
+
+def _reporte_anterior(t, cfg):
+    """El horario de reporte inmediatamente anterior a t (respeta los días hábiles configurados)."""
+    horas, dias = _horarios_reporte(cfg), set(cfg.get("dias", []))
+    d = t
+    for _ in range(14 * max(1, len(horas))):
+        for h, m in reversed(horas):
+            c = d.replace(hour=h, minute=m, second=0, microsecond=0)
+            if c < t and c.weekday() in dias:
+                return c
+        d = (d - timedelta(days=1)).replace(hour=23, minute=59)
+    return t - timedelta(hours=12)
+
+
+def reporte_periodico(desde, hasta):
+    """(titulo, texto, nivel) con lo ocurrido entre desde y hasta (datetimes con zona)."""
+    qs = {"desde": [iso(desde)], "hasta": [iso(hasta)]}
+    sql, args = _filtrar(qs)
+    sql += """ AND meta NOT LIKE '%"tipo": "post_oficial"%'"""
+    with _db_lock, db() as con:
+        filas = [dict(r) for r in con.execute(f"SELECT bancos, sentimiento, es_queja, severidad, categorias FROM items{sql}", args)]
+        _tabla_ciber(con)
+        alertas = [dict(r) for r in con.execute("SELECT cuenta, texto, entidades, organizacion, sector FROM alertas_ciber "
+                                                "WHERE capturado >= ? AND capturado < ? ORDER BY fecha DESC",
+                                                (iso(desde), iso(hasta)))]
+    neg = sum(r["sentimiento"] == "negativo" for r in filas)
+    quejas = sum(bool(r["es_queja"]) for r in filas)
+    graves = sum(bool(r["es_queja"]) and (r["severidad"] or 0) >= 3 for r in filas)
+    por_ent = {}
+    for r in filas:
+        for b in json.loads(r["bancos"] or "[]"):
+            e = por_ent.setdefault(b, {"neg": 0, "quejas": 0})
+            e["neg"] += r["sentimiento"] == "negativo"
+            e["quejas"] += bool(r["es_queja"])
+    top = [(b, e) for b, e in sorted(por_ent.items(), key=lambda x: -x[1]["neg"]) if e["neg"]][:4]
+    try:
+        sint = sintesis_nube(qs) if filas else {}
+    except Exception as e:
+        print(f"  Reporte: síntesis no disponible ({type(e).__name__})", flush=True)
+        sint = {}
+    fmt_l = lambda d: d.astimezone(LIMA).strftime("%a %d/%m %H:%M").replace("Mon", "lun").replace("Tue", "mar") \
+        .replace("Wed", "mié").replace("Thu", "jue").replace("Fri", "vie").replace("Sat", "sáb").replace("Sun", "dom")
+    lineas = [f"Periodo: {fmt_l(desde)} → {fmt_l(hasta)} (hora de Lima)", ""]
+    if sint.get("frase"):
+        temas = " · ".join(sint.get("temas") or [])
+        lineas += [f"**Qué está pasando:** {sint['frase']}" + (f" ({temas})" if temas else ""), ""]
+    lineas.append(f"**Cifras:** {len(filas)} menciones · {neg} negativas · {quejas} quejas · {graves} graves")
+    if top:
+        lineas.append("**Más afectadas:** " + "; ".join(f"{b} ({e['neg']} negativas, {e['quejas']} quejas)" for b, e in top))
+    if alertas:
+        lineas += ["", f"**Ciberseguridad:** {len(alertas)} alerta(s) nueva(s)"]
+        for a in alertas[:5]:
+            quien = ", ".join(json.loads(a["entidades"] or "[]")) or a["organizacion"] or a["sector"]
+            lineas.append(f"- {quien}: {re.sub(r'\s+', ' ', a['texto'])[:110]} (vía {a['cuenta']})")
+        if len(alertas) > 5:
+            lineas.append(f"- … y {len(alertas) - 5} más en la pestaña Ciberseguridad")
+    elif filas:
+        lineas += ["", "**Ciberseguridad:** sin alertas nuevas."]
+    if not filas and not alertas:
+        lineas.append("Sin menciones ni alertas nuevas en el periodo.")
+    critico = any(_nivel_ciber({**a, "entidades": json.loads(a["entidades"] or "[]")}) == "Crítico" for a in alertas)
+    nivel = "Grave" if critico or graves >= 10 else "Medio" if graves or alertas else "Informativo"
+    titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M} · lo ocurrido desde {fmt_l(desde)}"
+    return titulo, "\n".join(lineas), nivel
+
+
+def trabajador_reportes():
+    """Cada minuto revisa si toca un reporte (con 45 min de margen por si el servidor estaba reiniciando)."""
+    time.sleep(30)
+    while True:
+        try:
+            cfg = _cfg_reportes()
+            ahora_l = ahora().astimezone(LIMA)
+            if cfg.get("activos", True) and ahora_l.weekday() in set(cfg.get("dias", [])) and _hay_canal_aviso():
+                for h, m in _horarios_reporte(cfg):
+                    t = ahora_l.replace(hour=h, minute=m, second=0, microsecond=0)
+                    if not (t <= ahora_l < t + timedelta(minutes=45)):
+                        continue
+                    clave = t.strftime("%Y-%m-%d %H:%M")
+                    with _db_lock, db() as con:
+                        con.execute("CREATE TABLE IF NOT EXISTS reportes_enviados (clave TEXT PRIMARY KEY, enviado TEXT)")
+                        ya = con.execute("SELECT 1 FROM reportes_enviados WHERE clave = ?", (clave,)).fetchone()
+                    if ya:
+                        continue
+                    titulo, texto, nivel = reporte_periodico(_reporte_anterior(t, cfg), t)
+                    enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
+                                        nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None)
+                    with _db_lock, db() as con:
+                        con.execute("INSERT OR REPLACE INTO reportes_enviados VALUES (?, ?)", (clave, iso(ahora())))
+                    print(f"[{datetime.now():%H:%M:%S}] Reporte programado enviado: {titulo}", flush=True)
+        except Exception as e:
+            print(f"  Reportes programados: {type(e).__name__}: {e}", flush=True)
+        time.sleep(60)
 
 
 def trabajador_notificaciones():
@@ -3240,6 +3376,18 @@ def _registrar_alertas(nuevas, al_panel=False):
     return para_avisar
 
 
+def _nivel_ciber(a):
+    """Crítico: filtración/ransomware/hackeo de una entidad monitoreada; Grave: phishing o empleados infectados de una
+    monitoreada, o incidente en otra entidad del SF; Medio: lo demás (proveedores, actores vigilados, conteos)."""
+    t = normalizar(a.get("texto", ""))
+    if a.get("entidades") and a.get("sector") not in ("Dominio que imita", "Infostealers", "Actor vigilado") and \
+            re.search(r"ransomware|filtr|hacke|breach|leak|data breach|vulnerad|ataque|extorsion", t):
+        return "Crítico"
+    if a.get("entidades") or a.get("sector") in ("Sistema financiero", "Seguros", "AFP"):
+        return "Grave"
+    return "Medio"
+
+
 def _avisar_ciber(alertas, cfg):
     if not cfg.get("notificar", True) or not _hay_canal_aviso():
         return
@@ -3254,7 +3402,7 @@ def _avisar_ciber(alertas, cfg):
             enviar_notificacion(f"Ciberseguridad: {quien}"[:120],
                                 f"{(tipo.group(1).strip() + ' · ') if tipo else ''}{a['sector']} · vía {a['cuenta']}"
                                 f"{' · entidad monitoreada' if a['entidades'] else ''}\n{resumen}",
-                                etiquetas="shield", url=a["url"] or None)
+                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=_nivel_ciber(a))
             with _db_lock, db() as con:
                 con.execute("UPDATE alertas_ciber SET notificada = 1 WHERE id = ?", (a["id"],))
         except Exception as e:
@@ -6339,12 +6487,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True, "entidades": list(nueva["bancos"])})
             except (ValueError, OSError) as e:
                 return self._send({"error": str(e)[:200]}, code=400)
+        if u.path == "/api/sync/avisos/reporte":  # vista previa (o envío) del reporte desde el horario anterior
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            try:
+                d = self._json_cuerpo(5_000)
+            except ValueError:
+                d = {}
+            hasta = ahora().astimezone(LIMA)
+            titulo, texto, nivel = reporte_periodico(_reporte_anterior(hasta, _cfg_reportes()), hasta)
+            if d.get("enviar") is True:
+                enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
+                                    url=CONFIG.get("notificaciones", {}).get("enlace") or None)
+            return self._send({"titulo": titulo, "texto": texto, "nivel": nivel, "enviado": d.get("enviar") is True})
         if u.path == "/api/sync/avisos/prueba":  # prueba de avisos lanzada por el monitor local (diagnóstico)
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
             try:
                 enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular y/o Teams).",
-                                    prioridad="default", etiquetas="white_check_mark")
+                                    prioridad="default", etiquetas="white_check_mark", tipo="Prueba", nivel="Informativo")
             except Exception as e:
                 print(f"  Prueba de avisos: {e}", flush=True)
             return self._send(diagnostico_avisos())
@@ -6448,7 +6609,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/notificaciones/prueba":
             try:
                 enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular y/o Teams).",
-                                    prioridad="default", etiquetas="white_check_mark")
+                                    prioridad="default", etiquetas="white_check_mark", tipo="Prueba", nivel="Informativo")
                 return self._send({"ok": True})
             except Exception as e:
                 return self._send({"error": str(e)[:200]}, code=400)
@@ -6550,6 +6711,7 @@ def main():
     threading.Thread(target=trabajador_sync, daemon=True).start()
     threading.Thread(target=trabajador_notificaciones, daemon=True).start()
     threading.Thread(target=trabajador_referentes, daemon=True).start()
+    threading.Thread(target=trabajador_reportes, daemon=True).start()
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
