@@ -2765,7 +2765,7 @@ def cambiar_pausa(objetivo, pausar, horas=0, por=""):
             if not en_pausa(n):
                 ESTADO["fuentes"][n]["msg"] = "▶ Reanudando…"
     print(f"[{datetime.now():%H:%M:%S}] {'Pausa' if pausar else 'Reanudado'}: {objetivo}", flush=True)
-    if objetivo == "todo" and os.environ.get("NOTIFY_NTFY_TOPIC"):  # la pausa general afecta al 24x7: se avisa al celular
+    if objetivo == "todo" and _hay_canal_aviso():  # la pausa general afecta al 24x7: se avisa al celular
         hasta = (datetime.fromisoformat(PAUSA["hasta"]).astimezone(LIMA).strftime("%d/%m %H:%M") if PAUSA.get("hasta") else "")
         texto = (f"Monitoreo en pausa{' por ' + por if por else ''}{' hasta el ' + hasta + ' (se reanuda solo)' if hasta else ' sin límite: reanúdalo desde el panel'}."
                  if pausar else f"Monitoreo reanudado{' (venció la pausa)' if por == 'vencimiento' else ''}.")
@@ -2830,16 +2830,54 @@ def _incidente_pendiente(red):
 _NOTIF = {"ultima": {}}
 
 
-def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None):
-    tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema):
-        raise RuntimeError("Falta NOTIFY_NTFY_TOPIC (nombre de canal de 12 a 64 letras, números, - o _)")
-    servidor = os.environ.get("NOTIFY_NTFY_SERVER", "https://ntfy.sh").rstrip("/")
-    h = {"Title": titulo.encode("utf-8").decode("latin-1", "ignore"), "Priority": prioridad, "Tags": etiquetas,
-         "Content-Type": "text/plain; charset=utf-8"}
+TEAMS_URL_OK = re.compile(r"^https://[\w.-]+\.(logic\.azure\.com|powerplatform\.com|webhook\.office\.com|powerautomate\.com)(:443)?/")
+
+
+def _hay_canal_aviso():
+    """Hay a dónde avisar: ntfy (celular) y/o un canal de Microsoft Teams (Workflows)."""
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip())
+                or TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip()))
+
+
+def _enviar_teams(titulo, mensaje, prioridad, url):
+    """Tarjeta en un canal de Teams vía Workflows ("Publicar en un canal cuando se recibe una solicitud de webhook")."""
+    destino = os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
+    color = "Attention" if prioridad in ("urgent", "max", "high") else "Default"
+    tarjeta = {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
+               "body": [{"type": "TextBlock", "text": titulo, "weight": "Bolder", "size": "Medium", "wrap": True, "color": color},
+                        {"type": "TextBlock", "text": mensaje, "wrap": True},
+                        {"type": "TextBlock", "text": f"Monitor de banca · {ahora().astimezone(LIMA):%d/%m %H:%M} (Lima)",
+                         "isSubtle": True, "size": "Small", "wrap": True}]}
     if url:
-        h["Click"] = url
-    http_get(f"{servidor}/{tema}", h, data=mensaje.encode("utf-8"), timeout=30)
+        tarjeta["actions"] = [{"type": "Action.OpenUrl", "title": "Abrir", "url": url}]
+    cuerpo = {"type": "message", "attachments": [{"contentType": "application/vnd.microsoft.card.adaptive",
+                                                   "contentUrl": None, "content": tarjeta}]}
+    http_get(destino, {"Content-Type": "application/json"}, data=json.dumps(cuerpo, ensure_ascii=False).encode(), timeout=30)
+
+
+def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None):
+    """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno."""
+    enviados, errores = 0, []
+    tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema):
+        servidor = os.environ.get("NOTIFY_NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+        h = {"Title": titulo.encode("utf-8").decode("latin-1", "ignore"), "Priority": prioridad, "Tags": etiquetas,
+             "Content-Type": "text/plain; charset=utf-8"}
+        if url:
+            h["Click"] = url
+        try:
+            http_get(f"{servidor}/{tema}", h, data=mensaje.encode("utf-8"), timeout=30)
+            enviados += 1
+        except Exception as e:
+            errores.append(f"ntfy: {type(e).__name__}")
+    if TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip()):
+        try:
+            _enviar_teams(titulo, mensaje, prioridad, url)
+            enviados += 1
+        except Exception as e:
+            errores.append(f"Teams: {type(e).__name__}")
+    if not enviados:
+        raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
 
 
 def _umbrales_por_hora(clave_fn, dias=7):
@@ -2880,7 +2918,7 @@ _GRAVES = {"vistos": {}, "ultimo_aviso": {}, "lock": threading.Lock()}
 
 def avisar_graves(nuevos):
     cfg = CONFIG.get("notificaciones", {})
-    if not cfg.get("graves_inmediatos", True) or not os.environ.get("NOTIFY_NTFY_TOPIC"):
+    if not cfg.get("graves_inmediatos", True) or not _hay_canal_aviso():
         return
     corte = iso(ahora() - timedelta(hours=2))  # solo lo reciente (no cargas históricas ni publicaciones viejas)
     ventana, enfriar = cfg.get("graves_ventana_min", 15) * 60, cfg.get("graves_enfriamiento_min", 20) * 60
@@ -2927,7 +2965,7 @@ def avisar_graves(nuevos):
 
 def revisar_umbral_notificar():
     cfg = CONFIG.get("notificaciones", {})
-    if not cfg.get("activas", True) or not os.environ.get("NOTIFY_NTFY_TOPIC"):
+    if not cfg.get("activas", True) or not _hay_canal_aviso():
         return []
     clave_fn = lambda r: ["Total"] + json.loads(r["bancos"] or "[]")
     umbrales = _umbrales_por_hora(clave_fn, cfg.get("dias_base", 7))
@@ -3160,7 +3198,7 @@ def _registrar_alertas(nuevas, al_panel=False):
 
 
 def _avisar_ciber(alertas, cfg):
-    if not cfg.get("notificar", True) or not os.environ.get("NOTIFY_NTFY_TOPIC"):
+    if not cfg.get("notificar", True) or not _hay_canal_aviso():
         return
     corte = iso(ahora() - timedelta(hours=cfg.get("notificar_horas", 24)))
     for a in alertas:
@@ -6199,7 +6237,8 @@ class Handler(BaseHTTPRequestHandler):
                                "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "notificaciones": {**ESTADO.get("notificaciones", {}),
-                                                  "configuradas": bool(os.environ.get("NOTIFY_NTFY_TOPIC"))},
+                                                  "configuradas": _hay_canal_aviso(),
+                                                  "teams": bool(TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip()))},
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
@@ -6350,7 +6389,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"error": str(e)[:200]}, code=400)
         if u.path == "/api/notificaciones/prueba":
             try:
-                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán a este celular.",
+                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular y/o Teams).",
                                     prioridad="default", etiquetas="white_check_mark")
                 return self._send({"ok": True})
             except Exception as e:
