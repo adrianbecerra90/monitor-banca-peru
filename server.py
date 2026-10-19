@@ -2834,15 +2834,20 @@ TEAMS_URL_OK = re.compile(r"^https://[\w.-]+\.(logic\.azure\.com|powerplatform\.
                           r"azure-apihub\.net|flow\.microsoft\.com|logic\.azure\.us)(:443)?/")
 
 
+def _urls_teams():
+    """TEAMS_WEBHOOK_URL admite varias URLs separadas por coma (p. ej. un chat y un canal)."""
+    return [u for u in re.split(r"[\s,]+", os.environ.get("TEAMS_WEBHOOK_URL", "").strip()) if TEAMS_URL_OK.match(u)]
+
+
 def _hay_canal_aviso():
     """Hay a dónde avisar: ntfy (celular) y/o un canal de Microsoft Teams (Workflows)."""
     return bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip())
-                or TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip()))
+                or _urls_teams())
 
 
-def _enviar_teams(titulo, mensaje, prioridad, url):
-    """Tarjeta en un canal de Teams vía Workflows ("Publicar en un canal cuando se recibe una solicitud de webhook")."""
-    destino = os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
+def _enviar_teams(destino, titulo, mensaje, prioridad, url):
+    """Tarjeta en Teams vía Workflows: plantillas "Publicar en un chat / en un canal cuando se recibe una solicitud de
+    webhook"."""
     color = "Attention" if prioridad in ("urgent", "max", "high") else "Default"
     tarjeta = {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
                "body": [{"type": "TextBlock", "text": titulo, "weight": "Bolder", "size": "Medium", "wrap": True, "color": color},
@@ -2876,8 +2881,8 @@ def _error_http(e):
 def diagnostico_avisos():
     tema, teams = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip(), os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
     return {"ntfy": {"definido": bool(tema), "valido": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema))},
-            "teams": {"definido": bool(teams), "valido": bool(TEAMS_URL_OK.match(teams)),
-                      "dominio": urllib.parse.urlparse(teams).hostname if teams else None},
+            "teams": {"definido": bool(teams), "valido": bool(_urls_teams()), "destinos": len(_urls_teams()),
+                      "dominio": urllib.parse.urlparse(teams.split(",")[0].strip()).hostname if teams else None},
             "intentos": list(reversed(_AVISOS_LOG))}
 
 
@@ -2901,15 +2906,17 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
     elif tema:
         _log_aviso("ntfy", titulo, False, "NOTIFY_NTFY_TOPIC no válido (12 a 64 letras, números, - o _)")
     teams = os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
-    if TEAMS_URL_OK.match(teams):
+    destinos = _urls_teams()
+    for i, destino in enumerate(destinos, 1):
+        canal = "Teams" if len(destinos) == 1 else f"Teams {i}"
         try:
-            _enviar_teams(titulo, mensaje, prioridad, url)
+            _enviar_teams(destino, titulo, mensaje, prioridad, url)
             enviados += 1
-            _log_aviso("Teams", titulo, True)
+            _log_aviso(canal, titulo, True)
         except Exception as e:
-            errores.append(f"Teams: {_error_http(e)}")
-            _log_aviso("Teams", titulo, False, _error_http(e))
-    elif teams:
+            errores.append(f"{canal}: {_error_http(e)}")
+            _log_aviso(canal, titulo, False, _error_http(e))
+    if teams and not destinos:
         errores.append("Teams: la URL no parece de Workflows de Teams")
         _log_aviso("Teams", titulo, False, f"URL no reconocida (dominio {urllib.parse.urlparse(teams).hostname})")
     if not enviados:
@@ -6278,7 +6285,7 @@ class Handler(BaseHTTPRequestHandler):
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "notificaciones": {**ESTADO.get("notificaciones", {}),
                                                   "configuradas": _hay_canal_aviso(),
-                                                  "teams": bool(TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip())),
+                                                  "teams": bool(_urls_teams()),
                                                   "ntfy": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip())),
                                                   "intentos": list(reversed(_AVISOS_LOG))[:10]},
                                "claves": {k: bool(os.environ.get(k)) for k in
