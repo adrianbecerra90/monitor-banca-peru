@@ -257,6 +257,29 @@ CULPA_ENTIDAD = re.compile(r"\b(no (me )?(devuelven|responden|reconocen|solucion
                            r"el banco no|me (cobra|cobran|cobraron|cobro|descontaron|descuentan)|abusiv\w*|indebid\w*|"
                            r"(app|aplicativo|sistema|plataforma) (falla|fallo|vulnerable)|hackearon|filtracion|"
                            r"(deberia|deben) (proteger|bloquear|devolver|responder))\b")
+# Charla personal aprendida de las correcciones del analista (se oculta: no trata de una falla de la entidad)
+CHARLA_PERSONAL = re.compile(
+    r"\b(mi|el|tu|su|del|en (el |mi )?)?(yape|plin)\b.{0,25}\b(no (da|me dura|alcanza|sirve)|ya no da|se (me )?va|la sufr\w*|"
+    r"respirandome|vacio|en cero|llorando)|"
+    r"\b(tengo|tenia|tengo solo|me quedan?|me dejaron con|con|mis)\s+-?\d+\s*(soles|so|sol|centimos|cents?)\b|"
+    r"\b(debo|deuda|debiendo|pagar mi deuda|prestamo|credi(to)?)\b.{0,30}\b(yape|plin)\b|"
+    r"\b(yape|plin)\b.{0,20}\b(credito|prestamo|me cobra la deuda|deuda)\b|"
+    r"\b(devuelve|devuelvan|devuelveme|devuelva\w*|cobra tu|cobrame|pagame|mandame|yapeame|plineame)\b.{0,20}\b(yape|plin|yapeo|plineo)\b|"
+    r"\b(pides?|pidiendo|pedir) (un )?(yape|plin)\b|"
+    r"\bse (me )?va (la plata|todo|rapidisimo|volando)|no me dura|ahorro mi plata|"
+    r"\bno aceptan (yape|plin)|pedir efectivo|"
+    r"\b(mas|otros?) \d+ (so|soles) en (mi )?(yape|plin)|"
+    r"\b(yo|y yo) (con|tengo|realmente)\b.{0,40}\b(yape|plin)\b"
+    )
+FALLA_CLARA = re.compile(r"\b(se cayo|caid[oa]|no funciona|no (me )?(deja|carga|abre|llega|llego)|error|bloque\w*|"
+                   r"cobro (indebido|doble)|me (cobra|cobran|cobraron|descontaron|descuentan)|robaron|estafa|fraude|hacke\w*|"
+                   r"no responden|reclamo|indecopi|sbs|abusiv\w*|indebid\w*|interes(es)? (alt|abusiv)|problema\w*|solucion\w*|ayuda\w*|urgente)")
+def charla_personal(t):
+    """Charla sobre la economía personal con Yape/Plin (poco saldo, deudas o préstamos, «devuelve el yape», «no aceptan
+    yape»…), aprendida de las correcciones del analista: no habla de una falla de la entidad y no se muestra."""
+    return bool(CHARLA_PERSONAL.search(t)) and not FALLA_CLARA.search(t)
+
+
 # Situación económica personal del usuario ("me quedé con 20 soles en mi Yape"): no habla de la entidad
 SITUACION_PERSONAL = re.compile(r"\b(me (quede|queda|quedan|quedaron) (con|sin)|sobrevivir|fin de mes|todo el mes|"
                                 r"(estoy|ando|quede|me quede) (pobre|misi[oa]|quebrad[oa]|sec[oa]|sin plata|pelad[oa])|"
@@ -496,6 +519,9 @@ def _fila(it):
         return None
     if es_ruido(it["texto"]) or not es_relevante(it["texto"], it.get("tipo", "")):
         return None
+    if it.get("tipo", "") not in ("noticia", "alerta_ciber", "oficial", "post_oficial") and \
+            charla_personal(normalizar(it["texto"])) and not CULPA_ENTIDAD.search(normalizar(it["texto"])):
+        return None  # como lo corrige el analista: no es relevante
     bancos = detectar_bancos(it["texto"] + " " + it.get("contexto", ""), it.get("peru", False))
     for b in it.get("bancos_fijos", []):
         if b and b not in bancos:
@@ -3979,6 +4005,10 @@ Para cada elemento devuelve:
   si no trata del sistema financiero peruano (bancos, billeteras, pagos, seguros, AFP, SBS) aunque se repita el nombre:
   el payaso "Plin Plin", onomatopeyas ("plin plin plon"), "yape"/"plin" con otro sentido, política o farándula de otros
   países. Si no, true.
+- "relevante": false si el texto habla de la situación económica personal del autor con Yape/Plin y no de una falla:
+  poco saldo ("tengo 2 soles en mi yape"), deudas o préstamos de Yape ("debo a yape", "el préstamo yape me respira en
+  la nuca"), "se me va la plata", pedir o devolver un yape entre personas ("devuélveme el yape"), un comercio que no
+  acepta Yape, bromas o memes. Así lo corrige el analista una y otra vez: sigue ese criterio.
 - "relevante": false también si el texto no dice nada sobre la entidad: fragmentos o muletillas que solo la
   nombran ("y mi yape", "el bcp pues", "Interbank?") sin queja, pregunta, opinión ni hecho concreto.
 - "atribuible": true solo si lo que se critica o reporta es responsabilidad de la entidad: sus apps y sistemas,
@@ -4145,15 +4175,24 @@ def _bloque_ejemplos(filas, por_texto=2, maximo=12):
     ejs = ejemplos()
     if not ejs:
         return ""
-    bolsas = [(e, _palabras_ej(e["texto"])) for e in ejs]
+    maximo = 16
+    del_analista = lambda e: str(e.get("usuario") or "") not in ("", "sync", "sistema") and \
+        not str(e.get("nota") or "").startswith("Auditoría")
+    raices = lambda t: {w[:5] for w in _palabras_ej(t)}  # raíz de 5 letras: "debo"/"deuda", "préstamo"/"prestamos"
+    bolsas = [(e, raices(e["texto"]), del_analista(e)) for e in ejs]
     elegidos = {}
+    # 1) las correcciones más recientes del analista van siempre: su criterio manda sobre el de la auditoría
+    for e, _, a in bolsas:
+        if a and len(elegidos) < 8:
+            elegidos[e["id"]] = e
+    # 2) las más parecidas a cada texto del lote, con preferencia por las del analista
     for r in filas:
-        p = _palabras_ej(r["texto"])
+        p = raices(r["texto"])
         if not p:
             continue
-        puntaje = sorted(((len(p & b) / len(p | b), e) for e, b in bolsas if b), key=lambda x: -x[0])
+        puntaje = sorted(((len(p & b) / len(p | b) + (0.15 if a else 0), e) for e, b, a in bolsas if b), key=lambda x: -x[0])
         for sim, e in puntaje[:por_texto]:
-            if sim >= 0.08:
+            if sim >= 0.12:
                 elegidos[e["id"]] = e
         if len(elegidos) >= maximo:
             break
