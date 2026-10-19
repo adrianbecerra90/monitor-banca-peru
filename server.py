@@ -3654,6 +3654,36 @@ def _tabla_infostealers(con):
     con.execute("""CREATE TABLE IF NOT EXISTS infostealers (dominio TEXT, entidad TEXT, dia TEXT, total INTEGER,
                    usuarios INTEGER, empleados INTEGER, terceros INTEGER, ultimo_empleado TEXT, ultimo_usuario TEXT,
                    PRIMARY KEY (dominio, dia))""")
+    if "detalle" not in [r[1] for r in con.execute("PRAGMA table_info(infostealers)")]:
+        con.execute("ALTER TABLE infostealers ADD COLUMN detalle TEXT")
+
+
+def _detalle_infostealer(d):
+    """Lo útil para el análisis (sin datos personales): sistemas corporativos expuestos, aplicaciones, contraseñas,
+    antivirus, familias de malware y servicios de terceros."""
+    host = lambda u: urllib.parse.urlparse(str(u)).hostname or str(u)[:60]
+    sistemas = {}
+    for x in (d.get("data") or {}).get("employees_urls") or []:
+        h, p = host(x.get("url")), urllib.parse.urlparse(str(x.get("url"))).path[:40]
+        k = (h + p).rstrip("/")
+        sistemas[k] = sistemas.get(k, 0) + int(x.get("occurrence") or 0)
+    pw = d.get("employeePasswords") or {}
+    debiles = sum((pw.get(k) or {}).get("qty", 0) for k in ("too_weak", "weak"))
+    av = d.get("antiviruses") or {}
+    fam = {k: v for k, v in (d.get("stealerFamilies") or {}).items() if k != "total" and isinstance(v, int)}
+    return {"ultimo_empleado": str(d.get("last_employee_compromised") or "")[:10],
+            "ultimo_usuario": str(d.get("last_user_compromised") or "")[:10],
+            "sistemas": sorted(sistemas.items(), key=lambda x: -x[1])[:10],
+            "aplicaciones": [(a.get("keyword"), a.get("count")) for a in (d.get("applications") or [])][:8],
+            "claves_debiles_pct": round(100 * debiles / pw["totalPass"]) if pw.get("totalPass") else None,
+            "sin_antivirus_pct": av.get("not_found"),
+            "familias": sorted(fam.items(), key=lambda x: -x[1])[:5],
+            "terceros": [(t.get("domain"), t.get("occurrence")) for t in (d.get("thirdPartyDomains") or [])][:8]}
+
+
+ACCION_INFOSTEALER = ("Acción sugerida: pedir a la entidad que identifique los equipos, los aísle y reinstale; que fuerce el "
+                      "cambio de clave y revoque sesiones y cookies de los sistemas expuestos (las cookies robadas saltan el "
+                      "MFA) y que revise accesos inusuales a esos sistemas.")
 
 
 def ciber_infostealers():
@@ -3665,26 +3695,37 @@ def ciber_infostealers():
                 continue
             d = json.loads(http_get("https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-domain?domain="
                                     + urllib.parse.quote(dom), timeout=60))
+            det = _detalle_infostealer(d)
             fila = (dom, ent, dia, int(d.get("total") or 0), int(d.get("users") or 0), int(d.get("employees") or 0),
                     int(d.get("third_parties") or 0), str(d.get("last_employee_compromised") or "")[:40],
-                    str(d.get("last_user_compromised") or "")[:40])
+                    str(d.get("last_user_compromised") or "")[:40], json.dumps(det, ensure_ascii=False))
             with _db_lock, db() as con:
                 _tabla_infostealers(con)
-                prev = con.execute("SELECT usuarios, empleados, ultimo_empleado FROM infostealers WHERE dominio = ? AND dia < ? "
-                                   "ORDER BY dia DESC LIMIT 1", (dom, dia)).fetchone()
-                con.execute("INSERT OR REPLACE INTO infostealers VALUES (?,?,?,?,?,?,?,?,?)", fila)
+                prev = con.execute("SELECT usuarios, empleados, ultimo_empleado, detalle FROM infostealers WHERE dominio = ? "
+                                   "AND dia < ? ORDER BY dia DESC LIMIT 1", (dom, dia)).fetchone()
+                con.execute("INSERT OR REPLACE INTO infostealers (dominio, entidad, dia, total, usuarios, empleados, terceros, "
+                            "ultimo_empleado, ultimo_usuario, detalle) VALUES (?,?,?,?,?,?,?,?,?,?)", fila)
             if prev:  # la primera lectura es la línea base: no avisa
                 nuevos_emp, nuevos_us = fila[5] - prev[1], fila[4] - prev[0]
+                antes = {k for k, _ in (json.loads(prev[3] or "{}").get("sistemas") or [])}
+                sistemas_nuevos = [k for k, _ in det["sistemas"] if antes and k not in antes]
                 motivo = []
                 if nuevos_emp > 0:
-                    motivo.append(f"{nuevos_emp} empleado(s) más con equipo infectado (total {fila[5]})")
+                    motivo.append(f"{nuevos_emp} empleado(s) más con equipo infectado (total {fila[5]}; último "
+                                  f"comprometido: {det['ultimo_empleado'] or 's/d'})")
+                if sistemas_nuevos:
+                    motivo.append("nuevo(s) sistema(s) corporativo(s) expuesto(s): " + ", ".join(sistemas_nuevos[:4]))
                 if nuevos_us >= max(50, prev[0] * 0.05):
                     motivo.append(f"{nuevos_us} usuarios más con credenciales robadas (total {fila[4]})")
                 if motivo:
+                    expuestos = ", ".join(f"{k} ({v})" for k, v in det["sistemas"][:3])
                     alertas.append({"id": f"hr:{dom}:{dia}", "cuenta": "Hudson Rock", "fecha": iso(ahora()),
                                     "url": "https://www.hudsonrock.com/threat-intelligence-cybercrime-tools",
                                     "entidades": [ent], "organizacion": dom, "sector": "Infostealers",
-                                    "texto": f"Infostealers | {ent} ({dom})\n" + "; ".join(motivo)})
+                                    "texto": f"Infostealers | {ent} ({dom})\n" + "; ".join(motivo) +
+                                             (f".\nSistemas más expuestos: {expuestos}." if expuestos else "") +
+                                             (f" Claves débiles: {det['claves_debiles_pct']}%." if det["claves_debiles_pct"] is not None else "") +
+                                             f"\n{ACCION_INFOSTEALER}"})
             time.sleep(3)
     return alertas
 
@@ -3693,7 +3734,8 @@ def resumen_infostealers():
     """Último conteo por entidad (sumando sus dominios) y variación frente a hace ~7 días."""
     with _db_lock, db() as con:
         _tabla_infostealers(con)
-        filas = con.execute("SELECT entidad, dominio, dia, usuarios, empleados, terceros FROM infostealers ORDER BY dia").fetchall()
+        filas = con.execute("SELECT entidad, dominio, dia, usuarios, empleados, terceros, detalle FROM infostealers "
+                            "ORDER BY dia").fetchall()
     ult, base = {}, {}
     hace7 = (ahora().astimezone(LIMA) - timedelta(days=7)).strftime("%Y-%m-%d")
     vigentes = {(e, d) for e, ds in _dominios_entidades().items() for d in ds}
@@ -3705,7 +3747,10 @@ def resumen_infostealers():
     out = {}
     for (ent, dom), r in ult.items():
         o = out.setdefault(ent, {"entidad": ent, "dominios": [], "usuarios": 0, "empleados": 0, "terceros": 0,
-                                 "dia": r["dia"], "var_usuarios": None, "var_empleados": None})
+                                 "dia": r["dia"], "var_usuarios": None, "var_empleados": None, "detalle": {}})
+        det = json.loads(r["detalle"] or "{}")
+        if det and (not o["detalle"] or r["empleados"] > o.get("_emp_det", -1)):  # el dominio con más empleados
+            o["detalle"], o["_emp_det"] = {**det, "dominio": dom}, r["empleados"]
         o["dominios"].append(dom)
         for k in ("usuarios", "empleados", "terceros"):
             o[k] += r[k]
@@ -3713,6 +3758,8 @@ def resumen_infostealers():
         if b:
             o["var_usuarios"] = (o["var_usuarios"] or 0) + r["usuarios"] - b["usuarios"]
             o["var_empleados"] = (o["var_empleados"] or 0) + r["empleados"] - b["empleados"]
+    for o in out.values():
+        o.pop("_emp_det", None)
     return sorted(out.values(), key=lambda x: (-x["empleados"], -x["usuarios"]))
 
 
@@ -6399,22 +6446,29 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")  # que el proxy no retenga los eventos
+        # Por bloques (chunked): sin esto, en HTTP/1.1 la respuesta "termina al cerrar" y el proxy de Railway la retiene
+        # entera, así que el navegador nunca recibía nada (el punto de EN VIVO quedaba gris)
+        self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
+
+        def enviar(b):
+            self.wfile.write(f"{len(b):X}\r\n".encode() + b + b"\r\n")
+            self.wfile.flush()
+
         q = queue.Queue(maxsize=500)
         with _subs_lock:
             _suscriptores.add(q)
         inicio = time.time()
         try:
-            self.wfile.write(b"retry: 3000\n: conectado\n\n")  # el navegador reconecta a los 3 s si se corta
-            self.wfile.flush()
+            enviar(b"retry: 3000\n: conectado\n\n")  # el navegador reconecta a los 3 s si se corta
             while time.time() - inicio < VIDA_STREAM_SEG:
                 try:
-                    item = q.get(timeout=20)
-                    data = json.dumps(item, ensure_ascii=False)
-                    self.wfile.write(f"event: nuevo\ndata: {data}\n\n".encode())
+                    item = q.get(timeout=15)
+                    enviar(f"event: nuevo\ndata: {json.dumps(item, ensure_ascii=False)}\n\n".encode())
                 except queue.Empty:
-                    self.wfile.write(b": ping\n\n")
-                self.wfile.flush()
+                    enviar(b": ping\n\n")
+            enviar(b"")  # fin de la respuesta por bloques; el navegador reconecta solo
+            self.close_connection = True
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
