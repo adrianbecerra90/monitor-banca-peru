@@ -3846,7 +3846,26 @@ def revisar_fuentes_ciber(forzar=False):
             estado[nombre] = {"ok": False, "revisado": iso(ahora()), "error": f"{type(e).__name__}: {str(e)[:120]}"}
 
 
+def _limpiar_infostealers_globales():
+    """Alertas y lecturas de infostealers de dominios globales (no peruanos) guardadas antes de la corrección."""
+    vigentes = {d for ds in _dominios_entidades().values() for d in ds}
+    with _db_lock, db() as con:
+        _tabla_ciber(con)
+        _tabla_infostealers(con)
+        malas = [r[0] for r in con.execute("SELECT id, organizacion FROM alertas_ciber WHERE sector = 'Infostealers'")
+                 if r[1] not in vigentes]
+        con.executemany("DELETE FROM alertas_ciber WHERE id = ?", [(i,) for i in malas])
+        n = con.execute(f"DELETE FROM infostealers WHERE dominio NOT IN ({','.join('?' * len(vigentes)) or "''"})",
+                        list(vigentes)).rowcount
+    if malas or n:
+        print(f"  Infostealers: retiradas {len(malas)} alertas y {n} lecturas de dominios globales", flush=True)
+
+
 def trabajador_referentes():
+    try:
+        _limpiar_infostealers_globales()
+    except Exception as e:
+        print(f"  Limpieza de infostealers: {type(e).__name__}: {e}", flush=True)
     time.sleep(20)
     while True:
         if en_pausa("Ciberseguridad"):
