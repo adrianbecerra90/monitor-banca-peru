@@ -1,5 +1,331 @@
 [
  {
+  "id": "x:2111424940042019168",
+  "texto": "Todo indica que habría sido a raíz de un tercero: Italtel Perú, empresa que fue vulnerada en setiembre de este año, y a través de ella ingresaron a Interseguro pero también al Banco central de reserva del Perú. @bcrpoficial \n(Y a otras entidades)",
+  "entidades": [
+   "Interseguro",
+   "BCRP",
+   "Italtel Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": true,
+  "categorias": [
+   "Ciberseguridad / hackeos"
+  ],
+  "relevante": true,
+  "atribuible": true,
+  "nota": "Revertido a pedido del analista: corrección anterior aplicada por error. Incidente de ciberseguridad (Italtel Perú → Interseguro y BCRP)",
+  "fecha": "2026-10-19T15:03:46.182917+00:00"
+ },
+ {
+  "id": "x:2112177999529287915",
+  "texto": "q palta tener q pedir efectivo a desconocidos xq no aceptan yape",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-19T14:54:57.173597+00:00"
+ },
+ {
+  "id": "ytc:Ugz24KeULg8X2jacAtB4AaABAg",
+  "texto": "Como puede ser que el presidente del BCP, que es un empleado publico y se debe a todos los Paraguayos, aun no salga a hablar personalmente sobre los hechos tan graves que cuestionan la credibilidad y la trayectoria del ente que preside?\nEntiendo que los dueños de Agua Bank esten todos desaparecidos y no den la cara y que hayan eliminado los comentarios en sus redes sociales por miedo pero que el presidente del BCP tenga miedo de salir a hablar y dar la cara?????",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Reclamos / regulador"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "es paraguay!",
+  "fecha": "2026-10-19T14:54:10.266715+00:00"
+ },
+ {
+  "id": "ytc:UgxbPFE0bE5OlLYd15h4AaABAg",
+  "texto": "Al fin defienden sus intereses los de la ASOBAN, les estaban fumando en pipa! \nVino un \"jugador nuevo\" a literalmente hacer lo que quería. Incumplió normativas, salteo controles, consiguió excepciones que no se le dio a ningún otro banco, uso fondos públicos y de depositantes en campanas políticas, guerras comerciales privadas, ataque a periodistas, manipulación a jueces y fiscales para que persigan a los otros bancos, compraron medios para hacer campañas sucias y asegurarse que que ganen \"los amigos\". \n\nEn vez de otorgar créditos que es su función principal se dedico a: auspiciar y financiar eventos públicos que en nada le reditúan ganancias económicas tangibles sino solo políticas. \n\nUn nuevo \"jugador\" que se maneja como una seccional para beneficio claro un solo movimiento político en detrimento de todos los demás, todo esto bajo la mirada pasiva, cómplice y encubridora de los entes \"reguladores\".  El directorio de dicho \"regulador\" recibió informes desde hace ya casi un año en reiteradas oportunidades y de varias fuentes internas y externas a la institución sin hacer absolutamente nada y actúa recién al ser descubierto.\n\nLo mas preocupante es que el propio presidente, que debería ser el primero en velar por la credibilidad e imparcialidad del BCP, vitales para el funcionamiento del sistema, es el primero en hacerse del ñembota y minimizar los hechos en un intento ojala fortuito de salvarse de investigaciones mas profundas.\n\nImagínense que según el articulo de Monumental el Ex-Contador del banco en cuestión, José Sala, aparece como accionista de una de las firmas que fue beneficiada con créditos que ni TIGO recibe, en firmas sin solvencia patrimonial, ni antigüedad, ni generación de flujo suficientes para recibir lo que recibieron. Este J. Sala, según el mismo articulo era un simple Auxiliar Contable en BBVA en la época que BBVA tuvo una crisis por un mal crédito de USD 8 millones, mucho menos a los USD 300 millones en cuestión ahora, y BBVA España en aquella oportunidad por un hecho similar pero de monto mucho menor, demando a sus Directores, al Gerente de Riesgos Rodrigo Palumbo y luego termino yéndose del pais. Justo en relacion de dependencia de este mismo Palumbo dice que trabajaba el actual gerente Financiero del Banco Milagroso, de nombre Julio Rey, y hasta un sin fin de funcionarios mas que habían estado bajo la lupa del BBVA y terminaron todos en U. Bank.\n\nSi tomamos estos artículos mas esta investigación y los reportes de al menos 10 avisos y notificaciones técnicas: Desde 2025, funcionarios del BCP emitieron no menos de diez advertencias internas sobre la entidad bancaria, saquen sus propias conclusiones señores y señoritas.\n\nAhora su calificadora de riesgos que se entera vía los medios de estos errores \"contables\" y también de \"procedimiento\" y estas maniobras totalmente opuestas a las actividades normales de un banco y ya ajusta su calificación de \"BB estable\" a \"BB negativa\", esto sin considerar que una calificación de BB luego y",
+  "entidades": [
+   "BCP"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas",
+   "Reclamos / regulador"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "No es peruano",
+  "fecha": "2026-10-18T17:09:22.786185+00:00"
+ },
+ {
+  "id": "x:2111657806315057290",
+  "texto": "Conchudazo que devuelvael YAPE",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Atención al cliente",
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-18T14:46:19.319698+00:00"
+ },
+ {
+  "id": "x:2111668119315857427",
+  "texto": "TMB FUI AYER pero hay que seguirla hasta que no me quede más yape",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-18T14:46:07.534241+00:00"
+ },
+ {
+  "id": "x:2111707184325153060",
+  "texto": "Devuelve el yape.",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "App / canales caídos"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-18T14:45:58.155164+00:00"
+ },
+ {
+  "id": "x:2111539901002854400",
+  "texto": "Es que es una verdad. Ustedes cabecearon al Banco de la Nación. Es un facto.  \nNosotros estamos pagando deuda por 30 años.  \nUstedes NUNCA van a pagar su deuda. Se las condonaron.",
+  "entidades": [
+   "Banco de la Nación"
+  ],
+  "sentimiento": "neutro",
+  "queja": false,
+  "categorias": [
+   "Créditos / cobranzas"
+  ],
+  "relevante": true,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T19:34:35.871415+00:00"
+ },
+ {
+  "id": "x:2111525723374768596",
+  "texto": "en yape y en efectivo se me va la plata  x eso tarjetazo y finjo demencia",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Fraude / seguridad",
+   "Cuentas / transferencias"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T19:32:44.463464+00:00"
+ },
+ {
+  "id": "x:2111535633055293534",
+  "texto": "Yo y eso que debo a yape carajo",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Cuentas / transferencias"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Situación personal",
+  "fecha": "2026-10-17T19:31:43.365079+00:00"
+ },
+ {
+  "id": "x:2111518571146658237",
+  "texto": "ni en físico ni yape se me va todooooo 😭 aunque suelo a veces meterlo al agora o al scotia (funcionó pq así hice para ir al concierto)",
+  "entidades": [
+   "Yape",
+   "Scotiabank Perú"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Fraude / seguridad"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T19:29:37.864136+00:00"
+ },
+ {
+  "id": "yt:4kBu8pDco4g",
+  "texto": "🟣LLEGO LA ÚLTIMA VERSIÓN DE YAPE ACTUALIZADO 2026 APK #music #donqueo #greenscreen 🟣. YAPE CON TODAS LAS FUNCIONES DISPONIBLE QR HABIL ASESORIA PERSONALIZADA TE AYUDO CON LA INSTALACIÓN ...",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Fraude / seguridad"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "Phishing",
+  "fecha": "2026-10-17T17:04:05.771179+00:00"
+ },
+ {
+  "id": "x:2111492152752799837",
+  "texto": "por eso yo ahorro mi plata en efectivo, en el yape no me dura nadota",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T17:03:44.606845+00:00"
+ },
+ {
+  "id": "x:2111500812794954213",
+  "texto": "Yo realmente tengo 0 y nadie me puede mandar nada en yape pq se lo come mi deuda 🦧",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Cuentas / transferencias"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T17:02:16.591722+00:00"
+ },
+ {
+  "id": "x:2111473470978535822",
+  "texto": "Yo, me dejaron con 50 céntimos en yape",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T16:16:09.506310+00:00"
+ },
+ {
+  "id": "x:2111488648306995269",
+  "texto": "Tener plata en el yape no me sirve, se va rapidísimo, es como que no tuviera",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T16:15:32.854019+00:00"
+ },
+ {
+  "id": "x:2111477075538518193",
+  "texto": "y con un credi yape pendiente 💔",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T16:15:20.430616+00:00"
+ },
+ {
+  "id": "x:2111480437230985289",
+  "texto": "yo con el prestamo yape respirándome en la nuca",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin",
+   "Créditos / cobranzas"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T16:15:07.399739+00:00"
+ },
+ {
+  "id": "x:2111480518248185977",
+  "texto": "un tal yape anda pidiendo q le pague su crédito, agggg déjame flaco",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Tarjetas / Yape / Plin",
+   "Créditos / cobranzas"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T16:14:59.057050+00:00"
+ },
+ {
+  "id": "x:2111449414887936375",
+  "texto": "Otro q no leyó el pedido completo de facultades delegadas y repite lo q le ordenan por su Yape ……. 🙄🙄🙄",
+  "entidades": [
+   "Yape"
+  ],
+  "sentimiento": "negativo",
+  "queja": false,
+  "categorias": [
+   "Errores operativos"
+  ],
+  "relevante": false,
+  "atribuible": false,
+  "nota": "",
+  "fecha": "2026-10-17T13:42:28.519798+00:00"
+ },
+ {
   "id": "x:2111324844214165578",
   "texto": "UNA MIERDA INTERBANK RECONCHADETUMADREEEEEEEEE",
   "entidades": [
