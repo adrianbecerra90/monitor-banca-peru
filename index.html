@@ -610,14 +610,18 @@ async function abrirCorreccion(b){
   const cats=JSON.parse(b.dataset.cats||'[]'),st={s:b.dataset.s,q:b.dataset.q==='1',rel:true,atr:b.dataset.q==='1'};
   const f=document.createElement('div');f.id='corr-form';f.setAttribute('role','dialog');f.setAttribute('aria-label','Corregir clasificación');
   const tg=(grupo,ops,actual)=>ops.map(([v,l])=>`<button type="button" class="tg ${String(actual)===String(v)?'on':''}" data-g="${grupo}" data-v="${v}">${l}</button>`).join('');
-  f.innerHTML=`<div class="fila"><b>Sentimiento hacia la entidad</b>${tg('s',[['negativo','Negativo'],['neutro','Neutro'],['positivo','Positivo']],st.s)}</div>
+  // se muestra QUÉ mensaje se corrige y el formulario va pegado a él (antes flotaba y, si entraban mensajes en vivo,
+  // quedaba junto a otro mensaje y se corregía el equivocado)
+  const item=b.closest('.item'),txt=(item?.querySelector('.txt')?.innerText||'').replace(/✎ Corregir|ver ↗/g,'').trim();
+  f.innerHTML=`<div class="fila" style="display:block"><b>Corrigiendo:</b> <span class="sub">«${esc(txt.slice(0,160))}${txt.length>160?'…':''}»</span></div>
+    <div class="fila"><b>Sentimiento hacia la entidad</b>${tg('s',[['negativo','Negativo'],['neutro','Neutro'],['positivo','Positivo']],st.s)}</div>
     <div class="fila"><b>¿Es una queja contra la entidad?</b>${tg('q',[[true,'Sí'],[false,'No']],st.q)}</div>
     <div class="fila"><b>¿Trata del sistema financiero / de la entidad?</b>${tg('rel',[[true,'Sí'],[false,'No (ocultar)']],st.rel)}</div>
     <div class="fila"><b>Categorías (máx. 3)</b>${CATS_LISTA.map(c=>`<label style="display:flex;gap:4px;align-items:center;font-size:12px"><input type="checkbox" value="${esc(c)}" ${cats.includes(c)?'checked':''}>${esc(c)}</label>`).join('')}</div>
     <div class="fila"><b>¿Por qué? (opcional; ayuda a la IA)</b><textarea maxlength="300" placeholder="p. ej. habla de su situación personal, no de una falla de Yape"></textarea></div>
     <div class="fila" style="justify-content:flex-end;margin:0"><span class="sub" id="corr-msg" style="margin-right:auto"></span><button type="button" id="corr-no">Cancelar</button><button type="button" class="pri" id="corr-ok">Guardar</button></div>`;
-  document.body.appendChild(f);
-  const r=b.getBoundingClientRect();f.style.top=(window.scrollY+r.bottom+6)+'px';f.style.left=Math.max(16,Math.min(window.scrollX+r.left-200,window.scrollX+document.documentElement.clientWidth-f.offsetWidth-16))+'px';
+  if(item){item.appendChild(f);Object.assign(f.style,{position:'relative',top:'auto',left:'auto',marginTop:'8px',maxWidth:'100%'})}
+  else{document.body.appendChild(f);const r=b.getBoundingClientRect();f.style.top=(window.scrollY+r.bottom+6)+'px';f.style.left=Math.max(16,Math.min(window.scrollX+r.left-200,window.scrollX+document.documentElement.clientWidth-f.offsetWidth-16))+'px'}
   f.querySelectorAll('[data-g]').forEach(x=>x.onclick=()=>{const g=x.dataset.g;st[g]=g==='s'?x.dataset.v:x.dataset.v==='true';
     if(g==='q'&&st.q){st.rel=true;if(st.s!=='negativo')st.s='negativo'}if(g==='rel'&&!st.rel)st.q=false;
     f.querySelectorAll('[data-g]').forEach(y=>y.classList.toggle('on',String(st[y.dataset.g])===y.dataset.v))});
@@ -1268,7 +1272,7 @@ $('#h-go').onclick=async()=>{const fuentes=[...$('#h-fuentes').querySelectorAll(
   setInterval(()=>{if(document.visibilityState==='visible')cargarEstado()},10000);
   setInterval(()=>{if(document.visibilityState==='visible')refrescarGraficos()},30000);
   // las clasificaciones de la IA llegan después: si estás al inicio de la lista, se refresca para mostrarlas
-  setInterval(()=>{if(document.visibilityState==='visible'&&window.scrollY<300&&!window.getSelection().toString()&&!$('#cfg').classList.contains('on'))cargarItems()},60000);
+  setInterval(()=>{if(document.visibilityState==='visible'&&window.scrollY<300&&!window.getSelection().toString()&&!$('#cfg').classList.contains('on')&&!document.getElementById('corr-form'))cargarItems()},60000);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){cargarEstado();refrescarGraficos();cargarTrends();cargarCiber()}})})();
 
 // ---------- chat con el monitor (respuestas solo con datos de la base, con citas) ----------
