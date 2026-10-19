@@ -2830,7 +2830,8 @@ def _incidente_pendiente(red):
 _NOTIF = {"ultima": {}}
 
 
-TEAMS_URL_OK = re.compile(r"^https://[\w.-]+\.(logic\.azure\.com|powerplatform\.com|webhook\.office\.com|powerautomate\.com)(:443)?/")
+TEAMS_URL_OK = re.compile(r"^https://[\w.-]+\.(logic\.azure\.com|powerplatform\.com|webhook\.office\.com|powerautomate\.com|"
+                          r"azure-apihub\.net|flow\.microsoft\.com|logic\.azure\.us)(:443)?/")
 
 
 def _hay_canal_aviso():
@@ -2855,6 +2856,31 @@ def _enviar_teams(titulo, mensaje, prioridad, url):
     http_get(destino, {"Content-Type": "application/json"}, data=json.dumps(cuerpo, ensure_ascii=False).encode(), timeout=30)
 
 
+_AVISOS_LOG = []  # últimos intentos de aviso (canal, resultado, error), sin datos secretos
+
+
+def _log_aviso(canal, titulo, ok, error=""):
+    _AVISOS_LOG.append({"t": iso(ahora()), "canal": canal, "titulo": titulo[:80], "ok": ok, "error": str(error)[:160]})
+    del _AVISOS_LOG[:-40]
+
+
+def _error_http(e):
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            return f"HTTP {e.code}: {e.read(160).decode('utf-8', 'ignore')}"
+        except Exception:
+            return f"HTTP {e.code}"
+    return f"{type(e).__name__}: {e}"
+
+
+def diagnostico_avisos():
+    tema, teams = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip(), os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
+    return {"ntfy": {"definido": bool(tema), "valido": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema))},
+            "teams": {"definido": bool(teams), "valido": bool(TEAMS_URL_OK.match(teams)),
+                      "dominio": urllib.parse.urlparse(teams).hostname if teams else None},
+            "intentos": list(reversed(_AVISOS_LOG))}
+
+
 def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None):
     """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno."""
     enviados, errores = 0, []
@@ -2868,14 +2894,24 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
         try:
             http_get(f"{servidor}/{tema}", h, data=mensaje.encode("utf-8"), timeout=30)
             enviados += 1
+            _log_aviso("ntfy", titulo, True)
         except Exception as e:
-            errores.append(f"ntfy: {type(e).__name__}")
-    if TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip()):
+            errores.append(f"ntfy: {_error_http(e)}")
+            _log_aviso("ntfy", titulo, False, _error_http(e))
+    elif tema:
+        _log_aviso("ntfy", titulo, False, "NOTIFY_NTFY_TOPIC no válido (12 a 64 letras, números, - o _)")
+    teams = os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
+    if TEAMS_URL_OK.match(teams):
         try:
             _enviar_teams(titulo, mensaje, prioridad, url)
             enviados += 1
+            _log_aviso("Teams", titulo, True)
         except Exception as e:
-            errores.append(f"Teams: {type(e).__name__}")
+            errores.append(f"Teams: {_error_http(e)}")
+            _log_aviso("Teams", titulo, False, _error_http(e))
+    elif teams:
+        errores.append("Teams: la URL no parece de Workflows de Teams")
+        _log_aviso("Teams", titulo, False, f"URL no reconocida (dominio {urllib.parse.urlparse(teams).hostname})")
     if not enviados:
         raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
 
@@ -6149,6 +6185,10 @@ class Handler(BaseHTTPRequestHandler):
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
             return self._send({"ejemplos": ejemplos()})
+        if u.path == "/api/sync/avisos":  # diagnóstico de avisos (sin secretos), servidor a servidor
+            if not _sync_token_ok(self.headers.get("X-Sync-Token")):
+                return self._send({"error": "No autorizado"}, code=401)
+            return self._send(diagnostico_avisos())
         if u.path == "/api/sync/mensajes":
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
@@ -6238,7 +6278,9 @@ class Handler(BaseHTTPRequestHandler):
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "notificaciones": {**ESTADO.get("notificaciones", {}),
                                                   "configuradas": _hay_canal_aviso(),
-                                                  "teams": bool(TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip()))},
+                                                  "teams": bool(TEAMS_URL_OK.match(os.environ.get("TEAMS_WEBHOOK_URL", "").strip())),
+                                                  "ntfy": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip())),
+                                                  "intentos": list(reversed(_AVISOS_LOG))[:10]},
                                "claves": {k: bool(os.environ.get(k)) for k in
                                           ("APIFY_TOKEN", "NVIDIA_API_KEY", "YOUTUBE_API_KEY")}})
         if u.path == "/api/export.csv":
