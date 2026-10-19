@@ -2885,7 +2885,11 @@ def diagnostico_avisos():
     return {"ntfy": {"definido": bool(tema), "valido": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema))},
             "teams": {"definido": bool(teams), "valido": bool(_urls_teams()), "destinos": len(_urls_teams()),
                       "dominio": urllib.parse.urlparse(teams.split(",")[0].strip()).hostname if teams else None},
-            "intentos": list(reversed(_AVISOS_LOG))}
+            "intentos": list(reversed(_AVISOS_LOG)),
+            "ia": {"proveedores": [{"nombre": p.get("nombre"), "modelo": p.get("modelo"), "sin_clave": _ia_falta_clave(p),
+                                    "salud": {k: SALUD.get("IA", {}).get(p.get("nombre"), {}).get(k) for k in ("ok", "msg")}}
+                                   for p in _ia_proveedores()],
+                   "retirados": sorted(_MODELOS_RETIRADOS), "pendientes": ESTADO.get("ia", {}).get("pendientes")}}
 
 
 # Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
