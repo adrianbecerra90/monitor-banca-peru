@@ -1231,9 +1231,11 @@ function dibujarTrends(series){
 
 // ---------- tiempo real (Server-Sent Events) ----------
 function conectarVivo(){
-  const ev=new EventSource('/api/stream');
-  ev.onopen=()=>$('#live').classList.add('on');
-  ev.onerror=()=>$('#live').classList.remove('on');
+  // El punto verde = conexión en vivo con el servidor (el monitoreo 24x7 corre igual aunque esté gris).
+  // Las reconexiones breves (cada 10 min o tras un despliegue) no apagan el punto: solo si no vuelve en 15 s
+  const ev=new EventSource('/api/stream');let tGris;
+  ev.onopen=()=>{clearTimeout(tGris);$('#live').classList.add('on');$('#live').title='Conectado en vivo: lo nuevo aparece al instante'};
+  ev.onerror=()=>{clearTimeout(tGris);tGris=setTimeout(()=>{$('#live').classList.remove('on');$('#live').title='Sin conexión en vivo: el panel se actualiza cada pocos segundos; el monitoreo 24x7 sigue en el servidor'},15000)};
   ev.addEventListener('nuevo',e=>{const r=JSON.parse(e.data);
     if(r.severidad>=3&&$('#notif').checked&&'Notification'in window&&Notification.permission==='granted'&&!vistosGraves.has(r.id)){vistosGraves.add(r.id);new Notification(`Queja grave · ${r.bancos.join(', ')} · ${r.fuente}`,{body:r.texto.slice(0,160)})}
     if(!coincide(r))return;

@@ -2886,6 +2886,7 @@ def diagnostico_avisos():
             "teams": {"definido": bool(teams), "valido": bool(_urls_teams()), "destinos": len(_urls_teams()),
                       "dominio": urllib.parse.urlparse(teams.split(",")[0].strip()).hostname if teams else None},
             "intentos": list(reversed(_AVISOS_LOG)),
+            "conexiones_en_vivo": len(_suscriptores),
             "ia": {"proveedores": [{"nombre": p.get("nombre"), "modelo": p.get("modelo"), "sin_clave": _ia_falta_clave(p),
                                     "salud": {k: SALUD.get("IA", {}).get(p.get("nombre"), {}).get(k) for k in ("ok", "msg")}}
                                    for p in _ia_proveedores()],
@@ -6261,7 +6262,8 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 HOSTS_PERMITIDOS = {h.strip().lower() for h in (os.environ.get("HOSTS_PERMITIDOS", "") + "," +
                     os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")).split(",") if h.strip()} | {
     f"localhost:{PORT}", f"127.0.0.1:{PORT}", f"[::1]:{PORT}"}
-MAX_SUSCRIPTORES = 20
+MAX_SUSCRIPTORES = 100
+VIDA_STREAM_SEG = 600  # cada conexión en vivo se renueva cada 10 min: las que dejó abiertas el proxy no se acumulan
 CABECERAS_SEGURIDAD = {
     "Content-Security-Policy": ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
                                 "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
@@ -6357,12 +6359,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")  # que el proxy no retenga los eventos
         self.end_headers()
         q = queue.Queue(maxsize=500)
         with _subs_lock:
             _suscriptores.add(q)
+        inicio = time.time()
         try:
-            while True:
+            self.wfile.write(b"retry: 3000\n: conectado\n\n")  # el navegador reconecta a los 3 s si se corta
+            self.wfile.flush()
+            while time.time() - inicio < VIDA_STREAM_SEG:
                 try:
                     item = q.get(timeout=20)
                     data = json.dumps(item, ensure_ascii=False)
