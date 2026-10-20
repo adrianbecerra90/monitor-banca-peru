@@ -3215,6 +3215,11 @@ def _reporte_anterior(t, cfg):
     return t - timedelta(hours=12)
 
 
+def _orden_afectadas(x):
+    """Orden común de 'más afectadas' (reporte y síntesis): negativas, luego quejas, luego nombre (desempate estable)."""
+    return (-x[1]["neg"], -x[1]["quejas"], x[0])
+
+
 def reporte_periodico(desde, hasta, banco=None):
     """(titulo, texto, nivel) con lo ocurrido entre desde y hasta (datetimes con zona); opcionalmente de una entidad."""
     qs = {"desde": [iso(desde)], "hasta": [iso(hasta)], **({"banco": [banco]} if banco else {})}
@@ -3237,7 +3242,8 @@ def reporte_periodico(desde, hasta, banco=None):
             e = por_ent.setdefault(b, {"neg": 0, "quejas": 0})
             e["neg"] += r["sentimiento"] == "negativo"
             e["quejas"] += bool(r["es_queja"])
-    top = [(b, e) for b, e in sorted(por_ent.items(), key=lambda x: -x[1]["neg"]) if e["neg"]][:4]
+    # las mismas entidades y en el mismo orden que ve la síntesis: lo que nombra el resumen aparece en la lista
+    top = [(b, e) for b, e in sorted(por_ent.items(), key=_orden_afectadas) if e["neg"]][:5]
     try:
         sint = sintesis_nube(qs) if filas else {}
     except Exception as e:
@@ -3297,18 +3303,21 @@ def trabajador_reportes():
                     # hora en que el servidor se recuperó y sin huecos ni solapes con el siguiente
                     desde = _reporte_anterior(t, cfg)
                     with _db_lock, db() as con:
-                        previo = con.execute("SELECT MAX(enviado) FROM reportes_enviados WHERE enviado < ?",
-                                             (iso(ahora()),)).fetchone()[0]
+                        if "hasta" not in [c[1] for c in con.execute("PRAGMA table_info(reportes_enviados)")]:
+                            con.execute("ALTER TABLE reportes_enviados ADD COLUMN hasta TEXT")
+                        previo = con.execute("SELECT MAX(hasta) FROM reportes_enviados").fetchone()[0]
                     if previo:
                         desde = max(desde, datetime.fromisoformat(previo).astimezone(LIMA))
                     atrasado = ahora_l - t > timedelta(minutes=10)
-                    titulo, texto, nivel = reporte_periodico(desde, ahora_l if atrasado else t)
+                    hasta = ahora_l if atrasado else t
+                    titulo, texto, nivel = reporte_periodico(desde, hasta)
                     if atrasado:
                         texto += f"\n\n(Programado para las {t:%H:%M}; sale ahora porque el servidor no estaba disponible.)"
                     enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
                                         nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None)
                     with _db_lock, db() as con:
-                        con.execute("INSERT OR REPLACE INTO reportes_enviados VALUES (?, ?)", (clave, iso(ahora())))
+                        con.execute("INSERT OR REPLACE INTO reportes_enviados (clave, enviado, hasta) VALUES (?, ?, ?)",
+                                    (clave, iso(ahora()), iso(hasta)))
                     print(f"[{datetime.now():%H:%M:%S}] Reporte programado enviado: {titulo}", flush=True)
         except Exception as e:
             print(f"  Reportes programados: {type(e).__name__}: {e}", flush=True)
@@ -5911,7 +5920,7 @@ def sintesis_nube(qs):
             a["total"] += 1
             a["neg"] += r["sentimiento"] == "negativo"
             a["quejas"] += bool(r["es_queja"])
-    afectados = sorted(((b, a) for b, a in afect.items() if a["neg"]), key=lambda x: -x[1]["neg"])[:5]
+    afectados = sorted(((b, a) for b, a in afect.items() if a["neg"]), key=_orden_afectadas)[:5]
     # tipo de tema, por datos: categoría del foco con peso relevante entre lo negativo (≥15 %, o la mayor si ninguna llega)
     TEMAS = [("Interrupción", "App / canales caídos"), ("Incidente operativo", "Errores operativos"),
              ("Evento de ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")]
@@ -5969,7 +5978,12 @@ def sintesis_nube(qs):
               "dominante dejando claro si es una interrupción del servicio, un incidente operativo y/o un evento de "
               "ciberseguridad (según el tipo de tema indicado), qué productos o canales fallan SOLO si se indican arriba "
               "(si dice 'ninguno destacado', no los menciones), el tono y quiénes son los "
-              "principales afectados (las entidades con más negativas; si una concentra la mayoría, dilo). No inventes "
+              "principales afectados (las entidades con más negativas; si una concentra la mayoría, dilo). "
+              "Pondera por volumen: una entidad con 1 o 2 quejas es un caso aislado y así debes decirlo (p. ej. "
+              "'quejas aisladas de clientes de Yape'); NO la presentes como interrupción, caída ni incidente: eso exige "
+              "varias personas reportando lo mismo. El fraude contra clientes (estafas, cargos no reconocidos) no es un "
+              "evento de ciberseguridad de la entidad: llámalo fraude; ciberseguridad es hackeo, filtración o ataque a la "
+              "propia entidad. No inventes "
               "hechos que no se deduzcan de los datos, no nombres cifras exactas y no uses comillas ni viñetas.")
     for p in _ia_proveedores():
         if _ia_falta_clave(p):
