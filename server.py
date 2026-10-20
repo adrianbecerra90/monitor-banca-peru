@@ -2812,7 +2812,7 @@ _locks = {n: threading.Lock() for n in FUENTES}
 
 
 # Bloqueo temporal (se puede ampliar con la variable FUENTES_BLOQUEADAS="YouTube,TikTok"): no se consultan
-FUENTES_BLOQUEADAS = {f.strip() for f in os.environ.get("FUENTES_BLOQUEADAS", "YouTube").split(",") if f.strip()}
+FUENTES_BLOQUEADAS = {f.strip() for f in os.environ.get("FUENTES_BLOQUEADAS", "").split(",") if f.strip()}
 
 
 def escanear_fuente(nombre):
@@ -6917,7 +6917,7 @@ def _diagnostico_proceso():
             activas = [n for n, e in ESTADO["fuentes"].items() if e.get("ejecutando")]
             print(f"[{datetime.now():%H:%M:%S}] PULSO memoria={rss}MB hilos={threading.active_count()} "
                   f"corriendo={','.join(activas) or '-'}", flush=True)
-            time.sleep(5)
+            time.sleep(60)
     if os.path.exists("/proc/self/status"):
         threading.Thread(target=pulso, daemon=True).start()
 
