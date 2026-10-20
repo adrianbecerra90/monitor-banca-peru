@@ -3277,9 +3277,15 @@ def trabajador_reportes():
             cfg = _cfg_reportes()
             ahora_l = ahora().astimezone(LIMA)
             if cfg.get("activos", True) and ahora_l.weekday() in set(cfg.get("dias", [])) and _hay_canal_aviso():
-                for h, m in _horarios_reporte(cfg):
+                horarios = sorted(_horarios_reporte(cfg))
+                for i, (h, m) in enumerate(horarios):
                     t = ahora_l.replace(hour=h, minute=m, second=0, microsecond=0)
-                    if not (t <= ahora_l < t + timedelta(minutes=45)):
+                    # Si el servidor estuvo caído a la hora, el reporte sale apenas vuelva (hasta 4 h o el siguiente)
+                    limite = t + timedelta(minutes=cfg.get("margen_min", 240))
+                    if i + 1 < len(horarios):
+                        limite = min(limite, ahora_l.replace(hour=horarios[i + 1][0], minute=horarios[i + 1][1],
+                                                             second=0, microsecond=0))
+                    if not (t <= ahora_l < limite):
                         continue
                     clave = t.strftime("%Y-%m-%d %H:%M")
                     with _db_lock, db() as con:
@@ -3288,6 +3294,8 @@ def trabajador_reportes():
                     if ya:
                         continue
                     titulo, texto, nivel = reporte_periodico(_reporte_anterior(t, cfg), t)
+                    if ahora_l - t > timedelta(minutes=10):
+                        titulo += f" (atrasado: el servidor no estaba disponible a las {t:%H:%M})"
                     enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
                                         nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None)
                     with _db_lock, db() as con:
