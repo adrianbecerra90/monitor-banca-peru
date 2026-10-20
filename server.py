@@ -94,6 +94,15 @@ if not os.path.exists(os.path.join(DATOS, "config.json")):  # primer arranque en
     shutil.copy(os.path.join(BASE, "config.json"), os.path.join(DATOS, "config.json"))
 with open(os.path.join(DATOS, "config.json"), encoding="utf-8") as f:
     CONFIG = json.load(f)
+# Modelos de IA: evaluación del 20/10/2026 contra las 36 correcciones del analista (sin ejemplos): nemotron-3-ultra
+# acertó 78% (relevancia 83%, sentimiento 94%) frente a 47% de gpt-oss-20b; kimi-k3 fue retirado por NVIDIA.
+MODELO_NVIDIA = "nvidia/nemotron-3-ultra-550b-a55b"
+MODELOS_SUPERADOS = {"moonshotai/kimi-k3", "openai/gpt-oss-20b", "moonshotai/kimi-k2.6", "mistralai/mistral-large-2-instruct"}
+for _p in CONFIG.get("ia", {}).get("proveedores", []):
+    if "nvidia.com" in _p.get("base_url", "") and _p.get("modelo") in MODELOS_SUPERADOS:
+        _p["modelo"] = MODELO_NVIDIA
+        _p["modelos_alternativos"] = [MODELO_NVIDIA] + [m for m in ("openai/gpt-oss-20b", "meta/llama-3.3-70b-instruct")
+                                                        if m != MODELO_NVIDIA]
 BANCOS = CONFIG["bancos"]
 
 
@@ -3029,50 +3038,79 @@ def _umbrales_por_hora(clave_fn, dias=7):
 _GRAVES = {"vistos": {}, "ultimo_aviso": {}, "lock": threading.Lock()}
 
 
+def _valorar_evento(b, clase, ventana):
+    """Valora el evento de una entidad con lo visto en la ventana: una queja suelta no es un evento.
+    Devuelve (nivel, resumen): nivel None (no avisar), 'Grave' o 'Crítico'."""
+    cfg = CONFIG.get("notificaciones", {})
+    vistos = [v for v in _GRAVES["vistos"].get((clase, b), []) if time.time() - v["t"] < ventana]
+    _GRAVES["vistos"][(clase, b)] = vistos
+    autores = {v["autor"] for v in vistos if not v["medio"]}   # usuarios distintos (uno que insiste cuenta una vez)
+    fuentes = {v["fuente"] for v in vistos}
+    medios = [v for v in vistos if v["medio"]]                  # noticia: ya hay alcance público
+    oficial = any(v["oficial"] for v in vistos)
+    n_aut, n_fue = len(autores), len(fuentes)
+    minimo = cfg.get("caidas_para_grave" if clase == "caida" else "graves_para_grave", 3)
+    critico_n = cfg.get("caidas_para_critico" if clase == "caida" else "graves_para_critico", 6)
+    partes = [f"{n_aut} usuario{'s' if n_aut != 1 else ''} distinto{'s' if n_aut != 1 else ''}"]
+    if n_fue > 1:
+        partes.append(f"{n_fue} fuentes ({', '.join(sorted(fuentes))})")
+    if medios:
+        partes.append(f"{len(medios)} nota{'s' if len(medios) > 1 else ''} de prensa")
+    if oficial:
+        partes.append("aviso oficial de la entidad")
+    resumen = " · ".join(partes) + f" en {ventana // 60} min"
+    if oficial or n_aut >= critico_n or (n_aut >= minimo and (n_fue >= 2 or medios)) or (medios and n_aut >= 2):
+        return "Crítico", resumen
+    if n_aut >= minimo or medios:
+        return "Grave", resumen
+    return None, resumen
+
+
 def avisar_graves(nuevos):
+    """Aviso inmediato solo cuando el evento está valorado: varios usuarios distintos, varias fuentes, prensa
+    o aviso oficial. Una queja directa, por grave que sea para quien la escribe, no es crítica por sí sola:
+    queda en el panel y en el reporte programado."""
     cfg = CONFIG.get("notificaciones", {})
     if not cfg.get("graves_inmediatos", True) or not _hay_canal_aviso():
         return
     corte = iso(ahora() - timedelta(hours=2))  # solo lo reciente (no cargas históricas ni publicaciones viejas)
-    ventana, enfriar = cfg.get("graves_ventana_min", 15) * 60, cfg.get("graves_enfriamiento_min", 20) * 60
+    ventana, enfriar = cfg.get("graves_ventana_min", 30) * 60, cfg.get("graves_enfriamiento_min", 30) * 60
     for n in nuevos:
         if n.get("fecha", "") < corte or n.get("tipo") in ("post_oficial", "alerta_ciber"):
             continue
-        aviso_oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(normalizar(n.get("texto", "")))
-        grave = n.get("es_queja") and (n.get("severidad") or 0) >= 3 and set(n.get("categorias") or []) & set(FOCO)
-        caida = n.get("es_queja") and "App / canales caídos" in (n.get("categorias") or [])
-        if not (grave or aviso_oficial or caida):
+        oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(normalizar(n.get("texto", "")))
+        cats_foco = set(n.get("categorias") or []) & set(FOCO)
+        caida = n.get("es_queja") and "App / canales caídos" in cats_foco
+        grave = n.get("es_queja") and (n.get("severidad") or 0) >= 2 and cats_foco and not caida
+        if not (grave or oficial or caida):
             continue
+        clase = "caida" if (caida or oficial) else "grave"
+        registro = {"t": time.time(), "autor": (n.get("autor") or n.get("id", "")).lower(), "fuente": n.get("fuente", ""),
+                    "medio": n.get("tipo") == "noticia" or n.get("fuente") == "Noticias", "oficial": bool(oficial),
+                    "texto": re.sub(r"\s+", " ", n.get("texto", ""))[:200], "url": n.get("url", "")}
         for b in n.get("bancos") or []:
             with _GRAVES["lock"]:
-                caidas = [t for t in _GRAVES["vistos"].get(("caida", b), []) if time.time() - t < ventana] + ([time.time()] if caida else [])
-                _GRAVES["vistos"][("caida", b)] = caidas
-                lista = [t for t in _GRAVES["vistos"].get(b, []) if time.time() - t < ventana] + ([time.time()] if grave else [])
-                _GRAVES["vistos"][b] = lista
-                # ráfaga de quejas de caída (aunque cada una sea leve): así se ve una caída real
-                rafaga = len(caidas) >= cfg.get("caidas_para_critico", 5)
-                critico = bool(aviso_oficial) or rafaga or len(lista) >= cfg.get("graves_para_critico", 3)
-                if not (grave or aviso_oficial or rafaga):
+                _GRAVES["vistos"].setdefault((clase, b), []).append(registro)
+                nivel, resumen = _valorar_evento(b, clase, ventana)
+                if not nivel:
                     continue
-                ultimo = _GRAVES["ultimo_aviso"].get(b, (0, False))
-                # un crítico siempre avisa si el anterior no lo era; si no, se respeta el enfriamiento por entidad
-                if time.time() - ultimo[0] < enfriar and not (critico and not ultimo[1]):
+                ultimo = _GRAVES["ultimo_aviso"].get((clase, b), (0, None))
+                # escalar de Grave a Crítico avisa siempre; si no, se respeta el enfriamiento por entidad y tipo
+                if time.time() - ultimo[0] < enfriar and not (nivel == "Crítico" and ultimo[1] != "Crítico"):
                     continue
-                _GRAVES["ultimo_aviso"][b] = (time.time(), critico)
-            cats = ", ".join(c for c in (n.get("categorias") or []) if c in FOCO) or "queja grave"
-            if aviso_oficial:
-                titulo, cuerpo = f"CRÍTICO · {b}: aviso oficial de caída", n.get("texto", "")[:300]
-            else:
-                titulo = f"{'CRÍTICO' if critico else 'Grave'} · {b}: {cats}"
-                cuerpo = (f"{len(caidas)} quejas de caída en {ventana // 60} min. " if rafaga else
-                          f"{len(lista)} quejas graves en {ventana // 60} min. " if len(lista) > 1 else "") + \
-                         f"{n.get('fuente', '')} · {n.get('autor', '')}: {re.sub(r'\s+', ' ', n.get('texto', ''))[:260]}"
+                _GRAVES["ultimo_aviso"][(clase, b)] = (time.time(), nivel)
+                ejemplos = [v for v in _GRAVES["vistos"][(clase, b)] if v["oficial"] or v["medio"]][-2:] or \
+                           _GRAVES["vistos"][(clase, b)][-3:]
+            critico = nivel == "Crítico"
+            cats = "aviso oficial de caída" if oficial else ", ".join(sorted(cats_foco))
+            titulo = f"{nivel.upper() if critico else nivel} · {b}: {cats}"
+            cuerpo = f"Valoración: {resumen}.\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
                 enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
-                                    tipo="Queja crítica" if critico else "Queja grave", nivel="Crítico" if critico else "Grave",
+                                    tipo="Queja crítica" if critico else "Queja grave", nivel=nivel,
                                     etiquetas="rotating_light" if critico else "warning",
                                     url=n.get("url") or cfg.get("enlace") or None)
-                print(f"[{datetime.now():%H:%M:%S}] Aviso inmediato: {titulo}", flush=True)
+                print(f"[{datetime.now():%H:%M:%S}] Aviso inmediato: {titulo} ({resumen})", flush=True)
             except Exception as e:
                 print(f"  Aviso inmediato fallido ({type(e).__name__}: {e})", flush=True)
 
@@ -4106,6 +4144,9 @@ Para cada elemento devuelve:
   oficiales ("Hola, lamentamos…") NO son quejas y son neutras.
 - "severidad": 0 si no es queja; 1 leve; 2 media; 3 grave (fraude, robo, dinero perdido o retenido, cuenta bloqueada,
   caída masiva, no poder retirar o pagar).
+  La severidad mide el daño que relata ESA publicación; no decide si el evento es crítico: eso se valora después
+  por volumen de usuarios distintos, corroboración en otras fuentes, prensa o aviso oficial. No la infles porque
+  una sola persona use mayúsculas o tono alarmista.
 - "categorias": lista con 0 a 3 de estas, exactamente escritas: {categorias}
   Las cuatro categorías clave del monitor (pueden ir juntas si el texto reporta varias cosas):
   · "App / canales caídos": disponibilidad (ver abajo).

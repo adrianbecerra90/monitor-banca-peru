@@ -453,9 +453,9 @@
         "activo": true,
         "base_url": "https://integrate.api.nvidia.com/v1",
         "variable_clave": "NVIDIA_API_KEY",
-        "modelo": "moonshotai/kimi-k3",
+        "modelo": "nvidia/nemotron-3-ultra-550b-a55b",
         "modelos_alternativos": [
-          "moonshotai/kimi-k3",
+          "nvidia/nemotron-3-ultra-550b-a55b",
           "openai/gpt-oss-20b",
           "meta/llama-3.3-70b-instruct"
         ],
@@ -630,7 +630,14 @@
     "enlace": "https://monitor-banca-peru-production.up.railway.app",
     "minimo_ultima_hora": 5,
     "piso_base_escasa": 8,
-    "base_escasa": 20
+    "base_escasa": 20,
+    "graves_ventana_min": 30,
+    "graves_enfriamiento_min": 30,
+    "graves_para_grave": 3,
+    "graves_para_critico": 6,
+    "caidas_para_grave": 3,
+    "caidas_para_critico": 6,
+    "_nota_graves": "Aviso inmediato solo con el evento valorado: N usuarios distintos de la misma entidad y tipo en la ventana (una queja suelta no avisa). Crítico: aviso oficial, el doble de usuarios, o corroboración en 2+ fuentes o prensa."
   },
   "x_referentes": {
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
