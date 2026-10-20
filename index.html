@@ -1305,7 +1305,7 @@ $('#chat-f').onsubmit=async e=>{e.preventDefault();const q=$('#chat-q').value.tr
     else{CHAT.hist.push({p:q,r:r.respuesta});CHAT.hist=CHAT.hist.slice(-3);
       espera.innerHTML=mdChat(r.respuesta,r.fuentes)+
         (r.fuentes?.length?`<details><summary>Fuentes citadas (${r.fuentes.length})</summary><ul>${r.fuentes.map(f=>`<li>[${f.n}] ${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.fuente)}</a>`:esc(f.fuente)} · ${esc(hace(f.fecha))} · ${esc(f.texto.slice(0,120))}</li>`).join('')}</ul></details>`:'')+
-        `<div class="pie-r">${esc(r.periodo)} · ${fmt(r.analizadas)} publicaciones revisadas · IA ${esc(r.modelo)}</div>`}}
+        `<div class="pie-r">${esc(r.periodo)} · ${fmt(r.analizadas||0)} publicaciones revisadas · IA ${esc(r.modelo)}</div>`}}
   catch(err){espera.innerHTML='<span style="color:var(--neg)">No se pudo consultar. Intenta de nuevo.</span>'}
   CHAT.ocupado=false;$('#chat-enviar').disabled=false;$('#chat-msgs').scrollTop=1e9};
 </script>

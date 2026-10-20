@@ -6884,7 +6884,42 @@ class Handler(BaseHTTPRequestHandler):
         self._send({"error": "no encontrado"}, code=404)
 
 
+def _diagnostico_proceso():
+    """Deja en el registro por qué muere el proceso: fallos nativos, excepciones de hilos, señales y un pulso con
+    la memoria y lo que está corriendo (para diagnosticar caídas en Railway)."""
+    import faulthandler, signal
+    faulthandler.enable(all_threads=True)
+
+    def hilo_fallo(args):
+        print(f"[{datetime.now():%H:%M:%S}] FALLO EN HILO {args.thread.name if args.thread else '?'}: "
+              f"{args.exc_type.__name__}: {args.exc_value}", flush=True)
+    threading.excepthook = hilo_fallo
+
+    def senal(num, _frame):
+        print(f"[{datetime.now():%H:%M:%S}] SEÑAL {signal.Signals(num).name} recibida: el proceso se detiene", flush=True)
+        os._exit(0)
+    for sg in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sg, senal)
+        except (ValueError, OSError):
+            pass
+
+    def pulso():
+        while True:
+            try:
+                rss = next((int(l.split()[1]) // 1024 for l in open("/proc/self/status") if l.startswith("VmRSS")), 0)
+            except OSError:
+                rss = 0
+            activas = [n for n, e in ESTADO["fuentes"].items() if e.get("ejecutando")]
+            print(f"[{datetime.now():%H:%M:%S}] PULSO memoria={rss}MB hilos={threading.active_count()} "
+                  f"corriendo={','.join(activas) or '-'}", flush=True)
+            time.sleep(5)
+    if os.path.exists("/proc/self/status"):
+        threading.Thread(target=pulso, daemon=True).start()
+
+
 def main():
+    _diagnostico_proceso()
     os.umask(0o077)  # archivos nuevos (base de datos, logs) solo legibles por el usuario
     for f in (os.path.join(BASE, ".env"), DB_PATH, os.path.join(BASE, "quejas.backup.db"), os.path.join(BASE, "server.log")):
         try:
