@@ -23,6 +23,7 @@ Panel web en http://localhost:8765
 
 import base64
 import csv
+import gc
 import glob
 import http.cookiejar
 import hashlib
@@ -3612,10 +3613,17 @@ def ciber_dominios():
     return out
 
 
+def _lineas_remotas(url, timeout=120):
+    """Lee un archivo remoto línea por línea, sin cargarlo entero en memoria (las listas de abuse.ch pesan varios MB)."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        for linea in r:
+            yield linea.decode("utf-8", "ignore").rstrip("\r\n")
+
+
 def ciber_urlhaus():
-    texto = http_get("https://urlhaus.abuse.ch/downloads/csv_recent/", timeout=120).decode("utf-8", "ignore")
     out = []
-    for f in csv.reader(l for l in texto.splitlines() if l and not l.startswith("#")):
+    for f in csv.reader(l for l in _lineas_remotas("https://urlhaus.abuse.ch/downloads/csv_recent/") if l and not l.startswith("#")):
         if len(f) < 8:
             continue
         host = urllib.parse.urlparse(f[2]).hostname or ""
@@ -3628,17 +3636,19 @@ def ciber_urlhaus():
 
 
 def ciber_threatfox():
-    datos = json.loads(http_get("https://threatfox.abuse.ch/export/json/recent/", timeout=120))
+    # CSV en lugar del JSON completo: se procesa en flujo (el JSON de 5 MB ocupaba cientos de MB en memoria)
     out = []
-    for ident, iocs in (datos.items() if isinstance(datos, dict) else []):
-        for i in iocs:
-            valor = str(i.get("ioc_value") or "")
-            host = urllib.parse.urlparse(valor).hostname if "://" in valor else valor.split(":")[0]
-            ent = marca_imitada(host)
-            if ent:
-                out.append(_alerta_dominio(ent, host, "ThreatFox", ident, parse_fecha(str(i.get("first_seen_utc") or "").replace(" ", "T") + "+00:00"),
-                                           f"https://threatfox.abuse.ch/ioc/{ident}/",
-                                           f"IOC {i.get('threat_type') or ''} · {i.get('malware_printable') or ''}: {desactivar(valor)[:200]}"))
+    lineas = (l for l in _lineas_remotas("https://threatfox.abuse.ch/export/csv/recent/") if l and not l.startswith("#"))
+    for f in csv.reader(lineas, skipinitialspace=True):
+        if len(f) < 8:
+            continue
+        ident, valor = f[1], f[2]
+        host = urllib.parse.urlparse(valor).hostname if "://" in valor else valor.split(":")[0]
+        ent = marca_imitada(host)
+        if ent:
+            out.append(_alerta_dominio(ent, host, "ThreatFox", ident, parse_fecha(f[0].replace(" ", "T") + "+00:00"),
+                                       f"https://threatfox.abuse.ch/ioc/{ident}/",
+                                       f"IOC {f[4]} · {f[7]}: {desactivar(valor)[:200]}"))
     return out
 
 
@@ -3902,7 +3912,12 @@ _CIBER_FN = {"ransomware_live": ciber_ransomware_live, "telegram": ciber_telegra
              "urlhaus": ciber_urlhaus, "threatfox": ciber_threatfox, "infostealers": ciber_infostealers,
              "telegram_sesion": ciber_telegram_sesion, "filtraciones": ciber_filtraciones,
              "actores_x": ciber_actores_x}
+# Primera pasada escalonada tras el arranque (segundos): así las descargas pesadas no coinciden con el arranque ni
+# entre sí (antes todo arrancaba junto y el pico de memoria tumbaba la app en Railway)
+_CIBER_DESFASE = {"telegram": 120, "ransomware_live": 240, "actores_x": 300, "filtraciones": 420, "urlhaus": 600,
+                  "threatfox": 900, "infostealers": 1200, "dominios": 1800, "telegram_sesion": 180}
 _CIBER_ULTIMA = {}
+_CIBER_ARRANQUE = time.time()
 
 
 def revisar_fuentes_ciber(forzar=False):
@@ -3910,6 +3925,8 @@ def revisar_fuentes_ciber(forzar=False):
     estado = ESTADO.setdefault("ciber_fuentes", {})
     for nombre, minutos in {**FUENTES_CIBER, **cfg.get("fuentes", {})}.items():
         if nombre not in _CIBER_FN or not minutos:
+            continue
+        if not forzar and nombre not in _CIBER_ULTIMA and time.time() - _CIBER_ARRANQUE < _CIBER_DESFASE.get(nombre, 0):
             continue
         if not forzar and time.time() - _CIBER_ULTIMA.get(nombre, 0) < minutos * 60:
             continue
@@ -3919,6 +3936,8 @@ def revisar_fuentes_ciber(forzar=False):
             nuevas = _registrar_alertas(alertas)
             _avisar_ciber(nuevas, _cfg_referentes())
             estado[nombre] = {"ok": True, "revisado": iso(ahora()), "coincidencias": len(alertas), "nuevas": len(nuevas)}
+            del alertas
+            gc.collect()
             if nuevas:
                 print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad ({nombre}): {len(nuevas)} alertas nuevas", flush=True)
         except RutaInactiva as e:
