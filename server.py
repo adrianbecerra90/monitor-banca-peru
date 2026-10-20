@@ -1446,7 +1446,11 @@ def _nitter_get(ruta, inicio=0):
         try:
             req = urllib.request.Request(inst + ruta, headers={"User-Agent": UA, "Accept-Language": "es-PE,es"})
             with urllib.request.urlopen(req, timeout=15) as r:
-                cuerpo, cursor = r.read(), r.headers.get("Min-Id")
+                # tope de 5 MB: una instancia que devuelve una respuesta gigante o interminable llenaba la memoria y
+                # Railway mataba la app (pasaba de 150 MB a 900 MB en segundos)
+                cuerpo, cursor = r.read(5 * 1024 * 1024 + 1), r.headers.get("Min-Id")
+                if len(cuerpo) > 5 * 1024 * 1024:
+                    raise ValueError("respuesta demasiado grande")
             raiz = ET.fromstring(cuerpo)  # falla si devolvió una página anti-bot
             ruta_ok("X·Nitter", inst, "Responde")
             return inst, raiz, cursor
