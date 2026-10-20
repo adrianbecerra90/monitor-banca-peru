@@ -3293,9 +3293,18 @@ def trabajador_reportes():
                         ya = con.execute("SELECT 1 FROM reportes_enviados WHERE clave = ?", (clave,)).fetchone()
                     if ya:
                         continue
-                    titulo, texto, nivel = reporte_periodico(_reporte_anterior(t, cfg), t)
-                    if ahora_l - t > timedelta(minutes=10):
-                        titulo += f" (atrasado: el servidor no estaba disponible a las {t:%H:%M})"
+                    # Cubre desde el último reporte realmente enviado hasta este momento: si se atrasó, sale con la
+                    # hora en que el servidor se recuperó y sin huecos ni solapes con el siguiente
+                    desde = _reporte_anterior(t, cfg)
+                    with _db_lock, db() as con:
+                        previo = con.execute("SELECT MAX(enviado) FROM reportes_enviados WHERE enviado < ?",
+                                             (iso(ahora()),)).fetchone()[0]
+                    if previo:
+                        desde = max(desde, datetime.fromisoformat(previo).astimezone(LIMA))
+                    atrasado = ahora_l - t > timedelta(minutes=10)
+                    titulo, texto, nivel = reporte_periodico(desde, ahora_l if atrasado else t)
+                    if atrasado:
+                        texto += f"\n\n(Programado para las {t:%H:%M}; sale ahora porque el servidor no estaba disponible.)"
                     enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
                                         nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None)
                     with _db_lock, db() as con:
