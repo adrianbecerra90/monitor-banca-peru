@@ -2807,7 +2807,14 @@ def _avisar_silencioso(titulo, texto):
 _locks = {n: threading.Lock() for n in FUENTES}
 
 
+# Bloqueo temporal (se puede ampliar con la variable FUENTES_BLOQUEADAS="YouTube,TikTok"): no se consultan
+FUENTES_BLOQUEADAS = {f.strip() for f in os.environ.get("FUENTES_BLOQUEADAS", "YouTube").split(",") if f.strip()}
+
+
 def escanear_fuente(nombre):
+    if nombre in FUENTES_BLOQUEADAS:
+        ESTADO["fuentes"][nombre].update(ok=None, msg="⛔ Bloqueada temporalmente")
+        return
     if en_pausa(nombre):
         ESTADO["fuentes"][nombre].update(msg="⏸ En pausa")
         return
