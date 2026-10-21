@@ -482,15 +482,14 @@
         "activo": true,
         "base_url": "https://api.groq.com/openai/v1",
         "variable_clave": "GROQ_API_KEY",
-        "modelo": "openai/gpt-oss-120b",
+        "modelo": "qwen/qwen3.8-27b",
         "modelos_alternativos": [
-          "openai/gpt-oss-120b",
-          "openai/gpt-oss-20b",
-          "qwen/qwen3-32b"
+          "qwen/qwen3.8-27b",
+          "openai/gpt-oss-120b"
         ],
-        "lote": 8,
-        "pausa_seg": 3,
-        "_nota": "Capa gratuita de Groq (límites por minuto y por día): lotes chicos y pausa para no chocar con el límite."
+        "lote": 3,
+        "pausa_seg": 25,
+        "_nota": "Capa gratuita de Groq (8000 tokens/min, 1000 consultas/día): lotes de 3 con pausa. qwen3.8-27b acertó 81% contra las correcciones del analista."
       }
     ]
   },

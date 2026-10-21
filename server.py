@@ -105,10 +105,15 @@ for _p in CONFIG.get("ia", {}).get("proveedores", []):
                                                         if m != MODELO_NVIDIA]
 # Groq como tercer proveedor activo-activo: el config del volumen de producción no se actualiza con git
 PROVEEDOR_GROQ = {"nombre": "Groq directo", "activo": True, "base_url": "https://api.groq.com/openai/v1", "variable_clave": "GROQ_API_KEY",
-                  "modelo": "openai/gpt-oss-120b", "modelos_alternativos": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3-32b"],
-                  "lote": 8, "pausa_seg": 3}  # capa gratuita: lotes chicos y pausa para no chocar con el límite por minuto
+                  "modelo": "qwen/qwen3.8-27b", "modelos_alternativos": ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"],
+                  "lote": 3, "pausa_seg": 25}
+# Capa gratuita de Groq: 8000 tokens/min y 1000 consultas/día, así que lotes de 3 con pausa. Prueba del 21/10/2026 contra
+# las 36 correcciones del analista: qwen3.8-27b 81% (relevancia 83%, sentimiento 97%); gpt-oss-120b ~50%.
 if CONFIG.get("ia", {}).get("proveedores") and not any("groq.com" in p.get("base_url", "") for p in CONFIG["ia"]["proveedores"]):
     CONFIG["ia"]["proveedores"].append(dict(PROVEEDOR_GROQ))
+for _p in CONFIG.get("ia", {}).get("proveedores", []):
+    if "groq.com" in _p.get("base_url", "") and _p.get("modelo") in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+        _p.update({k: PROVEEDOR_GROQ[k] for k in ("modelo", "modelos_alternativos", "lote", "pausa_seg")})
 BANCOS = CONFIG["bancos"]
 
 
@@ -4254,7 +4259,9 @@ def _ia_falta_clave(p):
 
 def _ia_post(p, ruta, cuerpo=None, timeout=240):
     clave = os.environ.get(p["variable_clave"]) if p.get("variable_clave") else None
-    h = {"Content-Type": "application/json", "Accept": "application/json"}
+    # User-Agent propio: Cloudflare (p. ej. delante de Groq) bloquea el de Python con el error 1010
+    h = {"Content-Type": "application/json", "Accept": "application/json",
+         "User-Agent": "monitor-banca-peru/1.0 (+https://monitor-banca-peru-production.up.railway.app)"}
     if clave:
         h["Authorization"] = f"Bearer {clave}"
     req = urllib.request.Request(_ia_url(p) + ruta, data=json.dumps(cuerpo).encode() if cuerpo else None, headers=h)
