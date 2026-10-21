@@ -3273,6 +3273,22 @@ def _orden_afectadas(x):
     return (-x[1]["quejas"], -x[1].get("criticas", 0), x[0])
 
 
+def _ev_vacio():
+    return {c: set() for c in FOCO} | {"prensa": set(), "comunicado": False, "externo": False, "caidas_t": []}
+
+
+def _max_en_ventana(marcas, minutos=60):
+    """Máximo de autores distintos dentro de una misma ventana de tiempo: una caída real se concentra; quejas
+    sueltas repartidas en el día no son una indisponibilidad."""
+    marcas = sorted(marcas)
+    mejor, ini = 0, 0
+    for fin in range(len(marcas)):
+        while marcas[fin][0] - marcas[ini][0] > timedelta(minutes=minutos):
+            ini += 1
+        mejor = max(mejor, len({a for _, a in marcas[ini:fin + 1]}))
+    return mejor
+
+
 def evaluar_supervision(filas, alertas):
     """Evaluación por entidad con la evidencia del periodo, para decidir si algo amerita acción de supervisión.
     Cuenta usuarios distintos (no publicaciones), prensa, comunicados oficiales y fuentes independientes de las
@@ -3284,33 +3300,46 @@ def evaluar_supervision(filas, alertas):
         meta = json.loads(r.get("meta") or "{}")
         cats = set(json.loads(r.get("categorias") or "[]"))
         t = normalizar(r.get("texto") or "")
-        oficial = meta.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(t) and \
-            not (r.get("texto") or "").lstrip().startswith("@") and not AVISO_EXTERNO.search(t)
+        es_oficial = meta.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(t)
+        oficial = es_oficial and not (r.get("texto") or "").lstrip().startswith("@") and not AVISO_EXTERNO.search(t)
+        externo = es_oficial and AVISO_EXTERNO.search(t)
         for b in json.loads(r.get("bancos") or "[]"):
-            e = ev.setdefault(b, {c: set() for c in FOCO} | {"prensa": set(), "comunicado": False})
+            e = ev.setdefault(b, _ev_vacio())
             if oficial:
                 e["comunicado"] = True
+            if externo:
+                e["externo"] = True
             if not r.get("es_queja"):
                 continue
+            autor = (r.get("autor") or "").lower()
             for c in cats & set(FOCO):
-                (e["prensa"] if meta.get("tipo") == "noticia" else e[c]).add((r.get("autor") or "").lower())
+                (e["prensa"] if meta.get("tipo") == "noticia" else e[c]).add(autor)
+                if c == "App / canales caídos" and meta.get("tipo") != "noticia" and r.get("fecha"):
+                    e["caidas_t"].append((datetime.fromisoformat(r["fecha"]), autor))
     cib = {}
     for a in alertas:
         for b in json.loads(a.get("entidades") or "[]") if isinstance(a.get("entidades"), str) else (a.get("entidades") or []):
             cib.setdefault(b, set()).add(a.get("cuenta") or "")
     hallazgos = []
     for b in sorted(set(ev) | set(cib)):
-        e = ev.get(b, {c: set() for c in FOCO} | {"prensa": set(), "comunicado": False})
+        e = ev.get(b, _ev_vacio())
         caidas = len(e["App / canales caídos"])
-        if e["comunicado"] or caidas >= evento_n or (caidas >= 3 and e["prensa"]):
-            base = "comunicado de la entidad" if e["comunicado"] else f"{caidas} usuarios distintos" + (" y prensa" if e["prensa"] else "")
-            hallazgos.append((b, "Alta", f"indisponibilidad probable ({base})",
+        rafaga = _max_en_ventana(e["caidas_t"])          # usuarios distintos dentro de una misma hora
+        tercero = "; la entidad atribuye parte de las fallas a un proveedor externo" if e["externo"] else ""
+        if e["comunicado"] or rafaga >= evento_n or (rafaga >= 3 and e["prensa"]):
+            base = "comunicado de la entidad" if e["comunicado"] else \
+                f"{rafaga} usuarios distintos en una misma hora" + (" y prensa" if e["prensa"] else "")
+            hallazgos.append((b, "Alta", f"indisponibilidad probable ({base}{tercero})",
                               f"Solicitar a {b} la confirmación del evento, los canales y productos afectados, la hora de "
                               f"inicio y el estimado de restablecimiento; evaluar si corresponde a un evento de "
                               f"interrupción a reportar según la normativa vigente."))
-        elif caidas >= 3:
-            hallazgos.append((b, "Media", f"{caidas} usuarios distintos reportan problemas de disponibilidad",
+        elif rafaga >= 3:
+            hallazgos.append((b, "Media", f"{rafaga} usuarios distintos reportan problemas de disponibilidad en una misma hora{tercero}",
                               "Seguimiento: confirmar en el siguiente corte si los reportes continúan."))
+        elif caidas >= 5:
+            hallazgos.append((b, "Media", f"{caidas} usuarios reportan problemas de disponibilidad, dispersos a lo largo del "
+                                          f"periodo y no concentrados en el tiempo{tercero}",
+                              "Seguimiento ordinario; no muestran un evento puntual."))
         fuentes = cib.get(b, set())
         if "Hudson Rock" in fuentes:  # infostealers: exposición de credenciales de empleados, no un incidente declarado
             fuentes = fuentes - {"Hudson Rock"}
@@ -3345,7 +3374,7 @@ def reporte_periodico(desde, hasta, banco=None):
     sql += """ AND meta NOT LIKE '%"tipo": "post_oficial"%'"""
     with _db_lock, db() as con:
         filas = [dict(r) for r in con.execute(f"SELECT bancos, sentimiento, es_queja, severidad, categorias, autor, fuente, "
-                                              f"texto, meta FROM items{sql}", args)]
+                                              f"texto, meta, fecha FROM items{sql}", args)]
         _tabla_ciber(con)
         alertas = [dict(r) for r in con.execute("SELECT cuenta, texto, entidades, organizacion, sector FROM alertas_ciber "
                                                 "WHERE capturado >= ? AND capturado < ? ORDER BY fecha DESC",
@@ -3365,8 +3394,11 @@ def reporte_periodico(desde, hasta, banco=None):
             e["criticas"] += r["sentimiento"] == "negativo" and not r["es_queja"]
     # las mismas entidades y en el mismo orden que ve la síntesis: lo que nombra el resumen aparece en la lista
     top = [(b, e) for b, e in sorted(por_ent.items(), key=_orden_afectadas) if e["quejas"] or e["criticas"]][:5]
+    nivel, hallazgos = evaluar_supervision(filas, alertas)
+    ev_txt = "\n".join(f"- {b}: {hecho} ({'requiere atención' if g == 'Alta' else 'en seguimiento'})"
+                        for b, g, hecho, _ in hallazgos) or "- Sin hechos que ameriten acción de supervisión."
     try:
-        sint = sintesis_nube(qs) if filas else {}
+        sint = sintesis_nube({**qs, "_evaluacion": [ev_txt]}) if filas else {}
     except Exception as e:
         print(f"  Reporte: síntesis no disponible ({type(e).__name__})", flush=True)
         sint = {}
@@ -3394,7 +3426,6 @@ def reporte_periodico(desde, hasta, banco=None):
         lineas.append("Sin menciones ni alertas nuevas en el periodo.")
     # Evaluación de supervisión: solo recomienda acciones cuando la evidencia (usuarios distintos, prensa,
     # comunicados, fuentes independientes) lo justifica; el nivel del reporte sale de aquí, no del conteo de graves
-    nivel, hallazgos = evaluar_supervision(filas, alertas)
     altas = [h for h in hallazgos if h[1] == "Alta"]
     if altas:
         lineas += ["", "**Requiere atención:**"]
@@ -5998,6 +6029,14 @@ ESTILO_SUPERVISOR = (
     "entidad; si no, habla de reportes aislados. Una alerta de ciberseguridad publicada por una cuenta de terceros es "
     "una afirmación no confirmada: atribúyela ('según @cuenta', 'se reporta'). Puedes citar cuántas quejas hay. Si no "
     "hay nada fuera de lo habitual, dilo con naturalidad.")
+def _nota_evaluacion(qs):
+    """La evaluación por evidencia del reporte (usuarios distintos por hora, prensa, comunicados) se pasa a la IA para
+    que la síntesis no la contradiga."""
+    ev = qs.get("_evaluacion", [""])[0]
+    return ("\nEvaluación por evidencia del monitor, que debes respetar y no contradecir (si dice que los reportes están "
+            "dispersos, no digas concentrados ni interrupción; si dice no confirmado, no lo des por hecho):\n" + ev) if ev else ""
+
+
 # Etiquetas de tema: solo con evidencia (al menos 3 quejas de esa categoría); con menos, no hay tema que etiquetar
 TEMAS_EVIDENCIA = [("Reportes de indisponibilidad", "App / canales caídos"), ("Errores operativos", "Errores operativos"),
                    ("Ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")]
@@ -6027,7 +6066,8 @@ def _resumen_directo(qs):
               "Resume en español, en dos o tres frases cortas (máximo 70 palabras), qué está pasando: si hay "
               "interrupciones, incidentes operativos, eventos de ciberseguridad o fraude, con qué entidades y productos, y el "
               "tono. Si pasan cosas distintas con actores distintos, menciónalas todas. Usa SOLO estas publicaciones: no "
-              "inventes nada; si son comentarios sueltos sin un patrón, dilo así. Sin comillas ni viñetas." + ESTILO_SUPERVISOR)
+              "inventes nada; si son comentarios sueltos sin un patrón, dilo así. Sin comillas ni viñetas." + ESTILO_SUPERVISOR +
+              _nota_evaluacion(qs))
     temas = [t for t, c in TEMAS_EVIDENCIA
              if sum(bool(r["es_queja"]) and c in json.loads(r["categorias"] or "[]") for r in filas) >= MIN_QUEJAS_TEMA]
     for p in _ia_proveedores():
@@ -6162,7 +6202,7 @@ def sintesis_nube(qs):
               "varias personas reportando lo mismo. El fraude contra clientes (estafas, cargos no reconocidos) no es un "
               "evento de ciberseguridad de la entidad: llámalo fraude; ciberseguridad es hackeo, filtración o ataque a la "
               "propia entidad. No inventes "
-              "hechos que no se deduzcan de los datos y no uses comillas ni viñetas." + ESTILO_SUPERVISOR)
+              "hechos que no se deduzcan de los datos y no uses comillas ni viñetas." + ESTILO_SUPERVISOR + _nota_evaluacion(qs))
     for p in _ia_proveedores():
         if _ia_falta_clave(p):
             continue
