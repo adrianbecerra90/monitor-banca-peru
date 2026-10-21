@@ -623,7 +623,7 @@ async function abrirCorreccion(b){
   if(item){item.appendChild(f);Object.assign(f.style,{position:'relative',top:'auto',left:'auto',marginTop:'8px',maxWidth:'100%'})}
   else{document.body.appendChild(f);const r=b.getBoundingClientRect();f.style.top=(window.scrollY+r.bottom+6)+'px';f.style.left=Math.max(16,Math.min(window.scrollX+r.left-200,window.scrollX+document.documentElement.clientWidth-f.offsetWidth-16))+'px'}
   f.querySelectorAll('[data-g]').forEach(x=>x.onclick=()=>{const g=x.dataset.g;st[g]=g==='s'?x.dataset.v:x.dataset.v==='true';
-    if(g==='q'&&st.q){st.rel=true;if(st.s!=='negativo')st.s='negativo'}if(g==='rel'&&!st.rel)st.q=false;
+    if(g==='q'&&st.q){st.rel=true}/* una queja puede ser neutra o positiva: el tono se elige aparte */if(g==='rel'&&!st.rel)st.q=false;
     f.querySelectorAll('[data-g]').forEach(y=>y.classList.toggle('on',String(st[y.dataset.g])===y.dataset.v))});
   f.querySelector('#corr-no').onclick=()=>f.remove();
   f.querySelector('#corr-ok').onclick=async()=>{

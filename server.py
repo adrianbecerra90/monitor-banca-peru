@@ -420,10 +420,16 @@ def clasificar(texto, tipo=""):
         es_queja = True  # un error en la operación o un incidente de seguridad de la entidad ya es un reclamo
     if fuera_del_servicio(cats) or entidad_como_alternativa(texto):
         es_queja, neg = False, 0  # solo marketing/diseño, o la entidad es la alternativa: no es negativo ni queja
-    if es_queja or neg > pos:
+    # Queja (qué pasó) y tono (cómo lo dice) son ejes distintos: una queja puede ser neutra (un titular, un pedido
+    # de ayuda) o positiva ("se cayó pero ya volvió, gracias"). Sin palabras de tono, la queja de un usuario es negativa.
+    if tipo == "noticia":
+        sentimiento = "positivo" if pos > neg else "neutro"  # un titular informa: su tono es neutro aunque reporte una falla
+    elif neg > pos:
         sentimiento = "negativo"
-    elif pos > 0 and neg == 0:
-        sentimiento = "positivo"
+    elif pos > 0:
+        sentimiento = "positivo"  # "se cayó pero ya volvió, gracias": queja con tono positivo
+    elif es_queja:
+        sentimiento = "negativo"
     else:
         sentimiento = "neutro"
     if not es_queja:
@@ -3023,7 +3029,7 @@ def _umbrales_por_hora(clave_fn, dias=7):
     fin = ahora().replace(minute=0, second=0, microsecond=0)
     ini = fin - timedelta(days=dias)
     with _db_lock, db() as con:
-        filas = con.execute("SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND sentimiento = 'negativo' "
+        filas = con.execute("SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND (sentimiento = 'negativo' OR es_queja = 1) "
                             "AND fecha >= ? AND fecha < ?", (iso(ini), iso(fin))).fetchall()
     cuentas = {}
     for r in filas:
@@ -3160,7 +3166,7 @@ def revisar_umbral_notificar():
         for k in clave_fn(r):
             c = contexto.setdefault(k, {"total": 0, "quejas": 0, "foco": {}})
             c["total"] += 1
-            if r["sentimiento"] == "negativo":
+            if r["sentimiento"] == "negativo" or r["es_queja"]:  # misma medida que la base: quejas o tono negativo
                 ahora_n[k] = ahora_n.get(k, 0) + 1
             if r["es_queja"]:
                 c["quejas"] += 1
@@ -3242,8 +3248,9 @@ def _reporte_anterior(t, cfg):
 
 
 def _orden_afectadas(x):
-    """Orden común de 'más afectadas' (reporte y síntesis): negativas, luego quejas, luego nombre (desempate estable)."""
-    return (-x[1]["neg"], -x[1]["quejas"], x[0])
+    """Orden común de 'más afectadas' (reporte y síntesis): quejas (riesgo operacional), luego críticas sin
+    incidente (riesgo reputacional), luego nombre (desempate estable)."""
+    return (-x[1]["quejas"], -x[1].get("criticas", 0), x[0])
 
 
 def reporte_periodico(desde, hasta, banco=None):
@@ -3261,15 +3268,17 @@ def reporte_periodico(desde, hasta, banco=None):
         alertas = [a for a in alertas if banco in json.loads(a["entidades"] or "[]") or banco in detectar_bancos(a["texto"], True)]
     neg = sum(r["sentimiento"] == "negativo" for r in filas)
     quejas = sum(bool(r["es_queja"]) for r in filas)
+    criticas = sum(r["sentimiento"] == "negativo" and not r["es_queja"] for r in filas)  # tono negativo sin incidente
     graves = sum(bool(r["es_queja"]) and (r["severidad"] or 0) >= 3 for r in filas)
     por_ent = {}
     for r in filas:
         for b in json.loads(r["bancos"] or "[]"):
-            e = por_ent.setdefault(b, {"neg": 0, "quejas": 0})
+            e = por_ent.setdefault(b, {"neg": 0, "quejas": 0, "criticas": 0})
             e["neg"] += r["sentimiento"] == "negativo"
             e["quejas"] += bool(r["es_queja"])
+            e["criticas"] += r["sentimiento"] == "negativo" and not r["es_queja"]
     # las mismas entidades y en el mismo orden que ve la síntesis: lo que nombra el resumen aparece en la lista
-    top = [(b, e) for b, e in sorted(por_ent.items(), key=_orden_afectadas) if e["neg"]][:5]
+    top = [(b, e) for b, e in sorted(por_ent.items(), key=_orden_afectadas) if e["quejas"] or e["criticas"]][:5]
     try:
         sint = sintesis_nube(qs) if filas else {}
     except Exception as e:
@@ -3281,9 +3290,11 @@ def reporte_periodico(desde, hasta, banco=None):
     if sint.get("frase"):
         temas = " · ".join(sint.get("temas") or [])
         lineas += [f"**Qué está pasando:** {sint['frase']}" + (f" ({temas})" if temas else ""), ""]
-    lineas.append(f"**Cifras:** {len(filas)} menciones · {neg} negativas · {quejas} quejas · {graves} graves")
+    lineas.append(f"**Cifras:** {len(filas)} menciones · {quejas} quejas ({graves} grave{'s' if graves != 1 else ''}) · {criticas} críticas sin incidente")
     if top:
-        lineas.append("**Más afectadas:** " + "; ".join(f"{b} ({e['neg']} negativas, {e['quejas']} quejas)" for b, e in top))
+        lineas.append("**Más afectadas:** " + "; ".join(
+            f"{b} ({e['quejas']} queja{'s' if e['quejas'] != 1 else ''}" +
+            (f", {e['criticas']} crítica{'s' if e['criticas'] != 1 else ''}" if e["criticas"] else "") + ")" for b, e in top))
     if alertas:
         lineas += ["", f"**Ciberseguridad:** {len(alertas)} alerta(s) nueva(s)"]
         for a in alertas[:5]:
@@ -4194,6 +4205,9 @@ Para cada elemento devuelve:
   noticias de fallas, multas o sanciones contra la entidad, o fraudes por fallas de seguridad de la entidad).
   Con "atribuible" false, "queja" es false. Las consultas de información y las respuestas de las propias cuentas
   oficiales ("Hola, lamentamos…") NO son quejas y son neutras.
+  "queja" y "sentimiento" son independientes: "queja" dice QUÉ pasó (un problema real) y "sentimiento" CÓMO lo
+  dice. Un titular que informa una caída es queja con sentimiento neutro; "no me llega el código, ¿me ayudan?" es
+  queja neutra; "se cayó pero ya volvió, gracias por la rapidez" es queja positiva. Lo irónico o molesto es negativo.
 - "severidad": 0 si no es queja; 1 leve; 2 media; 3 grave (fraude, robo, dinero perdido o retenido, cuenta bloqueada,
   caída masiva, no poder retirar o pagar).
   La severidad mide el daño que relata ESA publicación; no decide si el evento es crítico: eso se valora después
@@ -5961,11 +5975,12 @@ def sintesis_nube(qs):
             for c in json.loads(r["categorias"] or "[]"):
                 cat_neg[c] = cat_neg.get(c, 0) + 1
         for b in json.loads(r["bancos"] or "[]"):
-            a = afect.setdefault(b, {"neg": 0, "quejas": 0, "total": 0})
+            a = afect.setdefault(b, {"neg": 0, "quejas": 0, "criticas": 0, "total": 0})
             a["total"] += 1
             a["neg"] += r["sentimiento"] == "negativo"
             a["quejas"] += bool(r["es_queja"])
-    afectados = sorted(((b, a) for b, a in afect.items() if a["neg"]), key=_orden_afectadas)[:5]
+            a["criticas"] += r["sentimiento"] == "negativo" and not r["es_queja"]
+    afectados = sorted(((b, a) for b, a in afect.items() if a["quejas"] or a["criticas"]), key=_orden_afectadas)[:5]
     # tipo de tema, por datos: categoría del foco con peso relevante entre lo negativo (≥15 %, o la mayor si ninguna llega)
     TEMAS = [("Interrupción", "App / canales caídos"), ("Incidente operativo", "Errores operativos"),
              ("Evento de ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")]
@@ -5987,12 +6002,12 @@ def sintesis_nube(qs):
     lista = "; ".join(f'{w["palabra"]} ({w["total"]}: {w["negativo"]} neg, {w["positivo"]} pos)' for w in ws)
     def _top(dic, k=3):
         return ", ".join(f"{x} ({v})" for x, v in sorted(dic.items(), key=lambda kv: -kv[1])[:k])
-    lista_af = "\n".join(f'- {b}: {a["neg"]} negativas y {a["quejas"]} quejas de {a["total"]} menciones; temas: '
+    lista_af = "\n".join(f'- {b}: {a["quejas"]} quejas (problemas reportados) y {a["criticas"]} críticas sin incidente de {a["total"]} menciones; temas: '
                           f'{_top(perfil.get(b, {}).get("cats", {})) or "sin categoría clara"}; productos: '
                           f'{_top(perfil.get(b, {}).get("prods", {})) or "ninguno destacado"}' for b, a in afectados)
     # la huella cambia con cualquier filtro o cambio de la nube: así la frase se regenera cuando cambia lo que se ve
     filtros = sorted((k, v[0]) for k, v in qs.items() if k not in ("gran", "orden", "max", "_"))
-    huella = hashlib.sha256(json.dumps([filtros, [(w["palabra"], w["total"]) for w in ws], [(b, a["neg"]) for b, a in afectados], productos],
+    huella = hashlib.sha256(json.dumps([filtros, [(w["palabra"], w["total"]) for w in ws], [(b, a["quejas"], a["criticas"]) for b, a in afectados], productos],
                                        ensure_ascii=False).encode()).hexdigest()
     previo = _SINTESIS.get(huella)
     if previo and time.time() - previo[0] < 20 * 60:
@@ -6013,7 +6028,7 @@ def sintesis_nube(qs):
     prompt = (f"Eres analista de reputación y riesgo del sistema financiero peruano. Estas son las palabras y frases más "
               f"frecuentes en redes sociales sobre {ambito} en {periodo}, con cuántas publicaciones las usan y su tono "
               f"({d.get('publicaciones', 0)} publicaciones analizadas):\n{lista}\n\n"
-              f"Entidades con más menciones negativas, con lo que le pasa a cada una:\n{lista_af or 'ninguna destacada'}\n"
+              f"Entidades con más quejas y críticas, con lo que le pasa a cada una:\n{lista_af or 'ninguna destacada'}\n"
               f"Tipo de tema según los datos: {' + '.join(temas) or 'ninguno del foco (atención, producto u otros)'}.\n"
               f"Productos o canales más nombrados en lo negativo: {', '.join(f'{n} ({prod[n]})' for n in productos) or 'ninguno destacado'}.\n\n"
               "Escribe en español un resumen breve (una frase; dos o tres frases cortas si hace falta, máximo 70 palabras) "
@@ -6023,7 +6038,8 @@ def sintesis_nube(qs):
               "dominante dejando claro si es una interrupción del servicio, un incidente operativo y/o un evento de "
               "ciberseguridad (según el tipo de tema indicado), qué productos o canales fallan SOLO si se indican arriba "
               "(si dice 'ninguno destacado', no los menciones), el tono y quiénes son los "
-              "principales afectados (las entidades con más negativas; si una concentra la mayoría, dilo). "
+              "principales afectados (las entidades con más quejas; si una concentra la mayoría, dilo; las críticas sin "
+              "incidente son malestar reputacional, no fallas). "
               "Pondera por volumen: una entidad con 1 o 2 quejas es un caso aislado y así debes decirlo (p. ej. "
               "'quejas aisladas de clientes de Yape'); NO la presentes como interrupción, caída ni incidente: eso exige "
               "varias personas reportando lo mismo. El fraude contra clientes (estafas, cargos no reconocidos) no es un "
