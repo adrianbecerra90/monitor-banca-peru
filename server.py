@@ -4730,9 +4730,13 @@ def _guardar_ia(filas, res):
         _aplicar_ia(con)
 
 
+_IA_EN_CURSO = {"ids": set(), "lock": threading.Lock()}  # publicaciones que algún proveedor está clasificando ahora
+
+
 def trabajador_ia(k):
-    """Un trabajador por proveedor. Con N proveedores sanos, cada uno toma su parte (rowid % N); si alguno cae,
-    los demás asumen su parte. Dentro de cada proveedor, si un modelo falla se pasa al siguiente."""
+    """Un trabajador por proveedor sobre una cola compartida: cada uno toma lo más reciente que nadie está
+    clasificando, así el más rápido hace más (Groq gratis es lento; NVIDIA, rápido) y si uno cae los demás siguen
+    sin huecos. Dentro de cada proveedor, si un modelo falla se pasa al siguiente."""
     modelos, idx_modelo, lote, fallos_modelo, revisar_principal = None, 0, None, 0, 0
     while True:
         provs = _ia_proveedores()
@@ -4757,14 +4761,14 @@ def trabajador_ia(k):
             if modelos is None or time.time() > revisar_principal:
                 modelos, idx_modelo, revisar_principal = _ia_modelos(p), 0, time.time() + 1800
             modelo = modelos[idx_modelo % len(modelos)]
-            sanos = [i for i, q in enumerate(provs) if ruta_disponible("IA", q["nombre"])
-                     and not _ia_falta_clave(q)]
-            n, parte = (len(sanos), sanos.index(k)) if k in sanos else (1, 0)
             with _db_lock, db() as con:
-                filas = con.execute(f"SELECT rowid, id, fuente, bancos, texto, meta FROM items WHERE {SIN_IA} "
-                                    f"AND (rowid % ?) = ? ORDER BY fecha DESC LIMIT ?", (n, parte, lote)).fetchall()
+                candidatas = con.execute(f"SELECT rowid, id, fuente, bancos, texto, meta FROM items WHERE {SIN_IA} "
+                                         f"ORDER BY fecha DESC LIMIT ?", (lote + 60,)).fetchall()
                 pendientes = con.execute(f"SELECT COUNT(*) FROM items WHERE {SIN_IA}").fetchone()[0]
             ESTADO["ia"]["pendientes"] = pendientes
+            with _IA_EN_CURSO["lock"]:  # se reservan para que dos proveedores no clasifiquen lo mismo
+                filas = [f for f in candidatas if f["id"] not in _IA_EN_CURSO["ids"]][:lote]
+                _IA_EN_CURSO["ids"].update(f["id"] for f in filas)
             if not filas:
                 ruta_ok("IA", nombre, f"Al día · {modelo}")
                 est.update(activo=True)
@@ -4772,23 +4776,36 @@ def trabajador_ia(k):
                 continue
             t0 = time.time()
             _salud("IA", nombre)["msg"] = f"Clasificando {len(filas)}… · {modelo}"  # el panel muestra el trabajo en curso
-            res, usado = _ia_lote(p, modelo, filas)
-            _guardar_ia(filas, res)
+            try:
+                res, usado = _ia_lote(p, modelo, filas)
+                _guardar_ia(filas, res)
+            finally:
+                with _IA_EN_CURSO["lock"]:
+                    _IA_EN_CURSO["ids"].difference_update(f["id"] for f in filas)
             ruta_ok("IA", nombre, f"{len(res)} clasificados en {time.time() - t0:.0f}s · {usado}")
             est.update(activo=True, modelo=usado, ultima=iso(ahora()))
             fallos_modelo = 0
             lote = min(p.get("lote", 20), lote + 5)
             time.sleep(p.get("pausa_seg", 1))
         except Exception as e:
-            detalle = e.read()[:150].decode("utf-8", "ignore") if isinstance(e, urllib.error.HTTPError) else ""
-            if isinstance(e, urllib.error.HTTPError) and e.code == 410 and modelos:
+            detalle = e.read()[:300].decode("utf-8", "ignore") if isinstance(e, urllib.error.HTTPError) else ""
+            if isinstance(e, urllib.error.HTTPError) and e.code in (413, 429) and "per day" not in detalle.lower():
+                # límite por minuto (capas gratuitas): se espera lo que pide el proveedor, sin contarlo como falla
+                try:
+                    espera = float(e.headers.get("retry-after") or 20)
+                except (TypeError, ValueError):
+                    espera = 20
+                _salud("IA", nombre)["msg"] = f"Esperando el límite por minuto ({espera:.0f}s) · {modelo}"
+                lote = max(1, min(lote, p.get("lote", 20)) - 1) if "too large" in detalle.lower() else lote
+                time.sleep(min(max(espera, 2), 90))
+                continue
                 _MODELOS_RETIRADOS.add(modelo)  # dado de baja por el proveedor: se pasa al siguiente y no se reintenta
                 modelos, idx_modelo = _ia_modelos(p), 0
             ruta_fallo("IA", nombre, RuntimeError(f"{type(e).__name__}: {e} {detalle}".strip()))
             print(f"[{datetime.now():%H:%M:%S}] IA {nombre}: {type(e).__name__}: {e} {detalle}", flush=True)
             fallos_modelo += 1
             if isinstance(e, (ValueError, TimeoutError)) or "timed out" in str(e):
-                lote = max(4, lote // 2)  # respuestas lentas o ilegibles suelen venir de lotes grandes
+                lote = max(min(4, p.get("lote", 20)), lote // 2)  # respuestas lentas o ilegibles suelen venir de lotes grandes
             if fallos_modelo >= 2 and modelos and len(modelos) > 1:
                 idx_modelo, fallos_modelo = idx_modelo + 1, 0  # failover al siguiente modelo del mismo proveedor
             time.sleep(5)
