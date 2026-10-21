@@ -446,7 +446,7 @@
     "consultas_en_paralelo": 3
   },
   "ia": {
-    "_nota": "Proveedores de IA en activo-activo (NVIDIA y OpenRouter directos): se reparten el trabajo y si uno cae el otro lo asume. Funciona igual en local y en un servidor.",
+    "_nota": "Proveedores de IA en activo-activo (NVIDIA, OpenRouter y Groq): se reparten el trabajo y si uno cae los otros lo asumen.",
     "proveedores": [
       {
         "nombre": "NVIDIA directo",
@@ -476,6 +476,21 @@
         "lote": 10,
         "pausa_seg": 1,
         "_nota": "Modelos gratuitos (:free; límite diario de peticiones de OpenRouter). El último alternativo es de pago y solo se usa si hay crédito."
+      },
+      {
+        "nombre": "Groq directo",
+        "activo": true,
+        "base_url": "https://api.groq.com/openai/v1",
+        "variable_clave": "GROQ_API_KEY",
+        "modelo": "openai/gpt-oss-120b",
+        "modelos_alternativos": [
+          "openai/gpt-oss-120b",
+          "openai/gpt-oss-20b",
+          "qwen/qwen3-32b"
+        ],
+        "lote": 8,
+        "pausa_seg": 3,
+        "_nota": "Capa gratuita de Groq (límites por minuto y por día): lotes chicos y pausa para no chocar con el límite."
       }
     ]
   },

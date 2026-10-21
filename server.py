@@ -103,6 +103,12 @@ for _p in CONFIG.get("ia", {}).get("proveedores", []):
         _p["modelo"] = MODELO_NVIDIA
         _p["modelos_alternativos"] = [MODELO_NVIDIA] + [m for m in ("openai/gpt-oss-20b", "meta/llama-3.3-70b-instruct")
                                                         if m != MODELO_NVIDIA]
+# Groq como tercer proveedor activo-activo: el config del volumen de producción no se actualiza con git
+PROVEEDOR_GROQ = {"nombre": "Groq directo", "activo": True, "base_url": "https://api.groq.com/openai/v1", "variable_clave": "GROQ_API_KEY",
+                  "modelo": "openai/gpt-oss-120b", "modelos_alternativos": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3-32b"],
+                  "lote": 8, "pausa_seg": 3}  # capa gratuita: lotes chicos y pausa para no chocar con el límite por minuto
+if CONFIG.get("ia", {}).get("proveedores") and not any("groq.com" in p.get("base_url", "") for p in CONFIG["ia"]["proveedores"]):
+    CONFIG["ia"]["proveedores"].append(dict(PROVEEDOR_GROQ))
 BANCOS = CONFIG["bancos"]
 
 
