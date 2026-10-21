@@ -2964,7 +2964,7 @@ def diagnostico_avisos():
 # Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
            "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
-TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico por hora": "pico-por-hora",
+TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas",
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
 
 
@@ -3022,15 +3022,19 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
         raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
 
 
-def _umbrales_por_hora(clave_fn, dias=7):
-    """Promedio y desviación por hora (franja día 6–22 y noche) de las menciones negativas, solo con fuentes
+# Dos medidas que no se mezclan: quejas (riesgo operacional) y críticas sin incidente (riesgo reputacional)
+MEDIDAS_PICO = {"quejas": "es_queja = 1", "criticas": "sentimiento = 'negativo' AND es_queja = 0"}
+
+
+def _umbrales_por_hora(clave_fn, dias=7, medida="quejas"):
+    """Promedio y desviación por hora (franja día 6–22 y noche) de la medida (quejas o críticas), solo con fuentes
     disponibles. Devuelve {clave: {"dia": (prom, sd, n), "noche": (...)}} con clave = "Total" o la entidad."""
     disp = fuentes_disponibles()
     fin = ahora().replace(minute=0, second=0, microsecond=0)
     ini = fin - timedelta(days=dias)
     with _db_lock, db() as con:
-        filas = con.execute("SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND (sentimiento = 'negativo' OR es_queja = 1) "
-                            "AND fecha >= ? AND fecha < ?", (iso(ini), iso(fin))).fetchall()
+        filas = con.execute(f"SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND {MEDIDAS_PICO[medida]} "
+                            "AND fecha >= ? AND fecha < ? AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (iso(ini), iso(fin))).fetchall()
     cuentas = {}
     for r in filas:
         if _origen(r["id"], r["fuente"]) not in disp:
@@ -3148,11 +3152,21 @@ def avisar_graves(nuevos):
 
 
 def revisar_umbral_notificar():
+    """Picos por hora (promedio + 2σ de su propia historia), por separado: de quejas (operacional; nivel Medio o
+    Grave) y de críticas sin incidente (reputacional; siempre Medio). Total y por entidad."""
     cfg = CONFIG.get("notificaciones", {})
     if not cfg.get("activas", True) or not _hay_canal_aviso():
         return []
+    enviadas = []
+    for medida in ("quejas", "criticas"):
+        enviadas += _revisar_pico(cfg, medida)
+    ESTADO["notificaciones"] = {"ultima_revision": iso(ahora()), "enviadas": enviadas or ESTADO.get("notificaciones", {}).get("enviadas", [])}
+    return enviadas
+
+
+def _revisar_pico(cfg, medida):
     clave_fn = lambda r: ["Total"] + json.loads(r["bancos"] or "[]")
-    umbrales = _umbrales_por_hora(clave_fn, cfg.get("dias_base", 7))
+    umbrales = _umbrales_por_hora(clave_fn, cfg.get("dias_base", 7), medida)
     disp = fuentes_disponibles()
     hace1h = iso(ahora() - timedelta(hours=1))
     with _db_lock, db() as con:
@@ -3163,10 +3177,11 @@ def revisar_umbral_notificar():
     for r in recientes:
         if _origen(r["id"], r["fuente"]) not in disp:
             continue
+        cuenta = bool(r["es_queja"]) if medida == "quejas" else (r["sentimiento"] == "negativo" and not r["es_queja"])
         for k in clave_fn(r):
             c = contexto.setdefault(k, {"total": 0, "quejas": 0, "foco": {}})
             c["total"] += 1
-            if r["sentimiento"] == "negativo" or r["es_queja"]:  # misma medida que la base: quejas o tono negativo
+            if cuenta:
                 ahora_n[k] = ahora_n.get(k, 0) + 1
             if r["es_queja"]:
                 c["quejas"] += 1
@@ -3187,9 +3202,9 @@ def revisar_umbral_notificar():
             umbral = max(umbral, cfg.get("piso_base_escasa", 8))  # con poca historia, la desviación engaña
         if muestras < 24 or n <= umbral or n < max(cfg.get("minimo", 3), cfg.get("minimo_ultima_hora", 5)):
             continue
-        if time.time() - _NOTIF["ultima"].get(k, 0) < cfg.get("enfriamiento_minutos", 120) * 60:
+        if time.time() - _NOTIF["ultima"].get((medida, k), 0) < cfg.get("enfriamiento_minutos", 120) * 60:
             continue
-        _NOTIF["ultima"][k] = time.time()
+        _NOTIF["ultima"][(medida, k)] = time.time()
         _NOTIF.setdefault("enviadas", []).append(time.time())
         alertas_hora = sum(1 for t in _NOTIF["enviadas"] if time.time() - t < 3600)
         quien = "todas las entidades" if k == "Total" else k
@@ -3197,19 +3212,24 @@ def revisar_umbral_notificar():
         nombres = {"App / canales caídos": "caídas", "Errores operativos": "errores operativos",
                    "Fraude / seguridad": "fraude", "Ciberseguridad / hackeos": "ciberseguridad"}
         foco = ", ".join(f"{v} {nombres[cat]}" for cat, v in sorted(c["foco"].items(), key=lambda x: -x[1]))
-        texto = (f"{n} negativas en la última hora sobre {quien} (de {c['total']} menciones; {c['quejas']} quejas"
-                 f"{': ' + foco if foco else ''}). Umbral {umbral:.1f} · lo normal de "
-                 f"{'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora · "
-                 f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
-        try:
+        normal = (f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora · "
+                  f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
+        if medida == "quejas":
+            titulo, tipo = f"Pico de quejas: {quien}", "Pico por hora"
+            texto = f"{n} quejas en la última hora sobre {quien} (de {c['total']} menciones{': ' + foco if foco else ''}). " + normal
             nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
-            enviar_notificacion(f"Pico por hora: {quien}", texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None,
-                                tipo="Pico por hora", nivel=nivel_p)
-            enviadas.append({"clave": k, "n": n, "umbral": round(umbral, 1)})
-            print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {texto}", flush=True)
+        else:
+            titulo, tipo = f"Pico de críticas: {quien}", "Pico de críticas"
+            texto = (f"{n} críticas sin incidente en la última hora sobre {quien} (de {c['total']} menciones): malestar "
+                     f"reputacional, no una falla reportada. " + normal)
+            nivel_p = "Medio"
+        try:
+            enviar_notificacion(titulo, texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None,
+                                tipo=tipo, nivel=nivel_p)
+            enviadas.append({"clave": k, "medida": medida, "n": n, "umbral": round(umbral, 1)})
+            print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {titulo} · {texto}", flush=True)
         except Exception as e:
             print(f"  Notificación fallida ({type(e).__name__}: {e})", flush=True)
-    ESTADO["notificaciones"] = {"ultima_revision": iso(ahora()), "enviadas": enviadas or ESTADO.get("notificaciones", {}).get("enviadas", [])}
     return enviadas
 
 
