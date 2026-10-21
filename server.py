@@ -1367,6 +1367,9 @@ def x_apify(rango=None):
 AVISO_OFICIAL_CAIDA = re.compile(r"\b(intermitencia|inconvenientes? (con|en) (nuestr|la app|el app|la banca|los canales)|"
                                  r"estamos (trabajando|presentando)|restablec\w*|fuera de servicio|mantenimiento programado|"
                                  r"no (esta|estan) disponibles?)\b")
+# La falla es de un tercero (PayPal, una pasarela, un proveedor) o es un mantenimiento planificado: no es caída propia
+AVISO_EXTERNO = re.compile(r"\b(externa|externo|ajen[oa] a nuestr|proveedor|terceros?|paypal|mantenimiento programado|"
+                           r"ventana de mantenimiento)\b")
 
 
 _X_RESP = {"ultima": 0.0}
@@ -3044,10 +3047,12 @@ def _valorar_evento(b, clase, ventana):
     cfg = CONFIG.get("notificaciones", {})
     vistos = [v for v in _GRAVES["vistos"].get((clase, b), []) if time.time() - v["t"] < ventana]
     _GRAVES["vistos"][(clase, b)] = vistos
-    autores = {v["autor"] for v in vistos if not v["medio"]}   # usuarios distintos (uno que insiste cuenta una vez)
+    autores = {v["autor"] for v in vistos if not v["medio"] and not v["oficial"]}  # usuarios distintos (sin la cuenta oficial)
     fuentes = {v["fuente"] for v in vistos}
     medios = [v for v in vistos if v["medio"]]                  # noticia: ya hay alcance público
-    oficial = any(v["oficial"] for v in vistos)
+    comunicado = any(v["oficial"] == "comunicado" for v in vistos)    # publicación general de la entidad
+    confirmado = any(v["oficial"] for v in vistos)                    # incluye la respuesta a un cliente
+    externo = any(v["oficial"] and v["externo"] for v in vistos)      # la entidad dice que es de un tercero
     n_aut, n_fue = len(autores), len(fuentes)
     minimo = cfg.get("caidas_para_grave" if clase == "caida" else "graves_para_grave", 3)
     critico_n = cfg.get("caidas_para_critico" if clase == "caida" else "graves_para_critico", 6)
@@ -3056,12 +3061,17 @@ def _valorar_evento(b, clase, ventana):
         partes.append(f"{n_fue} fuentes ({', '.join(sorted(fuentes))})")
     if medios:
         partes.append(f"{len(medios)} nota{'s' if len(medios) > 1 else ''} de prensa")
-    if oficial:
-        partes.append("aviso oficial de la entidad")
+    if confirmado:
+        partes.append(("comunicado" if comunicado else "respuesta a un cliente") + " de la entidad" +
+                      (" (atribuye la falla a un tercero o a un mantenimiento)" if externo else ""))
     resumen = " · ".join(partes) + f" en {ventana // 60} min"
-    if oficial or n_aut >= critico_n or (n_aut >= minimo and (n_fue >= 2 or medios)) or (medios and n_aut >= 2):
+    # Una respuesta oficial a un cliente confirma, pero no es un evento por sí sola: suma como corroboración.
+    # Lo atribuido a un tercero o a un mantenimiento nunca pasa de Grave.
+    critico = (comunicado and not externo) or n_aut >= critico_n or (n_aut >= minimo and (n_fue >= 2 or medios or confirmado)) \
+        or (medios and n_aut >= 2)
+    if critico and not externo:
         return "Crítico", resumen
-    if n_aut >= minimo or medios:
+    if critico or n_aut >= minimo or medios or comunicado or (confirmado and n_aut >= 2):
         return "Grave", resumen
     return None, resumen
 
@@ -3078,7 +3088,10 @@ def avisar_graves(nuevos):
     for n in nuevos:
         if n.get("fecha", "") < corte or n.get("tipo") in ("post_oficial", "alerta_ciber"):
             continue
-        oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(normalizar(n.get("texto", "")))
+        t_norm = normalizar(n.get("texto", ""))
+        oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(t_norm)
+        # "@cliente Hola, lamentamos…" es la respuesta a una persona; sin @ al inicio es un comunicado general
+        tipo_oficial = ("confirmacion" if (n.get("texto") or "").lstrip().startswith("@") else "comunicado") if oficial else ""
         cats_foco = set(n.get("categorias") or []) & set(FOCO)
         caida = n.get("es_queja") and "App / canales caídos" in cats_foco
         grave = n.get("es_queja") and (n.get("severidad") or 0) >= 2 and cats_foco and not caida
@@ -3086,7 +3099,8 @@ def avisar_graves(nuevos):
             continue
         clase = "caida" if (caida or oficial) else "grave"
         registro = {"t": time.time(), "autor": (n.get("autor") or n.get("id", "")).lower(), "fuente": n.get("fuente", ""),
-                    "medio": n.get("tipo") == "noticia" or n.get("fuente") == "Noticias", "oficial": bool(oficial),
+                    "medio": n.get("tipo") == "noticia" or n.get("fuente") == "Noticias", "oficial": tipo_oficial,
+                    "externo": bool(oficial and AVISO_EXTERNO.search(t_norm)),
                     "texto": re.sub(r"\s+", " ", n.get("texto", ""))[:200], "url": n.get("url", "")}
         for b in n.get("bancos") or []:
             with _GRAVES["lock"]:
@@ -3102,7 +3116,8 @@ def avisar_graves(nuevos):
                 ejemplos = [v for v in _GRAVES["vistos"][(clase, b)] if v["oficial"] or v["medio"]][-2:] or \
                            _GRAVES["vistos"][(clase, b)][-3:]
             critico = nivel == "Crítico"
-            cats = "aviso oficial de caída" if oficial else ", ".join(sorted(cats_foco))
+            cats = ", ".join(sorted(cats_foco)) or ("comunicado oficial de falla" if tipo_oficial == "comunicado"
+                                                    else "falla confirmada por la entidad")
             titulo = f"{nivel.upper() if critico else nivel} · {b}: {cats}"
             cuerpo = f"Valoración: {resumen}.\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
