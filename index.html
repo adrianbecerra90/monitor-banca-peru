@@ -847,7 +847,7 @@ let tSint,pSint='';function cargarSintesis(p){clearTimeout(tSint);tSint=setTimeo
   else{el.style.opacity='.45';el.querySelector('.sub')?.replaceChildren('Actualizando la síntesis con los filtros actuales…')}
   try{const r=await fetch('/api/nube/sintesis?'+q).then(r=>r.json());if(q!==pSint)return; // llegó tarde: ya hay otra pedida
     el.style.opacity='';
-    const ICT={'Interrupción':'⛔','Incidente operativo':'⚙️','Evento de ciberseguridad':'🛡️','Fraude':'💳'};
+    const ICT={'Reportes de indisponibilidad':'⛔','Errores operativos':'⚙️','Ciberseguridad':'🛡️','Fraude':'💳'};
     const chips=(r.temas||[]).map(t=>`<span class="tema">${ICT[t]||''} ${esc(t)}</span>`).join('')+
       (r.productos||[]).map(p=>`<span class="tema prod">${esc(p)}</span>`).join('');
     el.innerHTML=r.frase?`${chips?`<div class="temas">${chips}</div>`:''}🧠 <b>${esc(r.frase)}</b><span class="sub">Síntesis de la nube · ${esc(r.fuente)}${r.generada?' · hace '+hace(r.generada):''}</span>`:(r.motivo?`<span class="sub">${esc(r.motivo)}</span>`:'')}

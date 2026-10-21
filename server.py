@@ -3273,13 +3273,79 @@ def _orden_afectadas(x):
     return (-x[1]["quejas"], -x[1].get("criticas", 0), x[0])
 
 
+def evaluar_supervision(filas, alertas):
+    """Evaluación por entidad con la evidencia del periodo, para decidir si algo amerita acción de supervisión.
+    Cuenta usuarios distintos (no publicaciones), prensa, comunicados oficiales y fuentes independientes de las
+    alertas de ciberseguridad. Devuelve (nivel, hallazgos): hallazgos = [(entidad, gravedad, hecho, recomendación)]."""
+    cfg = CONFIG.get("notificaciones", {})
+    evento_n = cfg.get("caidas_para_critico", 6)
+    ev = {}
+    for r in filas:
+        meta = json.loads(r.get("meta") or "{}")
+        cats = set(json.loads(r.get("categorias") or "[]"))
+        t = normalizar(r.get("texto") or "")
+        oficial = meta.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(t) and \
+            not (r.get("texto") or "").lstrip().startswith("@") and not AVISO_EXTERNO.search(t)
+        for b in json.loads(r.get("bancos") or "[]"):
+            e = ev.setdefault(b, {c: set() for c in FOCO} | {"prensa": set(), "comunicado": False})
+            if oficial:
+                e["comunicado"] = True
+            if not r.get("es_queja"):
+                continue
+            for c in cats & set(FOCO):
+                (e["prensa"] if meta.get("tipo") == "noticia" else e[c]).add((r.get("autor") or "").lower())
+    cib = {}
+    for a in alertas:
+        for b in json.loads(a.get("entidades") or "[]") if isinstance(a.get("entidades"), str) else (a.get("entidades") or []):
+            cib.setdefault(b, set()).add(a.get("cuenta") or "")
+    hallazgos = []
+    for b in sorted(set(ev) | set(cib)):
+        e = ev.get(b, {c: set() for c in FOCO} | {"prensa": set(), "comunicado": False})
+        caidas = len(e["App / canales caídos"])
+        if e["comunicado"] or caidas >= evento_n or (caidas >= 3 and e["prensa"]):
+            base = "comunicado de la entidad" if e["comunicado"] else f"{caidas} usuarios distintos" + (" y prensa" if e["prensa"] else "")
+            hallazgos.append((b, "Alta", f"indisponibilidad probable ({base})",
+                              f"Solicitar a {b} la confirmación del evento, los canales y productos afectados, la hora de "
+                              f"inicio y el estimado de restablecimiento; evaluar si corresponde a un evento de "
+                              f"interrupción a reportar según la normativa vigente."))
+        elif caidas >= 3:
+            hallazgos.append((b, "Media", f"{caidas} usuarios distintos reportan problemas de disponibilidad",
+                              "Seguimiento: confirmar en el siguiente corte si los reportes continúan."))
+        fuentes = cib.get(b, set())
+        if "Hudson Rock" in fuentes:  # infostealers: exposición de credenciales de empleados, no un incidente declarado
+            fuentes = fuentes - {"Hudson Rock"}
+            hallazgos.append((b, "Media", "nuevos equipos de empleados con infostealer según Hudson Rock (credenciales expuestas)",
+                              f"Informar a {b} para que rote las credenciales afectadas y revise los accesos de esos equipos."))
+        ciber_q = len(e["Ciberseguridad / hackeos"]) + len(e["prensa"])
+        if len(fuentes) >= 2 or (fuentes and ciber_q >= 2):
+            hallazgos.append((b, "Alta", f"señales de un incidente de ciberseguridad de fuentes independientes "
+                                         f"({', '.join(sorted(fuentes)) or 'redes'}{' y prensa' if e['prensa'] else ''}), no confirmado",
+                              f"Requerir a {b} que confirme o descarte el incidente, su alcance (sistemas y datos "
+                              f"expuestos) y las medidas de contención; si hay datos de clientes, verificar la "
+                              f"comunicación a los afectados."))
+        elif fuentes:
+            hallazgos.append((b, "Media", f"alerta de ciberseguridad de una sola fuente ({', '.join(sorted(fuentes))}), no confirmada",
+                              "Seguimiento: buscar corroboración antes de escalar."))
+        if len(e["Errores operativos"]) >= 3:
+            hallazgos.append((b, "Media", f"{len(e['Errores operativos'])} usuarios distintos reportan errores operativos (cobros u operaciones mal procesadas)",
+                              f"Pedir a {b} explicación de las operaciones reportadas y su plan de regularización."))
+        if len(e["Fraude / seguridad"]) >= 3:
+            hallazgos.append((b, "Media", f"{len(e['Fraude / seguridad'])} usuarios distintos reportan fraude",
+                              f"Consultar a {b} si identifica un patrón (modalidad y canal) y qué medidas preventivas aplica."))
+    orden = {"Alta": 0, "Media": 1}
+    hallazgos.sort(key=lambda h: (orden[h[1]], h[0]))
+    nivel = "Grave" if any(h[1] == "Alta" for h in hallazgos) else "Medio" if hallazgos else "Informativo"
+    return nivel, hallazgos
+
+
 def reporte_periodico(desde, hasta, banco=None):
     """(titulo, texto, nivel) con lo ocurrido entre desde y hasta (datetimes con zona); opcionalmente de una entidad."""
     qs = {"desde": [iso(desde)], "hasta": [iso(hasta)], **({"banco": [banco]} if banco else {})}
     sql, args = _filtrar(qs)
     sql += """ AND meta NOT LIKE '%"tipo": "post_oficial"%'"""
     with _db_lock, db() as con:
-        filas = [dict(r) for r in con.execute(f"SELECT bancos, sentimiento, es_queja, severidad, categorias FROM items{sql}", args)]
+        filas = [dict(r) for r in con.execute(f"SELECT bancos, sentimiento, es_queja, severidad, categorias, autor, fuente, "
+                                              f"texto, meta FROM items{sql}", args)]
         _tabla_ciber(con)
         alertas = [dict(r) for r in con.execute("SELECT cuenta, texto, entidades, organizacion, sector FROM alertas_ciber "
                                                 "WHERE capturado >= ? AND capturado < ? ORDER BY fecha DESC",
@@ -3326,8 +3392,19 @@ def reporte_periodico(desde, hasta, banco=None):
         lineas += ["", "**Ciberseguridad:** sin alertas nuevas."]
     if not filas and not alertas:
         lineas.append("Sin menciones ni alertas nuevas en el periodo.")
-    critico = any(_nivel_ciber({**a, "entidades": json.loads(a["entidades"] or "[]")}) == "Crítico" for a in alertas)
-    nivel = "Grave" if critico or graves >= 10 else "Medio" if graves or alertas else "Informativo"
+    # Evaluación de supervisión: solo recomienda acciones cuando la evidencia (usuarios distintos, prensa,
+    # comunicados, fuentes independientes) lo justifica; el nivel del reporte sale de aquí, no del conteo de graves
+    nivel, hallazgos = evaluar_supervision(filas, alertas)
+    altas = [h for h in hallazgos if h[1] == "Alta"]
+    if altas:
+        lineas += ["", "**Requiere atención:**"]
+        lineas += [f"- {b}: {hecho}. *Recomendación:* {rec}" for b, _, hecho, rec in altas]
+    medias = [h for h in hallazgos if h[1] == "Media"]
+    if medias:
+        lineas += ["", "**En seguimiento:**"]
+        lineas += [f"- {b}: {hecho}." for b, _, hecho, _ in medias[:6]]
+    if (filas or alertas) and not hallazgos:
+        lineas += ["", "**Evaluación:** sin hechos que ameriten acción de supervisión; seguimiento ordinario."]
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M} · lo ocurrido desde {fmt_l(desde)}"
     return titulo, "\n".join(lineas), nivel
 
@@ -3434,10 +3511,19 @@ def _cfg_referentes():
     return {**X_REFERENTES, **CONFIG.get("x_referentes", {})}
 
 
+# Convocatorias laborales y concursos (p. ej. "concurso público para Operador SOC"): no son incidentes
+EMPLEO_CIBER = re.compile(r"\b(concurso publico|convocatoria|oferta laboral|vacantes?|postula\w*|contrata(cion|r) (de )?personal|"
+                          r"busca(mos)? (personal|profesionales|analistas?)|puesto de)\b")
+HECHO_CIBER = re.compile(r"\b(hack\w*|filtr\w*|ransom\w*|ataque|atacad\w*|brecha|expuest\w*|vulnerad\w*|exfiltr\w*|"
+                         r"defac\w*|leak|breach|subasta)\b")
+
+
 def evaluar_alerta_ciber(texto, cuenta_peruana=False):
     """¿La alerta toca al sistema financiero, de seguros o AFP del Perú? Devuelve (entidades_monitoreadas, sector)
     o None. Si la alerta trae la ficha "Sector:", el sector se decide solo con esa línea (evita falsos positivos)."""
     t = normalizar(texto)
+    if EMPLEO_CIBER.search(t) and not HECHO_CIBER.search(t):
+        return None  # convocatoria o concurso laboral, no un incidente
     peru = cuenta_peruana or CONTEXTO_PE.search(t) is not None or "🇵🇪" in (texto or "")
     # sin una entidad nombrada, Perú debe ser el país de la víctima (titular o ficha), no un dato al pasar
     cabecera = (texto or "").split("\n", 1)[0]
@@ -5903,6 +5989,21 @@ _ERR_SINTESIS = []  # últimos errores de la IA al resumir (diagnóstico)
 _SINTESIS = {}  # huella de la nube -> (momento, resultado)
 
 
+# Tono de informe de supervisión, común a la síntesis, el resumen directo y los reportes
+ESTILO_SUPERVISOR = (
+    " Tono de informe de supervisión: neutro, factual y sobrio. No uses adjetivos alarmistas (masivo, crisis, colapso, "
+    "grave, preocupante) salvo que los datos lo sustenten. Describe lo reportado y no lo concluyas: escribe 'tres "
+    "usuarios reportan que no pueden transferir con Yape' y no 'Yape sufre una interrupción'. Solo llama "
+    "interrupción o indisponibilidad a lo que reportan varios usuarios distintos en el mismo lapso o confirma la "
+    "entidad; si no, habla de reportes aislados. Una alerta de ciberseguridad publicada por una cuenta de terceros es "
+    "una afirmación no confirmada: atribúyela ('según @cuenta', 'se reporta'). Puedes citar cuántas quejas hay. Si no "
+    "hay nada fuera de lo habitual, dilo con naturalidad.")
+# Etiquetas de tema: solo con evidencia (al menos 3 quejas de esa categoría); con menos, no hay tema que etiquetar
+TEMAS_EVIDENCIA = [("Reportes de indisponibilidad", "App / canales caídos"), ("Errores operativos", "Errores operativos"),
+                   ("Ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")]
+MIN_QUEJAS_TEMA = 3
+
+
 def _resumen_directo(qs):
     """Resumen de TODAS las publicaciones del periodo cuando son muy pocas para una nube de palabras."""
     sql, args = _filtrar(qs)
@@ -5926,12 +6027,9 @@ def _resumen_directo(qs):
               "Resume en español, en dos o tres frases cortas (máximo 70 palabras), qué está pasando: si hay "
               "interrupciones, incidentes operativos, eventos de ciberseguridad o fraude, con qué entidades y productos, y el "
               "tono. Si pasan cosas distintas con actores distintos, menciónalas todas. Usa SOLO estas publicaciones: no "
-              "inventes nada; si son comentarios sueltos sin un patrón, dilo así. Sin comillas ni viñetas.")
-    temas = []
-    for t, c in (("Interrupción", "App / canales caídos"), ("Incidente operativo", "Errores operativos"),
-                 ("Evento de ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")):
-        if any(r["es_queja"] and c in json.loads(r["categorias"] or "[]") for r in filas):
-            temas.append(t)
+              "inventes nada; si son comentarios sueltos sin un patrón, dilo así. Sin comillas ni viñetas." + ESTILO_SUPERVISOR)
+    temas = [t for t, c in TEMAS_EVIDENCIA
+             if sum(bool(r["es_queja"]) and c in json.loads(r["categorias"] or "[]") for r in filas) >= MIN_QUEJAS_TEMA]
     for p in _ia_proveedores():
         if _ia_falta_clave(p):
             continue
@@ -6002,9 +6100,8 @@ def sintesis_nube(qs):
             a["criticas"] += r["sentimiento"] == "negativo" and not r["es_queja"]
     afectados = sorted(((b, a) for b, a in afect.items() if a["quejas"] or a["criticas"]), key=_orden_afectadas)[:5]
     # tipo de tema, por datos: categoría del foco con peso relevante entre lo negativo (≥15 %, o la mayor si ninguna llega)
-    TEMAS = [("Interrupción", "App / canales caídos"), ("Incidente operativo", "Errores operativos"),
-             ("Evento de ciberseguridad", "Ciberseguridad / hackeos"), ("Fraude", "Fraude / seguridad")]
-    pesos = {t: cat_neg.get(c, 0) / n_neg for t, c in TEMAS} if n_neg else {}
+    TEMAS = TEMAS_EVIDENCIA
+    pesos = {t: cat_neg.get(c, 0) / n_neg for t, c in TEMAS if cat_neg.get(c, 0) >= MIN_QUEJAS_TEMA} if n_neg else {}
     productos = [n for n, c in sorted(prod.items(), key=lambda x: -x[1]) if c >= max(2, n_neg * 0.05)][:4]
     temas = [t for t, _ in TEMAS if pesos.get(t, 0) >= 0.15]
     if not temas and pesos and max(pesos.values()) >= 0.05:
@@ -6055,8 +6152,8 @@ def sintesis_nube(qs):
               "de hacia dónde va la conversación. IMPORTANTE: si están pasando cosas distintas a la vez con actores "
               "distintos (p. ej. una interrupción en una entidad y un evento de ciberseguridad en otra), menciónalas "
               "TODAS por separado; no elijas una ni ocultes ninguna. Para cada situación indica el tema "
-              "dominante dejando claro si es una interrupción del servicio, un incidente operativo y/o un evento de "
-              "ciberseguridad (según el tipo de tema indicado), qué productos o canales fallan SOLO si se indican arriba "
+              "dominante (según el tipo de tema indicado: reportes de indisponibilidad, errores operativos, "
+              "ciberseguridad o fraude), qué productos o canales fallan SOLO si se indican arriba "
               "(si dice 'ninguno destacado', no los menciones), el tono y quiénes son los "
               "principales afectados (las entidades con más quejas; si una concentra la mayoría, dilo; las críticas sin "
               "incidente son malestar reputacional, no fallas). "
@@ -6065,7 +6162,7 @@ def sintesis_nube(qs):
               "varias personas reportando lo mismo. El fraude contra clientes (estafas, cargos no reconocidos) no es un "
               "evento de ciberseguridad de la entidad: llámalo fraude; ciberseguridad es hackeo, filtración o ataque a la "
               "propia entidad. No inventes "
-              "hechos que no se deduzcan de los datos, no nombres cifras exactas y no uses comillas ni viñetas.")
+              "hechos que no se deduzcan de los datos y no uses comillas ni viñetas." + ESTILO_SUPERVISOR)
     for p in _ia_proveedores():
         if _ia_falta_clave(p):
             continue
