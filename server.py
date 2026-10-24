@@ -2153,31 +2153,9 @@ def fuente_instagram(rango=None):
 _IG = {"L": None, "ultima": 0.0}
 
 
-def _ig_sesion_de_entorno():
-    """En la nube no hay un archivo de sesión: llega en INSTALOADER_SESSION (el archivo de sesión en base64, creado por
-    el usuario en su Mac con `instaloader --login`) y se escribe en el disco persistente con permisos 600."""
-    datos, usuario = os.environ.get("INSTALOADER_SESSION", "").strip(), os.environ.get("INSTALOADER_USUARIO", "").strip()
-    if not (datos and re.fullmatch(r"[A-Za-z0-9._]{1,30}", usuario)):
-        return None
-    ruta = os.path.join(DATOS, "instaloader", f"session-{usuario}")
-    if not os.path.exists(ruta):
-        try:
-            contenido = base64.b64decode(datos, validate=True)
-        except ValueError:
-            print("  Instaloader: INSTALOADER_SESSION no es base64 válido", flush=True)
-            return None
-        os.makedirs(os.path.dirname(ruta), mode=0o700, exist_ok=True)
-        with open(os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as f:
-            f.write(contenido)
-    return usuario, ruta
-
-
 def _ig_archivo_sesion():
     if instaloader is None:
         return None
-    desde_entorno = _ig_sesion_de_entorno()
-    if desde_entorno:
-        return desde_entorno
     from instaloader.instaloader import get_default_session_filename
     usuario = CONFIG.get("instaloader", {}).get("usuario")
     if usuario:
