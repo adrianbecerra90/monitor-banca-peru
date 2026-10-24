@@ -789,12 +789,37 @@ def ruta_inactiva(fuente, ruta, msg):
     _salud(fuente, ruta).update(ok=None, msg=msg, fallos=0, pausa_hasta=0, inactiva=True)
 
 
+HTTP_MOTIVO = {401: "clave inválida", 403: "acceso denegado (¿clave sin suscripción?)", 404: "no encontrado",
+               429: "límite de consultas alcanzado", 500: "error del proveedor", 502: "proveedor caído",
+               503: "proveedor no disponible", 504: "el proveedor no respondió a tiempo"}
+
+
+def error_legible(e):
+    """Texto corto y comprensible para el panel, sin nombres de clases de Python."""
+    if isinstance(e, urllib.error.HTTPError):
+        detalle = ""
+        try:
+            cuerpo = json.loads(e.read(400) or b"{}")
+            detalle = str(cuerpo.get("message") or cuerpo.get("error") or "")[:80] if isinstance(cuerpo, dict) else ""
+        except Exception:
+            pass
+        if "not subscribed" in detalle.lower():
+            detalle = "la clave no está suscrita a esta API"
+        return f"HTTP {e.code}: {detalle or HTTP_MOTIVO.get(e.code, 'error')}"
+    if isinstance(e, TimeoutError) or "timed out" in str(e):
+        return "no respondió a tiempo"
+    if isinstance(e, urllib.error.URLError):
+        return f"sin conexión ({str(getattr(e, 'reason', e))[:60]})"
+    texto = str(e).strip()
+    return texto[:160] if texto else type(e).__name__
+
+
 def ruta_fallo(fuente, ruta, error):
     """Tras varios fallos seguidos la ruta se aparta un tiempo creciente (10 min, 20, 40… máx. 1 h);
     al vencer la pausa se vuelve a probar sola."""
     s = _salud(fuente, ruta)
     s["fallos"] += 1
-    s.update(ok=False, msg=f"{type(error).__name__}: {error}"[:180], ultimo_error=iso(ahora()))
+    s.update(ok=False, msg=error_legible(error)[:180], ultimo_error=iso(ahora()))
     if s["fallos"] >= FALLOS_PARA_PAUSAR:
         espera = min(600 * 2 ** (s["fallos"] - FALLOS_PARA_PAUSAR), 3600)
         s["pausa_hasta"] = time.time() + espera
@@ -867,8 +892,12 @@ def ejecutar_rutas(fuente, rutas, rango=None):
             if not any(m and "falta clave" not in m for m in msgs.values()):
                 return None
             raise RutaInactiva(_resumen_inactivas(msgs))
-        raise RuntimeError("Todas las rutas fallaron: " + ", ".join(
-            f"{n} ({SALUD.get(fuente, {}).get(n, {}).get('msg', '')[:60]})" for n, _, _ in rutas))
+        # Mensaje legible: lo apagado por créditos agrupado por fecha y, aparte, qué falló y por qué
+        msgs = {n: SALUD.get(fuente, {}).get(n, {}).get("msg", "") for n, _, _ in rutas}
+        fallidas = {n for (n, _, _), (st, _) in zip(rutas, resultados) if st == "error"}
+        inactivas = _resumen_inactivas({n: m for n, m in msgs.items() if n not in fallidas})
+        fallos = "; ".join(f"{n}: {msgs[n].split(' · ')[-1]}" for n in sorted(fallidas))
+        raise RuntimeError("Sin datos en esta pasada. " + " · ".join(x for x in (inactivas, f"Falló {fallos}" if fallos else "") if x))
     vistos, out = set(), []
     for st, r in resultados:
         for it in r or []:
@@ -1978,7 +2007,7 @@ def _rapid_facebook(rango):
         except RuntimeError:
             raise
         except Exception as e:
-            errores.append(f"{banco}: {type(e).__name__}")
+            errores.append((banco, error_legible(e)))
             continue
         for p in posts[:CONFIG["apify"].get("posts_por_cuenta", 5)]:
             purl = (p.get("url") or "").split("?")[0]
@@ -1992,7 +2021,10 @@ def _rapid_facebook(rango):
                         "metricas": {"comentarios": p.get("comments_count"), "reacciones": p.get("reactions_count"),
                                      "compartidos": p.get("reshare_count")}})
     if errores and len(errores) == len(mapa):
-        raise RuntimeError("Todas las páginas fallaron: " + ", ".join(errores))
+        motivos = {m for _, m in errores}
+        if len(motivos) == 1:  # misma causa en todas las páginas: se dice una vez
+            raise RuntimeError(f"{motivos.pop()} (en las {len(errores)} páginas)")
+        raise RuntimeError("todas las páginas fallaron: " + "; ".join(f"{b}: {m}" for b, m in errores[:4]))
     previos = _vistos(conteo)
     consultas = 0
     # las publicaciones con más comentarios nuevos primero: con pocas llamadas, se aprovechan mejor
@@ -2506,7 +2538,7 @@ def escanear_fuente(nombre):
     except RutaInactiva as e:
         est.update(ok=None, msg=str(e)[:220])
     except Exception as e:
-        est.update(ok=False, msg=f"{type(e).__name__}: {e}"[:220])
+        est.update(ok=False, msg=(str(e) if isinstance(e, RuntimeError) and str(e) else error_legible(e))[:400])
     finally:
         est["ejecutando"] = False
         _locks[nombre].release()
