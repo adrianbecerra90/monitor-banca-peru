@@ -797,7 +797,7 @@ def ruta_inactiva(fuente, ruta, msg):
     _salud(fuente, ruta).update(ok=None, msg=msg, fallos=0, pausa_hasta=0, inactiva=True)
 
 
-HTTP_MOTIVO = {401: "clave inválida", 403: "acceso denegado (¿clave sin suscripción?)", 404: "no encontrado",
+HTTP_MOTIVO = {401: "clave inválida", 403: "acceso denegado", 404: "no encontrado",
                429: "límite de consultas alcanzado", 500: "error del proveedor", 502: "proveedor caído",
                503: "proveedor no disponible", 504: "el proveedor no respondió a tiempo"}
 
