@@ -114,6 +114,9 @@ if CONFIG.get("ia", {}).get("proveedores") and not any("groq.com" in p.get("base
 for _p in CONFIG.get("ia", {}).get("proveedores", []):
     if "groq.com" in _p.get("base_url", "") and _p.get("modelo") in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
         _p.update({k: PROVEEDOR_GROQ[k] for k in ("modelo", "modelos_alternativos", "lote", "pausa_seg")})
+# Dirección pública del panel (Northflank, un VPS…): los avisos enlazan ahí aunque el config del disco tenga otra
+if os.environ.get("PANEL_URL"):
+    CONFIG.setdefault("notificaciones", {})["enlace"] = os.environ["PANEL_URL"].rstrip("/")
 BANCOS = CONFIG["bancos"]
 
 
@@ -6666,7 +6669,8 @@ def cambiar_mi_clave(usuario, actual, nueva, ip):
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 HOSTS_PERMITIDOS = {h.strip().lower() for h in (os.environ.get("HOSTS_PERMITIDOS", "") + "," +
-                    os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")).split(",") if h.strip()} | {
+                    os.environ.get("RAILWAY_PUBLIC_DOMAIN", "") + "," +
+                    urllib.parse.urlparse(os.environ.get("PANEL_URL", "")).netloc).split(",") if h.strip()} | {
     f"localhost:{PORT}", f"127.0.0.1:{PORT}", f"[::1]:{PORT}"}
 MAX_SUSCRIPTORES = 100
 VIDA_STREAM_SEG = 600  # cada conexión en vivo se renueva cada 10 min: las que dejó abiertas el proxy no se acumulan
