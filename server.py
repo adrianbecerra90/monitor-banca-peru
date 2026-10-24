@@ -1966,7 +1966,15 @@ def rapid_get(ruta, **q):
     host = os.environ.get("RAPIDAPI_FB_HOST") or "facebook-scraper3.p.rapidapi.com"  # vacía = la de siempre
     req = urllib.request.Request(f"https://{host}{ruta}?" + urllib.parse.urlencode({k: v for k, v in q.items() if v}),
                                  headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": host, "User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(400).decode("utf-8", "ignore")
+        if e.code == 429 and "monthly" in cuerpo.lower():
+            # cuota mensual del plan agotada: se apaga hasta la renovación en vez de reintentar cada hora
+            agotar("RapidAPI", "Cuota mensual del plan gratuito agotada")
+        raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(cuerpo.encode()))
+    with resp:
         d = json.loads(resp.read(MAX_RESPUESTA))
         restantes = resp.headers.get("X-RateLimit-Requests-Remaining")
         limite = resp.headers.get("X-RateLimit-Requests-Limit")
