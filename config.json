@@ -569,12 +569,6 @@
     "paginas_max_por_post": 10,
     "dia_renovacion": 1
   },
-  "creatorcrawl": {
-    "_nota": "Tercera ruta para Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify y ScrapeCreators. El tope está ajustado al saldo gratuito; súbelo al recargar.",
-    "max_creditos_mes": 45,
-    "paginas_max_por_post": 10,
-    "dia_renovacion": 1
-  },
   "scrapingbee": {
     "_nota": "Búsqueda en Google de menciones públicas (≈10 créditos por búsqueda). 3 búsquedas al día ≈ 900 créditos/mes.",
     "max_creditos_mes": 900,
@@ -605,14 +599,6 @@
     "videos_por_busqueda": 8,
     "videos_max": 10,
     "comentarios_por_video": 60
-  },
-  "instaloader": {
-    "_nota": "Instagram con la sesión de una cuenta secundaria creada por el usuario (instaloader --login). Lee poco y despacio para no exponer la cuenta. 'usuario' vacío = usa el único archivo de sesión que encuentre.",
-    "usuario": "",
-    "intervalo_minutos": 180,
-    "posts_por_cuenta": 3,
-    "comentarios_max_por_post": 50,
-    "pausa_seg": 8
   },
   "alerta_x": {
     "_nota": "Alerta temprana: si en X una entidad suma 'min_quejas' quejas en 'ventana_minutos' y triplica ('factor') su promedio de 48 h, se revisan de inmediato sus cuentas de Facebook e Instagram. Se reserva 'reserva_diaria_pct' de la cuota diaria para esto.",

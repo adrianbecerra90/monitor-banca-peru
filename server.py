@@ -60,10 +60,6 @@ try:
     from curl_cffi import requests as cffi_requests
 except ImportError:
     cffi_requests = None
-try:
-    import instaloader
-except ImportError:
-    instaloader = None
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 # Datos (base, archivo, configuración editable, pausas…): en local, junto al código; en un servidor, en un disco
@@ -1594,10 +1590,9 @@ def x_nitter(rango=None):
 # Redes de Meta y TikTok: dos proveedores en activo-activo (Apify + ScrapeCreators) que se reparten las cuentas
 # --------------------------------------------------------------------------
 
-CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY", "CreatorCrawl": "CREATORCRAWL_API_KEY",
+CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY",
                    "RapidAPI": "RAPIDAPI_KEY"}
 SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"}, "ScrapeCreators": {"facebook", "instagram", "tiktok"},
-           "CreatorCrawl": {"instagram", "tiktok"},  # CreatorCrawl no ofrece Facebook
            "RapidAPI": {"facebook"}}                 # Facebook Scraper (krasnoludkolo) en RapidAPI
 
 
@@ -1785,101 +1780,6 @@ def _sc_comentarios_nuevos(red, fuente, conteo, post_banco, out):
             except Exception as e:  # esa publicación se reintenta en la próxima pasada
                 conteo[purl] = previos.get(purl, 0)
                 print(f"  {fuente} · ScrapeCreators: comentarios de {purl[:60]} fallaron ({type(e).__name__})", flush=True)
-    _marcar_vistos(conteo)
-    return out
-
-
-# ---------------- CreatorCrawl (Instagram y TikTok; formato de datos uniforme) ----------------
-
-def cc_get(ruta, **q):
-    exigir_disponible("CreatorCrawl")
-    cfg = CONFIG.get("creatorcrawl", {})
-    mes = ahora().strftime("%Y-%m")
-    with _db_lock, db() as con:
-        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
-        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='CreatorCrawl'", (mes,)).fetchone()
-    usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 240)
-    if usados >= tope:
-        agotar("CreatorCrawl", f"Tope mensual alcanzado ({usados} de {tope} créditos)")
-    url = "https://app.creatorcrawl.com/api" + ruta + "?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
-    req = urllib.request.Request(url, headers={"x-api-key": os.environ["CREATORCRAWL_API_KEY"], "Accept": "application/json",
-                                               "User-Agent": UA})
-    try:
-        r = urllib.request.urlopen(req, timeout=90)
-    except urllib.error.HTTPError as e:
-        if e.code == 402:
-            agotar("CreatorCrawl", "Sin créditos en la cuenta")
-        raise
-    with r:
-        d = json.loads(r.read(MAX_RESPUESTA))
-        gastados = int(r.headers.get("X-Credits-Used") or 1)
-        restantes = r.headers.get("X-Credits-Remaining")
-    with _db_lock, db() as con:
-        con.execute("INSERT INTO uso_proveedores VALUES (?, 'CreatorCrawl', ?) ON CONFLICT(mes, proveedor) "
-                    "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, gastados))
-    ESTADO.setdefault("creatorcrawl", {}).update(usados_mes=usados + gastados, tope=tope,
-                                                 restantes=int(restantes) if str(restantes).isdigit() else None)
-    return d
-
-
-def _cc_red(red, fuente, rango):
-    if not os.environ.get("CREATORCRAWL_API_KEY"):
-        raise RutaInactiva("Sin clave: añade CREATORCRAWL_API_KEY en .env")
-    if en_pausa("CreatorCrawl"):
-        raise RutaInactiva("⏸ En pausa")
-    mapa = cuentas_asignadas(red, fuente, "CreatorCrawl")
-    out, conteo, post_banco, errores = [], {}, {}, []
-    for url_cuenta, banco in mapa.items():
-        usuario = url_cuenta.rstrip("/").rsplit("/", 1)[-1].lstrip("@")
-        try:
-            posts = cc_get(f"/{red}/user/posts" if red == "instagram" else "/tiktok/profile/videos", handle=usuario).get("data") or []
-        except RuntimeError:
-            raise
-        except Exception as e:
-            errores.append(f"{banco}: {type(e).__name__}")
-            continue
-        for p in posts[:CONFIG["apify"].get("posts_por_cuenta", 5)]:
-            purl = (p.get("url") or "").split("?")[0].rstrip("/")  # sin parámetros de seguimiento
-            if not purl:
-                continue
-            post_banco[purl] = banco
-            conteo[purl] = int(p.get("comment_count") or 0)
-            out.append({"id": f"{fuente.lower()}:post:{purl}", "fuente": fuente, "tipo": "post_oficial", "peru": True,
-                        "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "texto": p.get("text") or "(publicación sin texto)",
-                        "fecha": p.get("created_at"), "url": purl,
-                        "metricas": {"comentarios": p.get("comment_count"), "reacciones": p.get("like_count"), "compartidos": p.get("share_count")}})
-    if errores and len(errores) == len(mapa):
-        raise RuntimeError("Todas las cuentas fallaron: " + ", ".join(errores))
-    previos = _vistos(conteo)
-    tope = CONFIG["apify"].get("comentarios_max_por_post", 200)
-    paginas = CONFIG.get("creatorcrawl", {}).get("paginas_max_por_post", 2)
-    ruta_com = "/instagram/post/comments" if red == "instagram" else "/tiktok/video/comments"
-    for purl, n in conteo.items():
-        nuevos = min(n - previos.get(purl, 0), tope)
-        if nuevos <= 0:
-            continue
-        cursor, leidos = None, 0
-        try:
-            for _ in range(max(1, min(paginas, nuevos // 10 + 1))):
-                d = cc_get(ruta_com, url=purl, cursor=cursor)
-                for c in d.get("data") or []:
-                    if not (c.get("text") or "").strip() or c.get("is_author_reply"):
-                        continue
-                    autor = (c.get("author") or {})
-                    out.append({"id": f"{fuente.lower()}:{c.get('id')}", "fuente": fuente, "tipo": "comentario", "peru": True,
-                                "bancos_fijos": [post_banco[purl]], "cuenta": post_banco[purl],
-                                "autor": autor.get("handle") or autor.get("name") or "", "texto": c["text"],
-                                "fecha": c.get("created_at"), "url": purl})
-                    leidos += 1
-                pg = d.get("page") or {}
-                cursor = pg.get("cursor")
-                if not pg.get("has_more") or not cursor or leidos >= nuevos:
-                    break
-        except RuntimeError:
-            raise
-        except Exception as e:
-            conteo[purl] = previos.get(purl, 0)  # se reintenta en la próxima pasada
-            print(f"  {fuente} · CreatorCrawl: comentarios de {purl[:60]} fallaron ({type(e).__name__})", flush=True)
     _marcar_vistos(conteo)
     return out
 
@@ -2137,101 +2037,18 @@ def fuente_facebook(rango=None):
 
 
 def fuente_instagram(rango=None):
-    # Con sesión de Instaloader, los servicios de pago solo entran si esa ruta falla
-    pago = "respaldo" if _ig_archivo_sesion() else "activo"
     return ejecutar_rutas("Instagram", [
-        ("Instaloader (sesión)", instagram_instaloader, "activo"),
         ("Apify", lambda r: _comentarios_de_cuentas("instagram", "Instagram", "instagram_posts", "instagram_comentarios",
                                                     ("url", "postUrl"), r)
-         if os.environ.get("APIFY_TOKEN") else None, pago),
-        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), pago),
-        ("CreatorCrawl", lambda r: _cc_red("instagram", "Instagram", r), pago)], rango)
-
-
-# ---------------- Instaloader: Instagram con la sesión de una cuenta secundaria del usuario ----------------
-# La sesión la crea el propio usuario en su Terminal (`instaloader --login CUENTA`); el monitor nunca ve la contraseña.
-_IG = {"L": None, "ultima": 0.0}
-
-
-def _ig_archivo_sesion():
-    if instaloader is None:
-        return None
-    from instaloader.instaloader import get_default_session_filename
-    usuario = CONFIG.get("instaloader", {}).get("usuario")
-    if usuario:
-        ruta = get_default_session_filename(usuario)
-        return (usuario, ruta) if os.path.exists(ruta) else None
-    archivos = sorted(glob.glob(os.path.join(os.path.dirname(get_default_session_filename("x")), "session-*")))
-    return (os.path.basename(archivos[0])[len("session-"):], archivos[0]) if archivos else None
-
-
-def _ig_cargador():
-    if instaloader is None:
-        raise RutaInactiva("Inactiva: falta instalar instaloader (ver LEEME)")
-    if _IG["L"] is None:
-        sesion = _ig_archivo_sesion()
-        if not sesion:
-            raise RutaInactiva("Inactiva: falta iniciar sesión con una cuenta secundaria (ver LEEME)")
-        L = instaloader.Instaloader(quiet=True, download_pictures=False, download_videos=False,
-                                    download_video_thumbnails=False, download_comments=False, save_metadata=False,
-                                    compress_json=False, max_connection_attempts=1, request_timeout=30)
-        L.load_session_from_file(sesion[0], sesion[1])
-        _IG["L"] = L
-    return _IG["L"]
-
-
-def instagram_instaloader(rango=None):
-    """Últimas publicaciones de cada cuenta oficial y solo sus comentarios nuevos. Va despacio a propósito: una cuenta
-    que lee mucho y rápido es bloqueada por Instagram."""
-    cfg = CONFIG.get("instaloader", {})
-    L = _ig_cargador()
-    if not rango and time.time() - _IG["ultima"] < cfg.get("intervalo_minutos", 180) * 60:
-        return []  # entre lecturas: cuenta como ruta sana para que no entren los servicios de pago
-    _IG["ultima"] = time.time()
-    pausa = cfg.get("pausa_seg", 8)
-    n_posts = cfg.get("posts_por_cuenta", 3)
-    out, post_banco, conteo, objetos = [], {}, {}, {}
-    try:
-        for url_cuenta, banco in cuentas("instagram").items():
-            usuario = url_cuenta.rstrip("/").rsplit("/", 1)[-1]
-            perfil = instaloader.Profile.from_username(L.context, usuario)
-            for post in itertools.islice(perfil.get_posts(), n_posts):
-                fecha = iso(post.date_utc.replace(tzinfo=timezone.utc))
-                if rango and not (rango[0] <= fecha[:10] <= rango[1]):
-                    continue
-                purl = f"https://www.instagram.com/p/{post.shortcode}/"
-                post_banco[purl], conteo[purl], objetos[purl] = banco, int(post.comments or 0), post
-                out.append({"id": f"instagram:post:{purl}", "fuente": "Instagram", "tipo": "post_oficial", "peru": True,
-                            "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "fecha": fecha, "url": purl,
-                            "texto": post.caption or "(publicación sin texto)",
-                            "metricas": {"comentarios": post.comments, "reacciones": post.likes}})
-            time.sleep(pausa)
-        previos = _vistos(conteo)
-        for purl, n in conteo.items():
-            nuevos = n - previos.get(purl, 0)
-            if nuevos <= 0:
-                continue
-            banco = post_banco[purl]
-            for c in itertools.islice(objetos[purl].get_comments(), min(nuevos, cfg.get("comentarios_max_por_post", 50))):
-                if (c.text or "").strip():
-                    out.append({"id": f"instagram:{c.id}", "fuente": "Instagram", "tipo": "comentario", "peru": True,
-                                "bancos_fijos": [banco], "cuenta": banco, "autor": c.owner.username if c.owner else "",
-                                "texto": c.text, "fecha": iso(c.created_at_utc.replace(tzinfo=timezone.utc)), "url": purl})
-            time.sleep(pausa)
-    except (instaloader.exceptions.LoginRequiredException, instaloader.exceptions.LoginException,
-            instaloader.exceptions.BadCredentialsException) as e:
-        _IG["L"] = None  # sesión vencida o cuenta con verificación pendiente: hay que volver a iniciar sesión
-        raise RuntimeError(f"La sesión de Instagram no es válida; vuelve a iniciar sesión ({type(e).__name__})")
-    _marcar_vistos(conteo)
-    return out
+         if os.environ.get("APIFY_TOKEN") else None, "activo"),
+        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), "activo")], rango)
 
 
 def fuente_tiktok(rango=None):
     # La ruta gratuita va primero; los servicios de pago solo entran si ella falla (así no se gastan créditos)
     return ejecutar_rutas("TikTok", [("yt-dlp (gratis)", tiktok_libre, "activo"),
                                      ("Apify", tiktok_apify, "respaldo"),
-                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "respaldo"),
-                                     ("CreatorCrawl", lambda r: _cc_red("tiktok", "TikTok", r), "respaldo")], rango)
+                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "respaldo")], rango)
 
 
 def _tiktok_comentarios(sesion, purl, banco, nuevos):
@@ -2398,8 +2215,8 @@ def bluesky_buscar(host, rango=None):
 FUENTES = {
     "X": (fuente_x, "Nitter (varias instancias); Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
     "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + RapidAPI en activo-activo"),
-    "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + CreatorCrawl en activo-activo"),
-    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: yt-dlp (gratis); Apify, ScrapeCreators y CreatorCrawl de respaldo"),
+    "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
+    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: yt-dlp (gratis); Apify y ScrapeCreators de respaldo"),
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) + yt-dlp (gratis, con comentarios) + búsqueda web"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
@@ -2413,7 +2230,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "Scrape.do", "RapidAPI"]
+PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "ScrapingBee", "Scrape.do", "RapidAPI"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -2430,7 +2247,7 @@ try:
 except (FileNotFoundError, ValueError):
     PAUSA = {"todo": False, "hasta": None, "por": "", "fuentes": [], "fuentes_info": {}}
 # migración: quita las pausas que antes se añadían solas a los servicios de pago
-PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "CreatorCrawl", "Búsqueda Google")]
+PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "Búsqueda Google")]
 # La pausa general sobrevive a los reinicios (antes cada despliegue la quitaba en silencio) y puede tener vencimiento
 ESTADO["pausa"] = PAUSA
 try:
@@ -2444,7 +2261,7 @@ except OSError:
 # Servicios de pago agotados: se apagan solos hasta su fecha de renovación y mientras tanto no se consultan
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
-_CFG_PROV = {"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
+_CFG_PROV = {"Apify": "apify", "ScrapeCreators": "scrapecreators",
              "ScrapingBee": "scrapingbee", "Scrape.do": "scrapedo", "RapidAPI": "rapidapi"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
@@ -2632,7 +2449,7 @@ def cambiar_pausa(objetivo, pausar, horas=0, por=""):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(PAUSA, f, ensure_ascii=False)
     os.replace(tmp, RUTA_PAUSA)
-    if not pausar and objetivo in ("todo", "ScrapeCreators", "CreatorCrawl"):
+    if not pausar and objetivo in ("todo", "ScrapeCreators"):
         for rutas_ in SALUD.values():
             for nombre_, s_ in rutas_.items():
                 if objetivo == "todo" or nombre_ == objetivo:
@@ -4789,7 +4606,7 @@ def resumen_proveedores():
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
-    ap, sc, cc, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "creatorcrawl", "scrapingbee", "rapidapi"))
+    ap, sc, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "scrapingbee", "rapidapi"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
@@ -4798,10 +4615,6 @@ def resumen_proveedores():
               f"{sc['restantes']:,} créditos".replace(",", ".") if sc.get("restantes") is not None else None,
               f"{sc.get('usados_mes', 0)} de {sc.get('tope', CONFIG.get('scrapecreators', {}).get('max_creditos_mes', 0))} créditos este mes",
               [("Facebook", "ScrapeCreators"), ("Instagram", "ScrapeCreators"), ("TikTok", "ScrapeCreators")]),
-        ficha("CreatorCrawl", "CREATORCRAWL_API_KEY", "Instagram, TikTok",
-              f"{cc['restantes']} créditos" if cc.get("restantes") is not None else None,
-              f"{cc.get('usados_mes', 0)} de {cc.get('tope', CONFIG.get('creatorcrawl', {}).get('max_creditos_mes', 0))} créditos este mes",
-              [("Instagram", "CreatorCrawl"), ("TikTok", "CreatorCrawl")]),
         ficha("ScrapingBee", "SCRAPINGBEE_API_KEY", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros",
               f"{sb['restantes']:,} créditos".replace(",", ".") if sb.get("restantes") is not None else None,
               f"{sb.get('usados_mes', 0)} de {sb.get('tope', CONFIG.get('scrapingbee', {}).get('max_creditos_mes', 0))} créditos este mes", []),
@@ -4908,7 +4721,6 @@ def config_editable():
         "trends": {"grupos": c.get("trends", {}).get("grupos", {}), "intervalo_minutos": c.get("trends", {}).get("intervalo_minutos", 60)},
         "apify": {k: c.get("apify", {}).get(k) for k in ("presupuesto_usd_mes", "posts_por_cuenta", "comentarios_max_por_post")},
         "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
-        "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
         "scrapedo": {k: c.get("scrapedo", {}).get(k) for k in ("max_creditos_mes",)},
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
@@ -4916,7 +4728,7 @@ def config_editable():
         "monitoreo": resumen_monitoreo(),
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "SCRAPEDO_TOKEN", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "SCRAPINGBEE_API_KEY", "SCRAPEDO_TOKEN", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 
@@ -5048,11 +4860,6 @@ def validar_config(d):
     if "scrapingbee" in d:
         nueva.setdefault("scrapingbee", {})["max_creditos_mes"] = _entero(
             d["scrapingbee"].get("max_creditos_mes", 900), "Tope de ScrapingBee", 0, 10_000_000)
-    if "creatorcrawl" in d:
-        cc = d["creatorcrawl"]
-        nueva.setdefault("creatorcrawl", {}).update(
-            max_creditos_mes=_entero(cc.get("max_creditos_mes", 240), "Tope de CreatorCrawl", 0, 1_000_000),
-            paginas_max_por_post=_entero(cc.get("paginas_max_por_post", 2), "Páginas de comentarios (CreatorCrawl)", 1, 50))
     if "scrapecreators" in d:
         sc = d["scrapecreators"]
         nueva.setdefault("scrapecreators", {}).update(

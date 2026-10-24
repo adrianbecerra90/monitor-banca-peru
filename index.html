@@ -960,7 +960,7 @@ function pintarConfig(){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo 1 h'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI','Scrape.do']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','ScrapeCreators','ScrapingBee','RapidAPI','Scrape.do']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
       <div class="sub" style="margin-top:8px">La pausa general se mantiene aunque el servidor se reinicie; desde el botón ⏸ del encabezado puedes darle duración y se reanuda sola. Al pausar o reanudar llega un aviso al celular.</div></div>
     <div class="bloque" id="cfg-apagados"></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
@@ -1030,9 +1030,6 @@ function pintarConfig(){
       <label class="campo">Tope de créditos al mes<input type="number" min="0" max="10000000" data-b="max_creditos_mes" value="${CFG.scrapingbee?.max_creditos_mes??900}"></label></div></div>
     <div class="bloque"><b>Scrape.do</b> (búsqueda en Google · se alterna con ScrapingBee y lo reemplaza si se agota · 10 créditos por búsqueda)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de créditos al mes<input type="number" min="0" max="10000000" data-sd="max_creditos_mes" value="${CFG.scrapedo?.max_creditos_mes??900}"></label></div></div>
-    <div class="bloque"><b>CreatorCrawl</b> (Instagram y TikTok · se reparte las cuentas con los demás)<div class="rej" style="margin-top:8px">
-      <label class="campo">Tope de créditos al mes<input type="number" min="0" max="1000000" data-c="max_creditos_mes" value="${CFG.creatorcrawl?.max_creditos_mes??240}"></label>
-      <label class="campo">Máx. páginas de comentarios por publicación<input type="number" min="1" max="50" data-c="paginas_max_por_post" value="${CFG.creatorcrawl?.paginas_max_por_post??2}"></label></div></div>
     <div class="bloque"><b>Proveedores de IA</b> (clasificación en paralelo)${CFG.ia.map((p,i)=>`<div class="rej" style="margin-top:8px" data-i="${i}">
       <label class="campo">${esc(p.nombre)}<span><input type="checkbox" data-p="activo" ${p.activo?'checked':''}> activo</span></label>
       <label class="campo">Modelo<input type="text" data-p="modelo" value="${esc(p.modelo)}"></label></div>`).join('')}</div>
@@ -1042,7 +1039,6 @@ function pintarConfig(){
     CFG.rapidapi=CFG.rapidapi||{};c.querySelectorAll('[data-r]').forEach(x=>x.oninput=()=>CFG.rapidapi[x.dataset.r]=x.value);
     CFG.scrapingbee=CFG.scrapingbee||{};c.querySelectorAll('[data-b]').forEach(x=>x.oninput=()=>CFG.scrapingbee[x.dataset.b]=x.value);
     CFG.scrapedo=CFG.scrapedo||{};c.querySelectorAll('[data-sd]').forEach(x=>x.oninput=()=>CFG.scrapedo[x.dataset.sd]=x.value);
-    CFG.creatorcrawl=CFG.creatorcrawl||{};c.querySelectorAll('[data-c]').forEach(x=>x.oninput=()=>CFG.creatorcrawl[x.dataset.c]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value});}
   if(cfgTab==='ejemplos'){
     c.innerHTML='<p class="ayuda">Cargando…</p>';
@@ -1127,7 +1123,7 @@ async function guardarConfig(){
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
-    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,scrapingbee:CFG.scrapingbee,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});

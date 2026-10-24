@@ -42,21 +42,10 @@ Abre http://localhost:8765 . No necesita instalar nada (Python 3.9+).
 `iniciar.command` usa `.venv` automáticamente si existe (en Docker, yt-dlp ya viene instalado). Con esto:
 
 - **TikTok gratis:** yt-dlp lista los últimos videos de cada cuenta oficial y el monitor lee sus comentarios públicos
-  (sin cuenta ni créditos). Apify, ScrapeCreators y CreatorCrawl quedan solo de respaldo si esta ruta falla.
+  (sin cuenta ni créditos). Apify y ScrapeCreators quedan solo de respaldo si esta ruta falla.
   Si TikTok no deja listar una cuenta, se siguen sus videos de los últimos 7 días ya conocidos.
 - **YouTube gratis:** yt-dlp busca videos de la semana cuyo título nombra a la entidad y trae sus comentarios más
   recientes; funciona en paralelo con la API oficial.
-
-- **Instagram con Instaloader (opcional):** sin sesión, Instagram no deja leer comentarios. Si quieres usarlo, inicia
-  sesión tú mismo con una **cuenta secundaria** (no la personal: Instagram puede bloquearla):
-
-  ```bash
-  .venv/bin/instaloader --login TU_CUENTA_SECUNDARIA
-  ```
-
-  El monitor detecta el archivo de sesión solo (nunca ve la contraseña), lee 3 publicaciones por cuenta oficial cada
-  3 horas con pausas entre consultas, y deja Apify/ScrapeCreators/CreatorCrawl de respaldo. Va contra los términos de
-  Instagram: el riesgo es para esa cuenta. Si la sesión vence, el panel lo indica y basta con repetir el comando.
 
 Sin `.venv` el monitor funciona igual, solo con Python.
 
