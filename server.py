@@ -1952,6 +1952,16 @@ def saldo_scrapingbee():
 
 # ---------------- RapidAPI · Facebook Scraper (plan con pocas llamadas: se administra con cuidado) ----------------
 
+def _rapid_renovacion(headers):
+    """RapidAPI informa en X-RateLimit-Requests-Reset los segundos que faltan para renovar la cuota del plan."""
+    try:
+        seg = int((headers or {}).get("X-RateLimit-Requests-Reset") or 0)
+    except (TypeError, ValueError):
+        return
+    if seg > 0:
+        ESTADO.setdefault("rapidapi", {})["renovacion"] = iso(ahora() + timedelta(seconds=seg))
+
+
 def rapid_get(ruta, **q):
     exigir_disponible("RapidAPI")
     cfg = CONFIG.get("rapidapi", {})
@@ -1971,11 +1981,14 @@ def rapid_get(ruta, **q):
     except urllib.error.HTTPError as e:
         cuerpo = e.read(400).decode("utf-8", "ignore")
         if e.code == 429 and "monthly" in cuerpo.lower():
-            # cuota mensual del plan agotada: se apaga hasta la renovación en vez de reintentar cada hora
+            # cuota mensual del plan agotada: se apaga hasta la renovación real (la informa RapidAPI) en vez de
+            # reintentar cada hora; la cuota se renueva según la fecha de suscripción, no necesariamente el día 1
+            _rapid_renovacion(e.headers)
             agotar("RapidAPI", "Cuota mensual del plan gratuito agotada")
         raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(cuerpo.encode()))
     with resp:
         d = json.loads(resp.read(MAX_RESPUESTA))
+        _rapid_renovacion(resp.headers)
         restantes = resp.headers.get("X-RateLimit-Requests-Remaining")
         limite = resp.headers.get("X-RateLimit-Requests-Limit")
     with _db_lock, db() as con:
