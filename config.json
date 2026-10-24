@@ -689,5 +689,10 @@
       "peruhacking"
     ]
   },
-  "ciber": {}
+  "ciber": {},
+  "scrapedo": {
+    "_nota": "Segundo proveedor de la búsqueda en Google (activo-activo con ScrapingBee). Plan gratuito: 1000 créditos; cada búsqueda cuesta 10.",
+    "max_creditos_mes": 900,
+    "periodo": "d"
+  }
 }

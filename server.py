@@ -1919,6 +1919,64 @@ def sb_google(consulta):
     return d.get("organic_results") or []
 
 
+# ---------------- Scrape.do: segundo proveedor de la búsqueda en Google (activo-activo con ScrapingBee) ----------------
+
+def sd_google(consulta):
+    """Una búsqueda en Google vía Scrape.do (10 créditos). Respeta el tope mensual configurado. Devuelve los
+    resultados con la misma forma que ScrapingBee (url, title, description, domain, date)."""
+    exigir_disponible("Scrape.do")
+    cfg = CONFIG.get("scrapedo", {})
+    mes = ahora().strftime("%Y-%m")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='Scrape.do'", (mes,)).fetchone()
+    usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 900)
+    if usados + 10 > tope:
+        agotar("Scrape.do", f"Tope mensual alcanzado ({usados} de {tope} créditos)")
+    q = {"token": os.environ["SCRAPEDO_TOKEN"], "q": consulta, "gl": "pe", "hl": "es", "google_domain": "google.com.pe",
+         "time_period": {"h": "last_hour", "d": "last_day", "w": "last_week"}.get(cfg.get("periodo", "d"), "last_day"),
+         "resolveGoto": "true"}
+    req = urllib.request.Request("https://api.scrape.do/plugin/google/search?" + urllib.parse.urlencode(q),
+                                 headers={"User-Agent": UA})
+    try:
+        resp = urllib.request.urlopen(req, timeout=120)
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(300).decode("utf-8", "ignore").lower()
+        if e.code in (401, 402, 403) and ("credit" in cuerpo or "limit" in cuerpo or "quota" in cuerpo):
+            agotar("Scrape.do", "Sin créditos en la cuenta")
+        raise
+    with resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+    with _db_lock, db() as con:  # solo se cobran las búsquedas exitosas
+        con.execute("INSERT INTO uso_proveedores VALUES (?, 'Scrape.do', 10) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + excluded.creditos", (mes,))
+    ESTADO.setdefault("scrapedo", {}).update(usados_mes=usados + 10, tope=tope)
+    return [{"url": x.get("link"), "title": x.get("title"), "description": x.get("snippet") or "",
+             "domain": urllib.parse.urlparse(x.get("link") or "").netloc, "date": x.get("date")}
+            for x in d.get("organic_results") or [] if x.get("link")]
+
+
+_GOOGLE_TURNO = {"n": 0}
+
+
+def buscar_google(consulta):
+    """Activo-activo: alterna ScrapingBee y Scrape.do por consulta; si el de turno falla o se agotó, usa el otro."""
+    provs = [(n, f) for n, f, clave in (("ScrapingBee", sb_google, "SCRAPINGBEE_API_KEY"), ("Scrape.do", sd_google, "SCRAPEDO_TOKEN"))
+             if os.environ.get(clave) and not en_pausa(n) and not agotado(n)]
+    if not provs:
+        raise RutaInactiva("Búsqueda Google: sin proveedor disponible (ScrapingBee y Scrape.do sin clave, en pausa o sin créditos)")
+    _GOOGLE_TURNO["n"] += 1
+    orden = provs[_GOOGLE_TURNO["n"] % len(provs):] + provs[:_GOOGLE_TURNO["n"] % len(provs)]
+    ultimo = None
+    for nombre, f in orden:
+        try:
+            return f(consulta)
+        except Exception as e:
+            ultimo = e
+            print(f"  Búsqueda Google vía {nombre}: {type(e).__name__}: {e}", flush=True)
+    raise ultimo
+
+
 RED_POR_DOMINIO = {"facebook.com": "Facebook", "instagram.com": "Instagram", "tiktok.com": "TikTok",
                    "reddit.com": "Reddit", "x.com": "X", "twitter.com": "X", "youtube.com": "YouTube"}
 
@@ -1926,15 +1984,15 @@ RED_POR_DOMINIO = {"facebook.com": "Facebook", "instagram.com": "Instagram", "ti
 def fuente_busqueda_web(rango=None):
     if rango:
         return []  # Google solo sirve para lo reciente
-    if not os.environ.get("SCRAPINGBEE_API_KEY"):
+    if not (os.environ.get("SCRAPINGBEE_API_KEY") or os.environ.get("SCRAPEDO_TOKEN")):
         return None
-    if en_pausa("ScrapingBee"):
-        raise RutaInactiva("⏸ ScrapingBee en pausa")
+    if all(en_pausa(n) for n, k in (("ScrapingBee", "SCRAPINGBEE_API_KEY"), ("Scrape.do", "SCRAPEDO_TOKEN")) if os.environ.get(k)):
+        raise RutaInactiva("⏸ Búsqueda Google en pausa")
     terminos = " OR ".join(f'"{c["buscar"][0]}"' for c in BANCOS.values())
     quejas = '(reclamo OR problema OR estafa OR "no funciona" OR caído OR bloqueada OR queja)'
     out = []
     for sitios in CONFIG.get("scrapingbee", {}).get("sitios", []):
-        for r in sb_google(f"{sitios} ({terminos}) {quejas}"):
+        for r in buscar_google(f"{sitios} ({terminos}) {quejas}"):
             url = url_segura(r.get("url"))
             if not url:
                 continue
@@ -2589,7 +2647,7 @@ FUENTES = {
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
     "LinkedIn": (fuente_linkedin, "Publicaciones de las páginas de empresa y sus comentarios visibles (Bright Data, cada 12 h)"),
-    "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía ScrapingBee (de pago)"),
+    "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía ScrapingBee + Scrape.do en activo-activo"),
 }
 
 ESTADO = {"fuentes": {n: {"ok": None, "msg": "Pendiente", "desc": d} for n, (_, d) in FUENTES.items()},
@@ -2598,7 +2656,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "RapidAPI", "BrightData"]
+PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "CreatorCrawl", "ScrapingBee", "Scrape.do", "RapidAPI", "BrightData"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -2630,7 +2688,7 @@ except OSError:
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify", "ScrapeCreators": "scrapecreators", "CreatorCrawl": "creatorcrawl",
-             "ScrapingBee": "scrapingbee", "RapidAPI": "rapidapi", "BrightData": "brightdata"}
+             "ScrapingBee": "scrapingbee", "Scrape.do": "scrapedo", "RapidAPI": "rapidapi", "BrightData": "brightdata"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
         AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
@@ -4996,6 +5054,8 @@ def resumen_proveedores():
         ficha("ScrapingBee", "SCRAPINGBEE_API_KEY", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros",
               f"{sb['restantes']:,} créditos".replace(",", ".") if sb.get("restantes") is not None else None,
               f"{sb.get('usados_mes', 0)} de {sb.get('tope', CONFIG.get('scrapingbee', {}).get('max_creditos_mes', 0))} créditos este mes", []),
+        ficha("Scrape.do", "SCRAPEDO_TOKEN", "Búsqueda Google (activo-activo con ScrapingBee)", None,
+              f"{_creditos_mes('Scrape.do')} de {CONFIG.get('scrapedo', {}).get('max_creditos_mes', 900)} créditos este mes", []),
         ficha("RapidAPI", "RAPIDAPI_KEY", "Facebook (Facebook Scraper)",
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
               f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
@@ -5005,6 +5065,17 @@ def resumen_proveedores():
               f"este mes · hoy {bd.get('usados_hoy', 0)} de {bd.get('cuota_hoy', '?')}",
               [("Facebook", "BrightData"), ("Instagram", "BrightData")]),
     ]
+
+
+def _creditos_mes(proveedor):
+    """Créditos gastados este mes según el contador local (no consulta al proveedor)."""
+    try:
+        with _db_lock, db() as con:
+            r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor=?",
+                            (ahora().strftime("%Y-%m"), proveedor)).fetchone()
+        return r[0] if r else 0
+    except sqlite3.OperationalError:  # la tabla aún no existe
+        return 0
 
 
 def _resumen_ia():
@@ -5092,13 +5163,14 @@ def config_editable():
         "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "creatorcrawl": {k: c.get("creatorcrawl", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
+        "scrapedo": {k: c.get("scrapedo", {}).get(k) for k in ("max_creditos_mes",)},
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
         "brightdata": {k: c.get("brightdata", {}).get(k) for k in ("max_registros_mes", "intervalo_minutos", "posts_por_cuenta")},
         "ciber": config_ciber_editable(),
         "monitoreo": resumen_monitoreo(),
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "RAPIDAPI_KEY", "BRIGHTDATA_API_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "CREATORCRAWL_API_KEY", "SCRAPINGBEE_API_KEY", "SCRAPEDO_TOKEN", "RAPIDAPI_KEY", "BRIGHTDATA_API_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 
@@ -5230,6 +5302,9 @@ def validar_config(d):
             max_registros_mes=_entero(bdc.get("max_registros_mes", 3000), "Tope de Bright Data", 0, 10_000_000),
             intervalo_minutos=_entero(bdc.get("intervalo_minutos", 480), "Frecuencia de Bright Data", 60, 10_080),
             posts_por_cuenta=_entero(bdc.get("posts_por_cuenta", 2), "Publicaciones por cuenta (Bright Data)", 1, 20))
+    if "scrapedo" in d:
+        nueva.setdefault("scrapedo", {})["max_creditos_mes"] = _entero(
+            d["scrapedo"].get("max_creditos_mes", 900), "Tope de Scrape.do", 0, 10_000_000)
     if "scrapingbee" in d:
         nueva.setdefault("scrapingbee", {})["max_creditos_mes"] = _entero(
             d["scrapingbee"].get("max_creditos_mes", 900), "Tope de ScrapingBee", 0, 10_000_000)
