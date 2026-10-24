@@ -589,6 +589,10 @@ def init_db():
                         (json.dumps(bancos, ensure_ascii=False), int(es_queja),
                          json.dumps(cats, ensure_ascii=False), sev, sent, r["id"]))
         _aplicar_ia(con)
+        # sin rastro de los servicios retirados: sus contadores de consumo se borran
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        con.execute("DELETE FROM uso_proveedores WHERE proveedor LIKE 'BrightData%' OR proveedor LIKE 'CreatorCrawl%' "
+                    "OR proveedor LIKE 'ScrapeCreators%' OR proveedor LIKE 'ScrapingBee%' OR proveedor LIKE 'Instaloader%'")
 
 
 # Incidente de ciberseguridad (no una charla o consejo sobre el tema): siempre visible y negativo para la entidad
