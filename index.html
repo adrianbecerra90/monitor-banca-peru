@@ -960,7 +960,7 @@ function pintarConfig(){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo 1 h'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI','BrightData']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','ScrapeCreators','CreatorCrawl','ScrapingBee','RapidAPI','Scrape.do']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
       <div class="sub" style="margin-top:8px">La pausa general se mantiene aunque el servidor se reinicie; desde el botón ⏸ del encabezado puedes darle duración y se reanuda sola. Al pausar o reanudar llega un aviso al celular.</div></div>
     <div class="bloque" id="cfg-apagados"></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
@@ -1026,10 +1026,6 @@ function pintarConfig(){
     <div class="bloque"><b>RapidAPI · Facebook Scraper</b> (Facebook · se reparte las páginas con los demás)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de llamadas al mes (tu plan gratuito: 100)<input type="number" min="0" max="10000000" data-r="max_llamadas_mes" value="${CFG.rapidapi?.max_llamadas_mes??95}"></label>
       <label class="campo">Máx. consultas de comentarios por pasada<input type="number" min="0" max="500" data-r="comentarios_por_pasada" value="${CFG.rapidapi?.comentarios_por_pasada??5}"></label></div></div>
-    <div class="bloque"><b>Bright Data · Web Scraper API</b> (Facebook e Instagram · se cobra por registro: publicación o comentario · el tope del mes se reparte por día)<div class="rej" style="margin-top:8px">
-      <label class="campo">Tope de registros al mes<input type="number" min="0" max="10000000" data-bd="max_registros_mes" value="${CFG.brightdata?.max_registros_mes??3000}"></label>
-      <label class="campo">Consultar cada (minutos)<input type="number" min="60" max="10080" data-bd="intervalo_minutos" value="${CFG.brightdata?.intervalo_minutos??480}"></label>
-      <label class="campo">Publicaciones por cuenta<input type="number" min="1" max="20" data-bd="posts_por_cuenta" value="${CFG.brightdata?.posts_por_cuenta??2}"></label></div></div>
     <div class="bloque"><b>ScrapingBee</b> (búsqueda en Google de menciones en redes y foros · ≈10 créditos por búsqueda)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de créditos al mes<input type="number" min="0" max="10000000" data-b="max_creditos_mes" value="${CFG.scrapingbee?.max_creditos_mes??900}"></label></div></div>
     <div class="bloque"><b>Scrape.do</b> (búsqueda en Google · se alterna con ScrapingBee y lo reemplaza si se agota · 10 créditos por búsqueda)<div class="rej" style="margin-top:8px">
@@ -1046,7 +1042,6 @@ function pintarConfig(){
     CFG.rapidapi=CFG.rapidapi||{};c.querySelectorAll('[data-r]').forEach(x=>x.oninput=()=>CFG.rapidapi[x.dataset.r]=x.value);
     CFG.scrapingbee=CFG.scrapingbee||{};c.querySelectorAll('[data-b]').forEach(x=>x.oninput=()=>CFG.scrapingbee[x.dataset.b]=x.value);
     CFG.scrapedo=CFG.scrapedo||{};c.querySelectorAll('[data-sd]').forEach(x=>x.oninput=()=>CFG.scrapedo[x.dataset.sd]=x.value);
-    CFG.brightdata=CFG.brightdata||{};c.querySelectorAll('[data-bd]').forEach(x=>x.oninput=()=>CFG.brightdata[x.dataset.bd]=x.value);
     CFG.creatorcrawl=CFG.creatorcrawl||{};c.querySelectorAll('[data-c]').forEach(x=>x.oninput=()=>CFG.creatorcrawl[x.dataset.c]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value});}
   if(cfgTab==='ejemplos'){
@@ -1132,7 +1127,7 @@ async function guardarConfig(){
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
-    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,brightdata:CFG.brightdata,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapecreators:CFG.scrapecreators,creatorcrawl:CFG.creatorcrawl,scrapingbee:CFG.scrapingbee,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});

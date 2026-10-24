@@ -614,20 +614,8 @@
     "comentarios_max_por_post": 50,
     "pausa_seg": 8
   },
-  "brightdata": {
-    "_nota": "Bright Data Web Scraper API (Facebook e Instagram). Cobra por registro (publicación o comentario). Tope mensual con ritmo diario; consulta cada 'intervalo_minutos' y solo pide comentarios nuevos.",
-    "max_registros_mes": 4500,
-    "intervalo_minutos": 360,
-    "posts_por_cuenta": 2,
-    "posts_por_cuenta_historico": 10,
-    "posts_comentarios_por_pasada": 8,
-    "comentarios_max_por_post": 30,
-    "dia_renovacion": 1,
-    "linkedin_intervalo_minutos": 720,
-    "linkedin_posts_por_pagina": 2
-  },
   "alerta_x": {
-    "_nota": "Alerta temprana: si en X una entidad suma 'min_quejas' quejas en 'ventana_minutos' y triplica ('factor') su promedio de 48 h, se revisan de inmediato sus cuentas de Facebook e Instagram (Bright Data). Se reserva 'reserva_diaria_pct' de la cuota diaria para esto.",
+    "_nota": "Alerta temprana: si en X una entidad suma 'min_quejas' quejas en 'ventana_minutos' y triplica ('factor') su promedio de 48 h, se revisan de inmediato sus cuentas de Facebook e Instagram. Se reserva 'reserva_diaria_pct' de la cuota diaria para esto.",
     "activa": true,
     "ventana_minutos": 30,
     "min_quejas": 5,
