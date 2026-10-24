@@ -1616,12 +1616,12 @@ def x_nitter(rango=None):
 
 
 # --------------------------------------------------------------------------
-# Redes de Meta y TikTok: dos proveedores en activo-activo (Apify + ScrapeCreators) que se reparten las cuentas
+# Redes de Meta y TikTok: proveedores en activo-activo (Apify + RapidAPI) que se reparten las cuentas
 # --------------------------------------------------------------------------
 
-CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN", "ScrapeCreators": "SCRAPECREATORS_API_KEY",
+CLAVE_PROVEEDOR = {"Apify": "APIFY_TOKEN",
                    "RapidAPI": "RAPIDAPI_KEY"}
-SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"}, "ScrapeCreators": {"facebook", "instagram", "tiktok"},
+SOPORTE = {"Apify": {"facebook", "instagram", "tiktok"},
            "RapidAPI": {"facebook"}}                 # Facebook Scraper (krasnoludkolo) en RapidAPI
 
 
@@ -1655,34 +1655,6 @@ def cuentas_asignadas(red, fuente, prov):
     return {u: b for i, (u, b) in enumerate(sorted(mapa.items())) if i % n == k}
 
 
-_sc_lock = threading.Lock()
-
-
-def sc_get(ruta, **q):
-    """ScrapeCreators: 1 crédito por consulta. Respeta el tope mensual de créditos configurado."""
-    exigir_disponible("ScrapeCreators")
-    cfg = CONFIG.get("scrapecreators", {})
-    mes = ahora().strftime("%Y-%m")
-    with _db_lock, db() as con:
-        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
-        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapeCreators'", (mes,)).fetchone()
-    usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 3000)
-    if usados >= tope:
-        agotar("ScrapeCreators", f"Tope mensual alcanzado ({usados} de {tope} créditos)")
-    url = "https://api.scrapecreators.com" + ruta + "?" + urllib.parse.urlencode({k: v for k, v in q.items() if v})
-    try:
-        d = json.loads(http_get(url, {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=90))
-    except urllib.error.HTTPError as e:
-        if e.code == 402:
-            agotar("ScrapeCreators", "Sin créditos en la cuenta")
-        raise
-    with _db_lock, db() as con:
-        con.execute("INSERT INTO uso_proveedores VALUES (?, 'ScrapeCreators', ?) ON CONFLICT(mes, proveedor) "
-                    "DO UPDATE SET creditos = creditos + excluded.creditos", (mes, int(d.get("credits_charged") or 1)))
-    ESTADO.setdefault("scrapecreators", {}).update(restantes=d.get("credits_remaining"), usados_mes=usados + 1, tope=tope)
-    return d
-
-
 def presupuesto_apify_inicial():
     if os.environ.get("APIFY_TOKEN"):
         try:
@@ -1697,120 +1669,11 @@ def presupuesto_apify_inicial():
             print(f"  Apify: no se pudo consultar el presupuesto ({type(e).__name__})", flush=True)
 
 
-def saldo_scrapecreators():
-    """Consulta gratuita del saldo real de créditos (al arrancar y cada 6 h) para mostrarlo en el panel."""
-    while True:
-        if os.environ.get("SCRAPECREATORS_API_KEY") and not agotado("ScrapeCreators"):
-            try:
-                d = json.loads(http_get("https://api.scrapecreators.com/v1/account/credit-balance",
-                                        {"x-api-key": os.environ["SCRAPECREATORS_API_KEY"]}, timeout=30))
-                tope = CONFIG.get("scrapecreators", {}).get("max_creditos_mes", 3000)
-                with _db_lock, db() as con:
-                    con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
-                    r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='ScrapeCreators'",
-                                    (ahora().strftime("%Y-%m"),)).fetchone()
-                ESTADO.setdefault("scrapecreators", {}).update(restantes=d.get("creditCount"), usados_mes=r[0] if r else 0,
-                                                               tope=tope, consultado=iso(ahora()))
-            except Exception as e:
-                ESTADO.setdefault("scrapecreators", {})["error"] = f"{type(e).__name__}: {e}"[:150]
-        time.sleep(6 * 3600)
-
-
 def _epoch(v):
     try:
         return iso(datetime.fromtimestamp(int(v), timezone.utc)) if str(v).isdigit() else parse_fecha(v)
     except Exception:
         return parse_fecha(v)
-
-
-def _sc_comentarios(red, ruta, url_post, nuevos, banco, fuente):
-    """Pagina los comentarios de una publicación hasta cubrir los nuevos (o el máximo de páginas)."""
-    cfg = CONFIG.get("scrapecreators", {})
-    out, cursor = [], None
-    for _ in range(max(1, min(cfg.get("paginas_max_por_post", 5), (nuevos // 10) + 1))):
-        d = sc_get(ruta, url=url_post, cursor=cursor)
-        for c in d.get("comments") or []:
-            texto = c.get("text") or ""
-            if not texto.strip():
-                continue
-            autor = (c.get("author") or {}).get("name") or (c.get("user") or {}).get("username") or \
-                    (c.get("user") or {}).get("unique_id") or ""
-            ident = c.get("id") or c.get("cid")
-            out.append({"id": f"{fuente.lower()}:{ident}", "fuente": fuente, "tipo": "comentario", "peru": True,
-                        "bancos_fijos": [banco], "cuenta": banco, "autor": str(autor), "texto": texto,
-                        "fecha": _epoch(c.get("created_at") or c.get("create_time")), "url": url_post})
-        cursor = d.get("cursor")
-        if not cursor or not d.get("comments") or len(out) >= nuevos:
-            break
-    return out
-
-
-def _sc_red(red, fuente, rango):
-    """Publicaciones de las cuentas asignadas + comentarios nuevos (lectura incremental compartida con Apify)."""
-    if not os.environ.get("SCRAPECREATORS_API_KEY"):
-        raise RutaInactiva("Sin clave: añade SCRAPECREATORS_API_KEY en .env")
-    if en_pausa("ScrapeCreators"):
-        raise RutaInactiva("⏸ En pausa")
-    mapa = cuentas_asignadas(red, fuente, "ScrapeCreators")
-    out, conteo, post_banco = [], {}, {}
-    errores = []
-    for url_cuenta, banco in mapa.items():
-        usuario = url_cuenta.rstrip("/").rsplit("/", 1)[-1].lstrip("@")
-        try:
-            posts = _sc_posts(red, url_cuenta, usuario)
-        except RuntimeError:
-            raise  # tope de créditos: se detiene todo
-        except Exception as e:  # una cuenta con error no bloquea al resto
-            errores.append(f"{banco}: {type(e).__name__}")
-            continue
-        for purl, texto, n_com, n_reac, fecha in posts[:CONFIG["apify"].get("posts_por_cuenta", 5)]:
-            if not purl:
-                continue
-            post_banco[purl] = banco
-            conteo[purl] = int(n_com or 0)
-            out.append({"id": f"{fuente.lower()}:post:{purl}", "fuente": fuente, "tipo": "post_oficial", "peru": True,
-                        "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "texto": texto or "(publicación sin texto)",
-                        "fecha": _epoch(fecha), "url": purl, "metricas": {"comentarios": n_com, "reacciones": n_reac}})
-    if errores and len(errores) == len(mapa):
-        raise RuntimeError("Todas las cuentas fallaron: " + ", ".join(errores))
-    if errores:
-        print(f"  {fuente} · ScrapeCreators: cuentas con error ({', '.join(errores)})", flush=True)
-    return _sc_comentarios_nuevos(red, fuente, conteo, post_banco, out)
-
-
-def _sc_posts(red, url_cuenta, usuario):
-    if True:
-        if red == "facebook":
-            posts = [(p.get("url"), p.get("text") or "", p.get("commentCount"), p.get("reactionCount"),
-                      p.get("publishTime") or p.get("creation_time")) for p in sc_get("/v1/facebook/profile/posts", url=url_cuenta).get("posts") or []]
-        elif red == "instagram":
-            posts = [(f"https://www.instagram.com/p/{p.get('code')}/", (p.get("caption") or {}).get("text") or "",
-                      p.get("comment_count"), p.get("like_count"), p.get("taken_at"))
-                     for p in sc_get("/v2/instagram/user/posts", handle=usuario).get("items") or [] if p.get("code")]
-        else:
-            posts = [(f"https://www.tiktok.com/@{usuario}/video/{p.get('aweme_id')}", p.get("desc") or "",
-                      (p.get("statistics") or {}).get("comment_count"), (p.get("statistics") or {}).get("digg_count"),
-                      p.get("create_time")) for p in sc_get("/v3/tiktok/profile/videos", handle=usuario).get("aweme_list") or []]
-        return posts
-
-
-def _sc_comentarios_nuevos(red, fuente, conteo, post_banco, out):
-    previos = _vistos(conteo)
-    ruta_com = {"facebook": "/v1/facebook/post/comments", "instagram": "/v2/instagram/post/comments",
-                "tiktok": "/v1/tiktok/video/comments"}[red]
-    tope = CONFIG["apify"].get("comentarios_max_por_post", 200)
-    for purl, n in conteo.items():
-        nuevos = min(n - previos.get(purl, 0), tope)
-        if nuevos > 0:
-            try:
-                out += _sc_comentarios(red, ruta_com, purl, nuevos, post_banco[purl], fuente)
-            except RuntimeError:
-                raise  # tope de créditos
-            except Exception as e:  # esa publicación se reintenta en la próxima pasada
-                conteo[purl] = previos.get(purl, 0)
-                print(f"  {fuente} · ScrapeCreators: comentarios de {purl[:60]} fallaron ({type(e).__name__})", flush=True)
-    _marcar_vistos(conteo)
-    return out
 
 
 # ---------------- ScrapingBee: búsqueda en Google de menciones públicas en redes y foros ----------------
@@ -2085,7 +1948,6 @@ def fuente_facebook(rango=None):
         ("Apify", lambda r: _comentarios_de_cuentas("facebook", "Facebook", "facebook_posts", "facebook_comentarios",
                                                     ("url", "postUrl", "topLevelUrl"), r)
          if os.environ.get("APIFY_TOKEN") else None, "activo"),
-        ("ScrapeCreators", lambda r: _sc_red("facebook", "Facebook", r), "activo"),
         ("RapidAPI", _rapid_facebook, "activo")], rango)
 
 
@@ -2093,15 +1955,13 @@ def fuente_instagram(rango=None):
     return ejecutar_rutas("Instagram", [
         ("Apify", lambda r: _comentarios_de_cuentas("instagram", "Instagram", "instagram_posts", "instagram_comentarios",
                                                     ("url", "postUrl"), r)
-         if os.environ.get("APIFY_TOKEN") else None, "activo"),
-        ("ScrapeCreators", lambda r: _sc_red("instagram", "Instagram", r), "activo")], rango)
+         if os.environ.get("APIFY_TOKEN") else None, "activo")], rango)
 
 
 def fuente_tiktok(rango=None):
     # La ruta gratuita va primero; los servicios de pago solo entran si ella falla (así no se gastan créditos)
     return ejecutar_rutas("TikTok", [("yt-dlp (gratis)", tiktok_libre, "activo"),
-                                     ("Apify", tiktok_apify, "respaldo"),
-                                     ("ScrapeCreators", lambda r: _sc_red("tiktok", "TikTok", r), "respaldo")], rango)
+                                     ("Apify", tiktok_apify, "respaldo")], rango)
 
 
 def _tiktok_comentarios(sesion, purl, banco, nuevos):
@@ -2267,9 +2127,9 @@ def bluesky_buscar(host, rango=None):
 
 FUENTES = {
     "X": (fuente_x, "Nitter (varias instancias); Apify como respaldo. Incluye menciones y respuestas a cuentas oficiales"),
-    "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators + RapidAPI en activo-activo"),
-    "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify + ScrapeCreators en activo-activo"),
-    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: yt-dlp (gratis); Apify y ScrapeCreators de respaldo"),
+    "Facebook": (fuente_facebook, "Publicaciones y comentarios de las cuentas oficiales: Apify + RapidAPI en activo-activo"),
+    "Instagram": (fuente_instagram, "Publicaciones y comentarios de las cuentas oficiales: Apify"),
+    "TikTok": (fuente_tiktok, "Videos y comentarios de las cuentas oficiales: yt-dlp (gratis); Apify de respaldo"),
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) + yt-dlp (gratis, con comentarios) + búsqueda web"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
@@ -2283,7 +2143,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "ScrapeCreators", "ScrapingBee", "Scrape.do", "RapidAPI"]
+PROVEEDORES_PAGO = ["Apify", "ScrapingBee", "Scrape.do", "RapidAPI"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -2300,7 +2160,7 @@ try:
 except (FileNotFoundError, ValueError):
     PAUSA = {"todo": False, "hasta": None, "por": "", "fuentes": [], "fuentes_info": {}}
 # migración: quita las pausas que antes se añadían solas a los servicios de pago
-PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("ScrapeCreators", "Búsqueda Google")]
+PAUSA["fuentes"] = [x for x in PAUSA["fuentes"] if x not in ("Búsqueda Google",)]
 # La pausa general sobrevive a los reinicios (antes cada despliegue la quitaba en silencio) y puede tener vencimiento
 ESTADO["pausa"] = PAUSA
 try:
@@ -2314,7 +2174,7 @@ except OSError:
 # Servicios de pago agotados: se apagan solos hasta su fecha de renovación y mientras tanto no se consultan
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
-_CFG_PROV = {"Apify": "apify", "ScrapeCreators": "scrapecreators",
+_CFG_PROV = {"Apify": "apify",
              "ScrapingBee": "scrapingbee", "Scrape.do": "scrapedo", "RapidAPI": "rapidapi"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
@@ -2502,7 +2362,7 @@ def cambiar_pausa(objetivo, pausar, horas=0, por=""):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(PAUSA, f, ensure_ascii=False)
     os.replace(tmp, RUTA_PAUSA)
-    if not pausar and objetivo in ("todo", "ScrapeCreators"):
+    if not pausar and objetivo == "todo":
         for rutas_ in SALUD.values():
             for nombre_, s_ in rutas_.items():
                 if objetivo == "todo" or nombre_ == objetivo:
@@ -4659,15 +4519,11 @@ def resumen_proveedores():
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
-    ap, sc, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapecreators", "scrapingbee", "rapidapi"))
+    ap, sb, ra = (ESTADO.get(k, {}) for k in ("apify", "scrapingbee", "rapidapi"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
               [("Facebook", "Apify"), ("Instagram", "Apify"), ("TikTok", "Apify"), ("X", "Apify (respaldo de pago)")]),
-        ficha("ScrapeCreators", "SCRAPECREATORS_API_KEY", "Facebook, Instagram, TikTok",
-              f"{sc['restantes']:,} créditos".replace(",", ".") if sc.get("restantes") is not None else None,
-              f"{sc.get('usados_mes', 0)} de {sc.get('tope', CONFIG.get('scrapecreators', {}).get('max_creditos_mes', 0))} créditos este mes",
-              [("Facebook", "ScrapeCreators"), ("Instagram", "ScrapeCreators"), ("TikTok", "ScrapeCreators")]),
         ficha("ScrapingBee", "SCRAPINGBEE_API_KEY", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros",
               f"{sb['restantes']:,} créditos".replace(",", ".") if sb.get("restantes") is not None else None,
               f"{sb.get('usados_mes', 0)} de {sb.get('tope', CONFIG.get('scrapingbee', {}).get('max_creditos_mes', 0))} créditos este mes", []),
@@ -4773,7 +4629,6 @@ def config_editable():
         "cuentas_oficiales": {k: v for k, v in c.get("cuentas_oficiales", {}).items() if not k.startswith("_")},
         "trends": {"grupos": c.get("trends", {}).get("grupos", {}), "intervalo_minutos": c.get("trends", {}).get("intervalo_minutos", 60)},
         "apify": {k: c.get("apify", {}).get(k) for k in ("presupuesto_usd_mes", "posts_por_cuenta", "comentarios_max_por_post")},
-        "scrapecreators": {k: c.get("scrapecreators", {}).get(k) for k in ("max_creditos_mes", "paginas_max_por_post")},
         "scrapingbee": {k: c.get("scrapingbee", {}).get(k) for k in ("max_creditos_mes",)},
         "scrapedo": {k: c.get("scrapedo", {}).get(k) for k in ("max_creditos_mes",)},
         "rapidapi": {k: c.get("rapidapi", {}).get(k) for k in ("max_llamadas_mes", "comentarios_por_pasada")},
@@ -4781,7 +4636,7 @@ def config_editable():
         "monitoreo": resumen_monitoreo(),
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPECREATORS_API_KEY", "SCRAPINGBEE_API_KEY", "SCRAPEDO_TOKEN", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPINGBEE_API_KEY", "SCRAPEDO_TOKEN", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 
@@ -4913,11 +4768,6 @@ def validar_config(d):
     if "scrapingbee" in d:
         nueva.setdefault("scrapingbee", {})["max_creditos_mes"] = _entero(
             d["scrapingbee"].get("max_creditos_mes", 900), "Tope de ScrapingBee", 0, 10_000_000)
-    if "scrapecreators" in d:
-        sc = d["scrapecreators"]
-        nueva.setdefault("scrapecreators", {}).update(
-            max_creditos_mes=_entero(sc.get("max_creditos_mes", 3000), "Tope de ScrapeCreators", 0, 1_000_000),
-            paginas_max_por_post=_entero(sc.get("paginas_max_por_post", 5), "Páginas de comentarios", 1, 50))
     if "ia" in d:
         por_nombre = {p["nombre"]: p for p in d["ia"] if isinstance(p, dict)}
         for p in nueva.get("ia", {}).get("proveedores", []):
@@ -6912,7 +6762,6 @@ def main():
     threading.Thread(target=planificador, daemon=True).start()
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()
-    threading.Thread(target=saldo_scrapecreators, daemon=True).start()
     threading.Thread(target=saldo_scrapingbee, daemon=True).start()
     threading.Thread(target=trabajador_sync, daemon=True).start()
     threading.Thread(target=trabajador_notificaciones, daemon=True).start()

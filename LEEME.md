@@ -42,7 +42,7 @@ Abre http://localhost:8765 . No necesita instalar nada (Python 3.9+).
 `iniciar.command` usa `.venv` automáticamente si existe (en Docker, yt-dlp ya viene instalado). Con esto:
 
 - **TikTok gratis:** yt-dlp lista los últimos videos de cada cuenta oficial y el monitor lee sus comentarios públicos
-  (sin cuenta ni créditos). Apify y ScrapeCreators quedan solo de respaldo si esta ruta falla.
+  (sin cuenta ni créditos). Apify queda solo de respaldo si esta ruta falla.
   Si TikTok no deja listar una cuenta, se siguen sus videos de los últimos 7 días ya conocidos.
 - **YouTube gratis:** yt-dlp busca videos de la semana cuyo título nombra a la entidad y trae sus comentarios más
   recientes; funciona en paralelo con la API oficial.
@@ -134,7 +134,7 @@ El repositorio ya incluye un `Dockerfile`. Pasos:
    datos, el archivo y la configuración; sin volumen se perderían en cada despliegue).
 3. En **Variables**, añade como secretas:
    - `ADMIN_USUARIO` y `ADMIN_CLAVE` (tu primer administrador; mínimo 10 caracteres con letras y números),
-   - las claves que uses: `APIFY_TOKEN`, `SCRAPECREATORS_API_KEY`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`,
+   - las claves que uses: `APIFY_TOKEN`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`,
      `YOUTUBE_API_KEY`.
 4. **Settings → Networking → Generate Domain**. Railway te da una dirección `https://….up.railway.app`; ese es tu
    monitor en internet (con HTTPS y login).

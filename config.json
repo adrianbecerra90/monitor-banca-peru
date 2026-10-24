@@ -563,12 +563,6 @@
     "minutos_alerta": 90
   },
   "retencion_dias": 90,
-  "scrapecreators": {
-    "_nota": "Segunda ruta para Facebook, Instagram y TikTok (1 crédito por consulta). Se reparte las cuentas con Apify; si uno cae, el otro asume todas.",
-    "max_creditos_mes": 90,
-    "paginas_max_por_post": 10,
-    "dia_renovacion": 1
-  },
   "scrapingbee": {
     "_nota": "Búsqueda en Google de menciones públicas (≈10 créditos por búsqueda). 3 búsquedas al día ≈ 900 créditos/mes.",
     "max_creditos_mes": 900,
