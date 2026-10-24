@@ -697,7 +697,7 @@ async function cargarEstado(){
     const hoy=new Date(),min=new Date(hoy-89*864e5).toISOString().slice(0,10);$('#h-hasta').value=hoy.toISOString().slice(0,10);$('#h-desde').value=new Date(hoy-30*864e5).toISOString().slice(0,10);$('#h-desde').min=min;$('#h-hasta').min=min;$('#h-hasta').max=$('#h-hasta').value}
   const fs=Object.entries(es.fuentes);const ult=fs.map(([,f])=>f.ultima).filter(Boolean).sort().pop();
   $('#estado').textContent=`${fs.filter(([,f])=>f.ok).length}/${fs.length} fuentes activas · `+(ult?'último dato hace '+hace(ult):'primer escaneo en curso…')+` · ${fmt(es.base.total)} publicaciones guardadas`;
-  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br>${ultimaAct(f.ultima)}<br><span class="sub">${esc(f.ejecutando?'Consultando…':(es.rutas[n]&&Object.keys(es.rutas[n]).length>1&&/^Sin datos en esta pasada/.test(f.msg||'')?'Sin datos en esta pasada: ninguna ruta disponible (detalle abajo)':f.msg))}</span>${n==='Búsqueda Google'&&es.scrapingbee?.restantes!=null?`<br><span class="sub" style="${es.scrapingbee.restantes<100?'color:var(--neg);font-weight:600':''}">Saldo ScrapingBee: ${fmt(es.scrapingbee.restantes)} créditos · tope ${fmt(es.scrapingbee.usados_mes||0)}/${fmt(es.scrapingbee.tope||0)} este mes</span>`:''}${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
+  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br>${ultimaAct(f.ultima)}<br><span class="sub">${esc(f.ejecutando?'Consultando…':(es.rutas[n]&&Object.keys(es.rutas[n]).length>1&&/^Sin datos en esta pasada/.test(f.msg||'')?'Sin datos en esta pasada: ninguna ruta disponible (detalle abajo)':f.msg))}</span>${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
   $('#fuentes').querySelectorAll('button[data-f]').forEach(b=>b.onclick=async()=>{await post('/api/refresh?fuente='+encodeURIComponent(b.dataset.f));setTimeout(cargarEstado,800)});
   const ia=es.ia_estado||{};
   // tarjeta propia de la clasificación con IA: estado, cola pendiente y cada proveedor (activo-activo)
@@ -960,7 +960,7 @@ function pintarConfig(){
     c.innerHTML=`<p class="ayuda">Periodo de análisis y cada cuánto se consulta cada fuente.</p>
     <div class="bloque"><b>Estado del monitoreo</b> <span class="sub">(se aplica al instante)</span>
       <div class="frow" style="margin-top:8px"><button class="${ESTADO.pausa.todo?'pri':''}" id="cfg-pausa-todo">${ESTADO.pausa.todo?'▶ Reanudar todo':'⏸ Pausar todo 1 h'}</button>
-      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','ScrapingBee','RapidAPI','Scrape.do']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
+      ${ESTADO.pausa.todo?'<span class="sub">Todo en pausa</span>':CFG.fuentes.concat(['Google Trends','IA','Ciberseguridad','Apify','RapidAPI','Scrape.do']).filter(f=>!(ESTADO.apagados||[]).some(a=>a.tipo==='proveedor'&&a.nombre===f)).map(f=>`<button class="tg ${pausada(f)?'on':''}" data-pf="${esc(f)}" title="${pausada(f)?'Reanudar':'Pausar'}">${pausada(f)?'▶':'⏸'} ${esc(f)}</button>`).join('')}</div>
       <div class="sub" style="margin-top:8px">La pausa general se mantiene aunque el servidor se reinicie; desde el botón ⏸ del encabezado puedes darle duración y se reanuda sola. Al pausar o reanudar llega un aviso al celular.</div></div>
     <div class="bloque" id="cfg-apagados"></div>
     <div class="rej"><label class="campo">Días de análisis (lo anterior pasa al archivo)<input type="number" min="30" max="365" data-k="retencion_dias" value="${CFG.retencion_dias}"></label></div>
@@ -1023,9 +1023,7 @@ function pintarConfig(){
     <div class="bloque"><b>RapidAPI · Facebook Scraper</b> (Facebook · se reparte las páginas con los demás)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de llamadas al mes (tu plan gratuito: 100)<input type="number" min="0" max="10000000" data-r="max_llamadas_mes" value="${CFG.rapidapi?.max_llamadas_mes??95}"></label>
       <label class="campo">Máx. consultas de comentarios por pasada<input type="number" min="0" max="500" data-r="comentarios_por_pasada" value="${CFG.rapidapi?.comentarios_por_pasada??5}"></label></div></div>
-    <div class="bloque"><b>ScrapingBee</b> (búsqueda en Google de menciones en redes y foros · ≈10 créditos por búsqueda)<div class="rej" style="margin-top:8px">
-      <label class="campo">Tope de créditos al mes<input type="number" min="0" max="10000000" data-b="max_creditos_mes" value="${CFG.scrapingbee?.max_creditos_mes??900}"></label></div></div>
-    <div class="bloque"><b>Scrape.do</b> (búsqueda en Google · se alterna con ScrapingBee y lo reemplaza si se agota · 10 créditos por búsqueda)<div class="rej" style="margin-top:8px">
+    <div class="bloque"><b>Scrape.do</b> (búsqueda en Google de menciones en redes y foros · 10 créditos por búsqueda · el tope del mes se reparte por día)<div class="rej" style="margin-top:8px">
       <label class="campo">Tope de créditos al mes<input type="number" min="0" max="10000000" data-sd="max_creditos_mes" value="${CFG.scrapedo?.max_creditos_mes??900}"></label></div></div>
     <div class="bloque"><b>Proveedores de IA</b> (clasificación en paralelo)${CFG.ia.map((p,i)=>`<div class="rej" style="margin-top:8px" data-i="${i}">
       <label class="campo">${esc(p.nombre)}<span><input type="checkbox" data-p="activo" ${p.activo?'checked':''}> activo</span></label>
@@ -1033,7 +1031,6 @@ function pintarConfig(){
     <div class="bloque"><b>Claves</b> <span class="sub">(por seguridad se editan solo en el archivo <code>.env</code>)</span><div style="margin-top:6px">${Object.entries(CFG.claves).map(([k,v])=>`<div class="sub">${v?'✅':'⚪'} ${esc(k)} ${v?'configurada':'sin configurar'}</div>`).join('')}</div></div>`;
     c.querySelectorAll('[data-a]').forEach(x=>x.oninput=()=>CFG.apify[x.dataset.a]=x.value);
     CFG.rapidapi=CFG.rapidapi||{};c.querySelectorAll('[data-r]').forEach(x=>x.oninput=()=>CFG.rapidapi[x.dataset.r]=x.value);
-    CFG.scrapingbee=CFG.scrapingbee||{};c.querySelectorAll('[data-b]').forEach(x=>x.oninput=()=>CFG.scrapingbee[x.dataset.b]=x.value);
     CFG.scrapedo=CFG.scrapedo||{};c.querySelectorAll('[data-sd]').forEach(x=>x.oninput=()=>CFG.scrapedo[x.dataset.sd]=x.value);
     c.querySelectorAll('[data-i] [data-p]').forEach(x=>{const p=CFG.ia[+x.closest('[data-i]').dataset.i];x.oninput=x.onchange=()=>p[x.dataset.p]=x.type==='checkbox'?x.checked:x.value});}
   if(cfgTab==='ejemplos'){
@@ -1119,7 +1116,7 @@ async function guardarConfig(){
     bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
-    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapingbee:CFG.scrapingbee,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
+    trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(cuerpo)});
