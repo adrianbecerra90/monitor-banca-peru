@@ -2035,7 +2035,7 @@ def rapid_get(ruta, **q):
     est = ESTADO.setdefault("rapidapi", {})
     if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 5)):
         agotar("RapidAPI", f"Cuota agotada ({usados} de {tope} llamadas este mes)")
-    host = os.environ.get("RAPIDAPI_FB_HOST", "facebook-scraper3.p.rapidapi.com")
+    host = os.environ.get("RAPIDAPI_FB_HOST") or "facebook-scraper3.p.rapidapi.com"  # vacía = la de siempre
     req = urllib.request.Request(f"https://{host}{ruta}?" + urllib.parse.urlencode({k: v for k, v in q.items() if v}),
                                  headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": host, "User-Agent": UA})
     with urllib.request.urlopen(req, timeout=60) as resp:
