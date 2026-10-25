@@ -142,6 +142,13 @@ MIGRACIONES_REGLAS = {
     # "SBS" junto a palabras del sector: trae tuits como "El chiste se cuenta solo…" que enlazan una nota de la SBS
     "consultas-sbs-2026-10-25": {"nitter_consultas_extra": [
         "SBS (finanzas OR seguros OR afp OR superintendencia OR banca OR hackeo OR filtración OR lavado) lang:es"]},
+    # Cuentas verificadas en el pie de página de cada web oficial (25/10/2026): interseguro.pe y pichincha.pe.
+    # Pichincha Perú no tiene X; Plin no tiene TikTok ni X; Italtel solo tiene cuentas globales (Italia), no de Perú
+    "cuentas-2026-10-25": {"cuentas_oficiales": {
+        "Interseguro": {"facebook": "https://www.facebook.com/interseguro/",
+                        "instagram": "https://www.instagram.com/interseguroperu/",
+                        "linkedin": "https://www.linkedin.com/company/interseguro-aseguradora/"},
+        "Banco Pichincha": {"linkedin": "https://www.linkedin.com/company/banco-pichincha-pe/"}}},
     "ambiguos-2026-10-25": {
         "bancos": {"BBVA Perú": {"contexto": ["cuenta sueldo", "continental", "agente bbva", "cts"]},
                    "Scotiabank Perú": {"contexto": ["cuenta sueldo", "crediscotia", "cts", "cuenta free"]}},
@@ -164,6 +171,11 @@ for _m in _pendientes:
     for _k in ("contexto_excluir", "contexto_peru"):
         _l = CONFIG.setdefault(_k, [])
         _l += [x for x in _c.get(_k, []) if x not in _l]
+    for _b, _redes in _c.get("cuentas_oficiales", {}).items():  # solo completa redes que falten
+        if _b in CONFIG.get("bancos", {}):
+            _cu = CONFIG.setdefault("cuentas_oficiales", {}).setdefault(_b, {})
+            for _red, _url in _redes.items():
+                _cu.setdefault(_red, _url)
     _l = CONFIG.setdefault("nitter", {}).setdefault("consultas_extra", [])
     _l += [x for x in _c.get("nitter_consultas_extra", []) if x not in _l]
     _hechas.append(_m)

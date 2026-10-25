@@ -459,11 +459,17 @@
     "Banco Pichincha": {
       "facebook": "https://www.facebook.com/BancoPichinchaPeru/",
       "instagram": "https://www.instagram.com/bancopichincha.pe/",
-      "tiktok": "https://www.tiktok.com/@bancopichinchaperu"
+      "tiktok": "https://www.tiktok.com/@bancopichinchaperu",
+      "linkedin": "https://www.linkedin.com/company/banco-pichincha-pe/"
     },
     "BCRP": {
       "x": "BCRPOficial",
       "linkedin": "https://www.linkedin.com/company/bcrpoficial/"
+    },
+    "Interseguro": {
+      "facebook": "https://www.facebook.com/interseguro/",
+      "instagram": "https://www.instagram.com/interseguroperu/",
+      "linkedin": "https://www.linkedin.com/company/interseguro-aseguradora/"
     }
   },
   "apify": {
@@ -780,6 +786,7 @@
   "_migraciones": [
     "alcance-2026-10-25",
     "consultas-sbs-2026-10-25",
-    "ambiguos-2026-10-25"
+    "ambiguos-2026-10-25",
+    "cuentas-2026-10-25"
   ]
 }
