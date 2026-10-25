@@ -120,7 +120,15 @@ for _k in ("brightdata", "creatorcrawl", "instaloader", "scrapecreators", "scrap
 # Alcance (25/10/2026): se busca "la SBS" (antes solo "SBS Perú"/"Superintendencia de Banca" y se perdían tuits como
 # "Hackearon la SBS?"); Pibank y @BancoPichincha (la cuenta de Ecuador) exigen contexto de Perú (Pibank opera también
 # en España y Colombia). Solo suma: lo que el analista agregó en el panel se respeta
-for _b, _cambios in {"SBS": {"buscar": ["la SBS"]},
+CONTEXTO_SBS = ["superintenden", "hacke", "filtr", "base de datos", "datos personales", "afp", "pension", "previsional",
+                "seguro", "aseguradora", "afocat", "soat", "banco", "bancari", "financ", "credit", "prestamo", "deuda",
+                "ahorro", "deposit", "retiro", "cajero", "billetera", "cooperativ", "coopac", "cmac", "caja ", "edpyme",
+                "lavado de activos", "riesgo", "liquidez", "reglament", "normativ", "resolucion", "gobierno corporativo",
+                "central de riesgo", "tipo de cambio", "supervis", "regula", "interviene", "intervencion", "liquidacion",
+                "reclamo", "denuncia", "fraude", "estafa", "ciberataque", "multa", "sancion", "presupuesto", "cuotas",
+                "usuarios del sistema", "portal sbs", "aportes", "finanz", "dinero", "ciberseguridad",
+                "intereses", "rentabilidad", "heysen"]
+for _b, _cambios in {"SBS": {"buscar": ["la SBS"], "contexto": CONTEXTO_SBS},
                      "Banco Pichincha": {"alias": ["BancoPichincha", "@pibank_pe", "pibank_pe"],
                                          "ambiguos": ["Pibank", "BancoPichincha"]}}.items():
     for _k, _v in _cambios.items() if _b in CONFIG.get("bancos", {}) else ():
@@ -130,7 +138,7 @@ if "Banco Pichincha" in CONFIG.get("bancos", {}):  # "#BancoPichincha" contaba s
     CONFIG["bancos"]["Banco Pichincha"]["alias"] = [a for a in CONFIG["bancos"]["Banco Pichincha"]["alias"]
                                                     if a != "#BancoPichincha"]
 _ex = CONFIG.setdefault("contexto_excluir", [])
-_ex += [x for x in ("españa", "colombia", "bogota", "medellin", "€", "euros", "🇪🇨", "🇪🇸", "🇨🇴", "pibank.es", "@pibank_es")
+_ex += [x for x in ("rusia", "ucrania", "moscu", "españa", "colombia", "bogota", "medellin", "€", "euros", "🇪🇨", "🇪🇸", "🇨🇴", "pibank.es", "@pibank_es")
         if x not in _ex]
 _cp = CONFIG.setdefault("contexto_peru", [])  # TREA/TCEA son términos de la regulación peruana (España usa TAE)
 _cp += [x for x in ("trea", "tcea", "alfin", "efectibank") if x not in _cp]
@@ -469,8 +477,13 @@ for _b, _cfg in BANCOS.items():
     amb = {normalizar(a) for a in _cfg.get("ambiguos", [])}
     seguros = [_alias_re(a) for a in _cfg["alias"] if normalizar(a.lstrip("@#")) not in amb]
     dudosos = [_alias_re(a) for a in _cfg["alias"] if normalizar(a.lstrip("@#")) in amb]
-    _bancos_re.append((_b, seguros, dudosos))
-_ctx_peru = [normalizar(c) for c in CONFIG.get("contexto_peru", [])]
+    # contexto propio de la entidad ("hackearon la SBS", "la SBS y las AFP"): basta para un alias ambiguo
+    propio = re.compile(r"\b(" + "|".join(re.escape(normalizar(c)) for c in _cfg["contexto"]) + ")") \
+        if _cfg.get("contexto") else None
+    _bancos_re.append((_b, seguros, dudosos, propio))
+# el nombre de una entidad no prueba por sí mismo que se hable de Perú ("SBS" es también una TV coreana y una unidad
+# militar ucraniana): no cuenta como contexto peruano para su propio alias ambiguo
+_ctx_peru = [normalizar(c) for c in CONFIG.get("contexto_peru", []) if normalizar(c) != "sbs"]
 _ctx_excluir = [normalizar(c) for c in CONFIG.get("contexto_excluir", [])]
 
 
@@ -485,9 +498,11 @@ def detectar_bancos(texto, es_peru=False):
     # nombrar a Perú gana a la exclusión ("Pibank aterriza en Perú… operaba en España y Colombia")
     peru = bool(CONTEXTO_PE.search(t)) or \
         ((es_peru or any(c in t for c in _ctx_peru)) and not any(c in t for c in _ctx_excluir))
+    excluido = any(c in t for c in _ctx_excluir)
     out = []
-    for b, seguros, dudosos in _bancos_re:
-        if any(p.search(t) for p in seguros) or (peru and any(p.search(t) for p in dudosos)):
+    for b, seguros, dudosos, propio in _bancos_re:
+        ok_ctx = peru or bool(propio and not excluido and propio.search(t))
+        if any(p.search(t) for p in seguros) or (ok_ctx and any(p.search(t) for p in dudosos)):
             out.append(b)
     return out
 
@@ -2086,7 +2101,8 @@ def fuente_bluesky(rango=None):
 def bluesky_buscar(host, rango=None):
     out = []
     for termino in todos_terminos():
-        params = {"q": termino, "limit": 100, "sort": "latest", "lang": "es"}
+        # entre comillas: sin ellas Bluesky busca las palabras sueltas ("la SBS" traía cualquier "SBS")
+        params = {"q": f'"{termino}"' if " " in termino else termino, "limit": 100, "sort": "latest", "lang": "es"}
         if rango:
             params.update(since=rango[0] + "T00:00:00Z", until=rango[1] + "T00:00:00Z")
         cursor = None
