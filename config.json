@@ -559,6 +559,9 @@
       "soles",
       "yape",
       "plin"
+    ],
+    "consultas_extra": [
+      "SBS (finanzas OR seguros OR afp OR superintendencia OR banca OR hackeo OR filtración OR lavado) lang:es"
     ]
   },
   "ia": {
@@ -776,6 +779,7 @@
   },
   "_migraciones": [
     "alcance-2026-10-25",
+    "consultas-sbs-2026-10-25",
     "ambiguos-2026-10-25"
   ]
 }

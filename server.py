@@ -139,6 +139,9 @@ MIGRACIONES_REGLAS = {
         "contexto_peru": ["trea", "tcea", "alfin", "efectibank"]},  # TREA/TCEA: regulación peruana (España usa TAE)
     # BBVA y Scotiabank tienen mucho más volumen en México, España y Chile que en Perú: marcadores de esos países
     # excluyen el alias suelto; y productos propios del Perú bastan como contexto
+    # "SBS" junto a palabras del sector: trae tuits como "El chiste se cuenta solo…" que enlazan una nota de la SBS
+    "consultas-sbs-2026-10-25": {"nitter_consultas_extra": [
+        "SBS (finanzas OR seguros OR afp OR superintendencia OR banca OR hackeo OR filtración OR lavado) lang:es"]},
     "ambiguos-2026-10-25": {
         "bancos": {"BBVA Perú": {"contexto": ["cuenta sueldo", "continental", "agente bbva", "cts"]},
                    "Scotiabank Perú": {"contexto": ["cuenta sueldo", "crediscotia", "cts", "cuenta free"]}},
@@ -161,6 +164,8 @@ for _m in _pendientes:
     for _k in ("contexto_excluir", "contexto_peru"):
         _l = CONFIG.setdefault(_k, [])
         _l += [x for x in _c.get(_k, []) if x not in _l]
+    _l = CONFIG.setdefault("nitter", {}).setdefault("consultas_extra", [])
+    _l += [x for x in _c.get("nitter_consultas_extra", []) if x not in _l]
     _hechas.append(_m)
 CONFIG.setdefault("nitter", {}).setdefault("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
 if _pendientes:  # se guarda en el disco para que no se repita (copia previa en config_copias)
@@ -1616,6 +1621,8 @@ def x_nitter(rango=None):
     ctx = cfg.get("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
     if amb and ctx:
         consultas.append("(" + " OR ".join(f'"{a}"' for a in amb) + ") (" + " OR ".join(ctx) + ") lang:es")
+    # búsquedas propias del analista (Configuración → nitter.consultas_extra), p. ej. "SBS" junto a palabras del sector
+    consultas += [str(q) for q in cfg.get("consultas_extra", []) if str(q).strip()]
     limite =iso(datetime.fromisoformat(rango[0]).replace(tzinfo=timezone.utc)) if rango else None
     tope = iso(datetime.fromisoformat(rango[1]).replace(tzinfo=timezone.utc)) if rango else None
     paginas = cfg.get("paginas_historico", 40) if rango else cfg.get("paginas_tiempo_real", 1)
@@ -1648,6 +1655,11 @@ def x_nitter(rango=None):
                 desc = i.findtext("description", "") or ""
                 cita = re.search(r"<blockquote.*?</blockquote>", desc, re.S)  # el tweet citado: referencia indirecta
                 cita = limpiar_html(cita.group(0))[:500] if cita else ""
+                # la tarjeta del enlace (titular y resumen de la nota) y la dirección enlazada también son contexto:
+                # "El chiste se cuenta solo…" + nota "SBS plantea estándares…" habla de la SBS sin nombrarla
+                tarjeta = re.split(r"<hr\s*/?>", desc, maxsplit=1)[1] if re.search(r"<hr\s*/?>", desc) else ""
+                enlaces = " ".join(dict.fromkeys(re.findall(r'href="(https?://(?!nitter)[^"]+)"', desc)))
+                cita = " ".join(x for x in (cita, limpiar_html(tarjeta)[:500], enlaces[:300]) if x.strip())
                 desc = re.split(r"<blockquote|<hr", desc)[0] or desc  # sin el tweet citado
                 texto = re.sub(r"^R to @\w+:\s*", "", limpiar_html(desc) or titulo)
                 texto = re.sub(r"\s*[—-]*\s*https?://\S*nitter\S*", "", texto)  # enlaces internos de Nitter

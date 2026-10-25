@@ -1,45 +1,226 @@
 {
   "_nota": "Casos reales que las reglas deben resolver siempre igual. Agrega aquí cada error que encuentres (texto y lo que debió salir) antes de corregir la regla; probar_reglas.py avisa si un cambio rompe alguno.",
   "entidades": [
-    {"texto": "Hackearon la SBS?", "espera": ["SBS"], "origen": "X, 25/10/2026"},
-    {"texto": "Atacan a la SBS y a 13 Millones de personas en Perú", "espera": ["SBS"]},
-    {"texto": "Revolut alista su llegada al Perú: SBS revela cuándo comenzaría a operar el banco digital", "espera": ["SBS"]},
-    {"texto": "la SBS no dice nada de la filtración", "espera": ["SBS"]},
-    {"texto": "Mi AFP no responde, ya reclamé a la SBS", "espera": ["SBS"]},
-    {"texto": "Reporte de deudas SBS gratis", "espera": ["SBS"]},
-    {"texto": "👇🏻 importante esto @SBSPERU", "espera": ["SBS"]},
-    {"texto": "SBS realiza semana de prevención de lavado de activos del 26 al 30 de octubre", "espera": ["SBS"]},
-    {"texto": "El comandante de las SBS, Robert “Madyar” Brovdi, informó de estas cifras", "espera": [], "origen": "Bluesky: unidad militar ucraniana"},
-    {"texto": "❗️El SBS atacó la planta Kamensky de combustible sólido para cohetes, MiG-29", "espera": []},
-    {"texto": "Elecciones «feroces» en Moscú. El SBS (presumiblemente un servicio de seguridad) supervisa", "espera": []},
-    {"texto": "Kim Ji Woong de ZEROBASEONE no asistirá al SBS Gayo Daejeon Summer", "espera": [], "origen": "TV coreana"},
-    {"texto": "Doctor X: Kim Ji Won le da a SBS el mejor estreno del año", "espera": []},
-    {"texto": "la SBS transmitirá el nuevo drama coreano", "espera": []},
-    {"texto": "Qué va, es igual que la familia de Zoro o el pasado de Kidd contados en un sbs", "espera": [], "origen": "One Piece"},
-    {"texto": "Que buena dinámica con @BancoPichincha  Sigue consumiendo 5 dólares con tu tarjeta", "espera": [], "origen": "cuenta de Ecuador"},
-    {"texto": "Miryam Núñez ciclista Vuelta Femenina a Ecuador. Un proyecto de @BancoPichincha", "espera": []},
-    {"texto": "Si la cuenta está al 2'02% TAE (Pibank) te llevas 43'72€ netos", "espera": [], "origen": "Pibank España"},
-    {"texto": "meta esa platica en un cdt en pibank", "espera": [], "origen": "Pibank Colombia"},
-    {"texto": "Se informa... Descubre todas nuestras ventajas en pibank.es", "espera": []},
-    {"texto": "Pibank Perú, la apuesta cross-sell interna del Banco Pichincha", "espera": ["Banco Pichincha"]},
-    {"texto": "Pibank aterriza en Perú con un modelo sin oficinas. La marca operaba en España, Colombia y Estados Unidos", "espera": ["Banco Pichincha"]},
-    {"texto": "PiBank paga 5% TREA ¿conviene?", "espera": ["Banco Pichincha"]},
-    {"texto": "No me deja entrar a @BancoPichinchaPeru desde ayer", "espera": ["Banco Pichincha"]},
-    {"texto": "Banco Pichincha me cobró dos veces en soles", "espera": ["Banco Pichincha"]},
-    {"texto": "no funciona el BBVA, no puedo yapear", "espera": ["BBVA Perú", "Yape"]},
-    {"texto": "el BBVA me bloqueó la cuenta sueldo otra vez", "espera": ["BBVA Perú"]},
-    {"texto": "BBVA México no deja hacer SPEI desde la app", "espera": []},
-    {"texto": "Scotiabank Chile me cobró la cuenta RUT", "espera": []},
-    {"texto": "mi top sería Pibank (el nuevo de Pichincha). Esos bancos como BBVA, Interbank, BCP usenlos", "espera": ["BBVA Perú", "Interbank", "BCP", "Banco Pichincha"]}
+    {
+      "texto": "Hackearon la SBS?",
+      "espera": [
+        "SBS"
+      ],
+      "origen": "X, 25/10/2026"
+    },
+    {
+      "texto": "Atacan a la SBS y a 13 Millones de personas en Perú",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "Revolut alista su llegada al Perú: SBS revela cuándo comenzaría a operar el banco digital",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "la SBS no dice nada de la filtración",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "Mi AFP no responde, ya reclamé a la SBS",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "Reporte de deudas SBS gratis",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "👇🏻 importante esto @SBSPERU",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "SBS realiza semana de prevención de lavado de activos del 26 al 30 de octubre",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "El comandante de las SBS, Robert “Madyar” Brovdi, informó de estas cifras",
+      "espera": [],
+      "origen": "Bluesky: unidad militar ucraniana"
+    },
+    {
+      "texto": "❗️El SBS atacó la planta Kamensky de combustible sólido para cohetes, MiG-29",
+      "espera": []
+    },
+    {
+      "texto": "Elecciones «feroces» en Moscú. El SBS (presumiblemente un servicio de seguridad) supervisa",
+      "espera": []
+    },
+    {
+      "texto": "Kim Ji Woong de ZEROBASEONE no asistirá al SBS Gayo Daejeon Summer",
+      "espera": [],
+      "origen": "TV coreana"
+    },
+    {
+      "texto": "Doctor X: Kim Ji Won le da a SBS el mejor estreno del año",
+      "espera": []
+    },
+    {
+      "texto": "la SBS transmitirá el nuevo drama coreano",
+      "espera": []
+    },
+    {
+      "texto": "Qué va, es igual que la familia de Zoro o el pasado de Kidd contados en un sbs",
+      "espera": [],
+      "origen": "One Piece"
+    },
+    {
+      "texto": "Que buena dinámica con @BancoPichincha  Sigue consumiendo 5 dólares con tu tarjeta",
+      "espera": [],
+      "origen": "cuenta de Ecuador"
+    },
+    {
+      "texto": "Miryam Núñez ciclista Vuelta Femenina a Ecuador. Un proyecto de @BancoPichincha",
+      "espera": []
+    },
+    {
+      "texto": "Si la cuenta está al 2'02% TAE (Pibank) te llevas 43'72€ netos",
+      "espera": [],
+      "origen": "Pibank España"
+    },
+    {
+      "texto": "meta esa platica en un cdt en pibank",
+      "espera": [],
+      "origen": "Pibank Colombia"
+    },
+    {
+      "texto": "Se informa... Descubre todas nuestras ventajas en pibank.es",
+      "espera": []
+    },
+    {
+      "texto": "Pibank Perú, la apuesta cross-sell interna del Banco Pichincha",
+      "espera": [
+        "Banco Pichincha"
+      ]
+    },
+    {
+      "texto": "Pibank aterriza en Perú con un modelo sin oficinas. La marca operaba en España, Colombia y Estados Unidos",
+      "espera": [
+        "Banco Pichincha"
+      ]
+    },
+    {
+      "texto": "PiBank paga 5% TREA ¿conviene?",
+      "espera": [
+        "Banco Pichincha"
+      ]
+    },
+    {
+      "texto": "No me deja entrar a @BancoPichinchaPeru desde ayer",
+      "espera": [
+        "Banco Pichincha"
+      ]
+    },
+    {
+      "texto": "Banco Pichincha me cobró dos veces en soles",
+      "espera": [
+        "Banco Pichincha"
+      ]
+    },
+    {
+      "texto": "no funciona el BBVA, no puedo yapear",
+      "espera": [
+        "BBVA Perú",
+        "Yape"
+      ]
+    },
+    {
+      "texto": "el BBVA me bloqueó la cuenta sueldo otra vez",
+      "espera": [
+        "BBVA Perú"
+      ]
+    },
+    {
+      "texto": "BBVA México no deja hacer SPEI desde la app",
+      "espera": []
+    },
+    {
+      "texto": "Scotiabank Chile me cobró la cuenta RUT",
+      "espera": []
+    },
+    {
+      "texto": "mi top sería Pibank (el nuevo de Pichincha). Esos bancos como BBVA, Interbank, BCP usenlos",
+      "espera": [
+        "BBVA Perú",
+        "Interbank",
+        "BCP",
+        "Banco Pichincha"
+      ]
+    },
+    {
+      "texto": "La SBS estaba a cargo de Socorro Heysen prima del narcotraficante Rolando Velasco Heysen. Todo era dejar lavar, dejar pasar.",
+      "espera": [
+        "SBS"
+      ],
+      "origen": "@ginoequidad 24/10"
+    }
   ],
   "cita": [
-    {"texto": "Esto es gravísimo, ¿y nadie dice nada?", "contexto": "ALERTA: el grupo STAR liberó la base de datos de la #SBS", "espera": ["SBS"]}
+    {
+      "texto": "Esto es gravísimo, ¿y nadie dice nada?",
+      "contexto": "ALERTA: el grupo STAR liberó la base de datos de la #SBS",
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "El chiste se cuenta solo. Quién plantea los estándares para quién plantea los estándares.",
+      "contexto": "SBS plantea estándares obligatorios de API y ciberseguridad para las finanzas abiertas. La Superintendencia de Banca, Seguros y AFP (SBS) autorizó… https://masfinanzas.com.pe/finanzas/sbs-plantea-estandares-obligatorios-de-api-y-ciberseguridad-para-las-finanzas-abiertas/",
+      "espera": [
+        "SBS"
+      ],
+      "origen": "@peruhacking 24/10: la SBS solo está en la tarjeta del enlace"
+    }
   ],
   "ciber": [
-    {"texto": "⚠️ 🇪🇨 🏦 PREVENTIVE ALERT – ALLEGED DATA EXPOSURE AFFECTING ECUADORIAN FINANCIAL ENTITIES (BANCO PICHINCHA, PRODUBANCO, BANCO INTERNACIONAL, ADV)\nThe system intercepted...", "cuenta_peruana": false, "espera": null, "origen": "@VECERTRadar: víctima en Ecuador"},
-    {"texto": "Así se ven las transacciones del bajo mundo, las mismas pertenecen a la venta de base de datos de tarjetas obtenidas en forma irregular", "cuenta_peruana": true, "espera": null, "origen": "@peruhacking sin entidad ni país"},
-    {"texto": "🚨 Threat Alert | Data Leak | SBS – Perú 🇵🇪 El actor de amenaza \"TEAMSTARS\" pone a la venta en un foro una supuesta base de datos", "cuenta_peruana": true, "espera": ["SBS"]},
-    {"texto": "🇵🇪 🚨 PERU: THREAT ACTOR OFFERS ALLEGED FINANCIAL DATABASE FROM BANKING REGULATOR SBS", "cuenta_peruana": false, "espera": ["SBS"]},
-    {"texto": "El Banco Central de Reserva del Peru, llama a concurso publico de personal en Operador de Monitoreo", "cuenta_peruana": true, "espera": null, "origen": "convocatoria laboral"}
+    {
+      "texto": "⚠️ 🇪🇨 🏦 PREVENTIVE ALERT – ALLEGED DATA EXPOSURE AFFECTING ECUADORIAN FINANCIAL ENTITIES (BANCO PICHINCHA, PRODUBANCO, BANCO INTERNACIONAL, ADV)\nThe system intercepted...",
+      "cuenta_peruana": false,
+      "espera": null,
+      "origen": "@VECERTRadar: víctima en Ecuador"
+    },
+    {
+      "texto": "Así se ven las transacciones del bajo mundo, las mismas pertenecen a la venta de base de datos de tarjetas obtenidas en forma irregular",
+      "cuenta_peruana": true,
+      "espera": null,
+      "origen": "@peruhacking sin entidad ni país"
+    },
+    {
+      "texto": "🚨 Threat Alert | Data Leak | SBS – Perú 🇵🇪 El actor de amenaza \"TEAMSTARS\" pone a la venta en un foro una supuesta base de datos",
+      "cuenta_peruana": true,
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "🇵🇪 🚨 PERU: THREAT ACTOR OFFERS ALLEGED FINANCIAL DATABASE FROM BANKING REGULATOR SBS",
+      "cuenta_peruana": false,
+      "espera": [
+        "SBS"
+      ]
+    },
+    {
+      "texto": "El Banco Central de Reserva del Peru, llama a concurso publico de personal en Operador de Monitoreo",
+      "cuenta_peruana": true,
+      "espera": null,
+      "origen": "convocatoria laboral"
+    }
   ]
 }
