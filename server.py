@@ -3086,9 +3086,6 @@ CONTEXTO_PE = re.compile(r"\b(peru|peruan[oa]s?|lima)\b|\.pe\b|\.com\.pe\b|🇵�
 PAIS_AJENO = re.compile(r"\b(ecuador\w*|ecuatorian[oa]s?|colombi\w*|espana|spain|chile(no|na|an)?s?|mexic\w*|argentin\w*|"
                         r"bolivi\w*|venezuel\w*|paragua\w*|urugua\w*|brasil\w*|brazil\w*|panam\w*|guatemal\w*|hondur\w*|"
                         r"costa rica|dominican\w*|portugal)\b")
-# Marcas con matriz o filial fuera del Perú: un incidente allá puede afectar a la filial peruana por vía indirecta
-GRUPO_CON_FILIAL_PE = re.compile(r"\b(banco pichincha|pichincha|pibank|bbva|scotiabank|santander|falabella|ripley|"
-                                 r"citibank|bci|gnb|mapfre|compartamos)\b")
 
 
 def _pais_ajeno(cabecera):
@@ -3121,15 +3118,11 @@ def evaluar_alerta_ciber(texto, cuenta_peruana=False):
     peru = cuenta_peruana or CONTEXTO_PE.search(t) is not None or "🇵🇪" in (texto or "")
     # sin una entidad nombrada, Perú debe ser el país de la víctima (titular o ficha), no un dato al pasar
     cabecera = (texto or "").split("\n", 1)[0]
-    ajeno = _pais_ajeno(cabecera)
-    if ajeno:  # la víctima está en otro país: no se atribuye a la entidad peruana del mismo nombre
-        grupo = GRUPO_CON_FILIAL_PE.search(t)
-        if not grupo:
-            return None
-        return {"entidades": [], "organizacion": f"{grupo.group(0).title()} ({ajeno})"[:80],
-                "sector": "Grupo extranjero con filial en Perú"}
+    if _pais_ajeno(cabecera):  # la víctima está en otro país (p.ej. bancos ecuatorianos): no es del SF peruano
+        return None
     pais = re.search(r"(pais|country|ubicacion|location)\s*:\s*([^\n•|]{2,40})", t)
-    peru_victima = (cuenta_peruana or CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
+    # una cuenta peruana no convierte en peruano todo lo que publica ("venta de bases de tarjetas" sin país ni entidad)
+    peru_victima = (CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
                     or bool(pais and CONTEXTO_PE.search(pais.group(2))))
     monitoreadas = detectar_bancos(texto, peru)
     m = re.search(r"(?:industria\s*/\s*)?sector\s*:\s*([^\n•|]{2,80})", t)
@@ -3202,6 +3195,26 @@ def revisar_referentes_x():
         print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad (X referentes): {len(para_avisar)} alertas nuevas del SF peruano",
               flush=True)
     return para_avisar
+
+
+def depurar_alertas_ciber():
+    """Al arrancar, vuelve a evaluar las alertas guardadas de las cuentas referentes de X con las reglas vigentes: las
+    que ya no tocan al SF peruano (víctima en otro país, posts genéricos de una cuenta peruana) se retiran del registro
+    y del panel. No toca lo corregido por el analista ni las de otras fuentes (ransomware.live, dominios…)."""
+    cfg = _cfg_referentes()
+    referentes = {"@" + str(h).lstrip("@").lower() for h in cfg.get("cuentas", [])}
+    peruanas = {"@" + str(h).lstrip("@").lower() for h in cfg.get("cuentas_peru", [])}
+    with _db_lock, db() as con:
+        _tabla_ciber(con)
+        fuera = [r[0] for r in con.execute("SELECT id, cuenta, texto FROM alertas_ciber").fetchall()
+                 if r[1].lower() in referentes and not evaluar_alerta_ciber(r[2], r[1].lower() in peruanas)]
+        for i in fuera:
+            con.execute("DELETE FROM alertas_ciber WHERE id = ?", (i,))
+            con.execute("UPDATE items SET oculto = 1, bancos = '[]', ia_relevante = 0, "
+                        "ia_motivo = 'No toca al sistema financiero peruano' "
+                        "WHERE id = ? AND COALESCE(corregido, 0) = 0 AND meta LIKE '%alerta_ciber%'", (i,))
+    if fuera:
+        print(f"  Ciberseguridad: {len(fuera)} alerta(s) retiradas por no tocar al SF peruano", flush=True)
 
 
 def _registrar_alertas(nuevas, al_panel=False):
@@ -6766,6 +6779,7 @@ def main():
             pass
     init_db()
     init_cuentas()
+    depurar_alertas_ciber()
     with _db_lock, db() as con:  # "última actualización" de cada fuente, aunque se haya reiniciado
         for fuente, ultima in con.execute("SELECT fuente, MAX(capturado) FROM items GROUP BY fuente"):
             if fuente in ESTADO["fuentes"] and ultima:
