@@ -10,3 +10,4 @@ agotados.json
 .venv/
 .DS_Store
 respaldos/
+__pycache__/

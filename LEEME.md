@@ -71,8 +71,13 @@ en `config.json`.
 ## Personalizar (`config.json`)
 
 - `bancos`: términos de búsqueda y alias de cada banco. Los alias en `ambiguos`
-  (p. ej. "BBVA" o "BCP" a secas) solo cuentan si hay contexto peruano (soles, Yape,
-  SBS, Lima…), para no mezclar con BBVA España/México o el Banco Central del Paraguay.
+  (p. ej. "BBVA" o "BCP" a secas) solo cuentan si hay contexto peruano (`contexto_peru`:
+  soles, Yape, Lima…) o el `contexto` propio de la entidad (p. ej. "hackeo", "AFP" para la
+  SBS), y nunca si aparece una palabra de `contexto_excluir` (Ecuador, México, kpop…),
+  salvo que el texto nombre a Perú. Todo esto se edita en el panel (Configuración →
+  Entidades), que además sugiere exclusiones a partir de tus correcciones.
+- Antes de subir un cambio de reglas, corre el banco de pruebas: `python3 pruebas/probar_reglas.py`.
+  Cuando encuentres un error de asignación, agrégalo primero a `pruebas/casos_reglas.json`.
 - `cuentas_oficiales`: URLs de las páginas de Facebook, Instagram y TikTok de cada banco.
   **Revísalas**: comprueba que cada una tenga la insignia azul y corrige las que no coincidan.
 - `intervalos_minutos`: cada cuánto se consulta cada fuente.

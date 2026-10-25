@@ -117,9 +117,8 @@ if os.environ.get("PANEL_URL"):
 # config del disco se descartan; la próxima vez que se guarde la configuración desaparecen del archivo
 for _k in ("brightdata", "creatorcrawl", "instaloader", "scrapecreators", "scrapingbee"):
     CONFIG.pop(_k, None)
-# Alcance (25/10/2026): se busca "la SBS" (antes solo "SBS Perú"/"Superintendencia de Banca" y se perdían tuits como
-# "Hackearon la SBS?"); Pibank y @BancoPichincha (la cuenta de Ecuador) exigen contexto de Perú (Pibank opera también
-# en España y Colombia). Solo suma: lo que el analista agregó en el panel se respeta
+# Ajustes de reglas que el config del disco no recibe por git. Cada uno se aplica UNA sola vez y queda guardado en el
+# disco: después, lo que el analista cambie en el panel (quitar una palabra, por ejemplo) se respeta
 CONTEXTO_SBS = ["superintenden", "hacke", "filtr", "base de datos", "datos personales", "afp", "pension", "previsional",
                 "seguro", "aseguradora", "afocat", "soat", "banco", "bancari", "financ", "credit", "prestamo", "deuda",
                 "ahorro", "deposit", "retiro", "cajero", "billetera", "cooperativ", "coopac", "cmac", "caja ", "edpyme",
@@ -128,21 +127,54 @@ CONTEXTO_SBS = ["superintenden", "hacke", "filtr", "base de datos", "datos perso
                 "reclamo", "denuncia", "fraude", "estafa", "ciberataque", "multa", "sancion", "presupuesto", "cuotas",
                 "usuarios del sistema", "portal sbs", "aportes", "finanz", "dinero", "ciberseguridad",
                 "intereses", "rentabilidad", "heysen"]
-for _b, _cambios in {"SBS": {"buscar": ["la SBS"], "contexto": CONTEXTO_SBS},
-                     "Banco Pichincha": {"alias": ["BancoPichincha", "@pibank_pe", "pibank_pe"],
-                                         "ambiguos": ["Pibank", "BancoPichincha"]}}.items():
-    for _k, _v in _cambios.items() if _b in CONFIG.get("bancos", {}) else ():
-        _l = CONFIG["bancos"][_b].setdefault(_k, [])
-        _l += [x for x in _v if x not in _l]
-if "Banco Pichincha" in CONFIG.get("bancos", {}):  # "#BancoPichincha" contaba sin contexto y atrapaba a @BancoPichincha
-    CONFIG["bancos"]["Banco Pichincha"]["alias"] = [a for a in CONFIG["bancos"]["Banco Pichincha"]["alias"]
-                                                    if a != "#BancoPichincha"]
-_ex = CONFIG.setdefault("contexto_excluir", [])
-_ex += [x for x in ("rusia", "ucrania", "moscu", "españa", "colombia", "bogota", "medellin", "€", "euros", "🇪🇨", "🇪🇸", "🇨🇴", "pibank.es", "@pibank_es")
-        if x not in _ex]
-_cp = CONFIG.setdefault("contexto_peru", [])  # TREA/TCEA son términos de la regulación peruana (España usa TAE)
-_cp += [x for x in ("trea", "tcea", "alfin", "efectibank") if x not in _cp]
+MIGRACIONES_REGLAS = {
+    # 25/10/2026: se busca "la SBS" (se perdían tuits como "Hackearon la SBS?"); un "SBS" suelto exige contexto propio;
+    # Pibank y @BancoPichincha (la cuenta de Ecuador) exigen contexto de Perú (Pibank opera en España y Colombia)
+    "alcance-2026-10-25": {
+        "bancos": {"SBS": {"buscar": ["la SBS"], "contexto": CONTEXTO_SBS},
+                   "Banco Pichincha": {"alias": ["BancoPichincha", "@pibank_pe", "pibank_pe"],
+                                       "ambiguos": ["Pibank", "BancoPichincha"], "quitar_alias": ["#BancoPichincha"]}},
+        "contexto_excluir": ["rusia", "ucrania", "moscu", "españa", "colombia", "bogota", "medellin", "€", "euros",
+                             "🇪🇨", "🇪🇸", "🇨🇴", "pibank.es", "@pibank_es"],
+        "contexto_peru": ["trea", "tcea", "alfin", "efectibank"]},  # TREA/TCEA: regulación peruana (España usa TAE)
+    # BBVA y Scotiabank tienen mucho más volumen en México, España y Chile que en Perú: marcadores de esos países
+    # excluyen el alias suelto; y productos propios del Perú bastan como contexto
+    "ambiguos-2026-10-25": {
+        "bancos": {"BBVA Perú": {"contexto": ["cuenta sueldo", "continental", "agente bbva", "cts"]},
+                   "Scotiabank Perú": {"contexto": ["cuenta sueldo", "crediscotia", "cts", "cuenta free"]}},
+        "contexto_excluir": ["mexico", "mexicano", "cdmx", "bancomer", "spei", "oxxo", "chile", "chileno", "cuenta rut",
+                             "canada", "canadian"]},
+}
+_hechas = CONFIG.setdefault("_migraciones", [])
+_pendientes = [m for m in MIGRACIONES_REGLAS if m not in _hechas]
+for _m in _pendientes:
+    _c = MIGRACIONES_REGLAS[_m]
+    for _b, _cambios in _c.get("bancos", {}).items():
+        if _b not in CONFIG.get("bancos", {}):
+            continue
+        for _k, _v in _cambios.items():
+            if _k == "quitar_alias":
+                CONFIG["bancos"][_b]["alias"] = [a for a in CONFIG["bancos"][_b]["alias"] if a not in _v]
+                continue
+            _l = CONFIG["bancos"][_b].setdefault(_k, [])
+            _l += [x for x in _v if x not in _l]
+    for _k in ("contexto_excluir", "contexto_peru"):
+        _l = CONFIG.setdefault(_k, [])
+        _l += [x for x in _c.get(_k, []) if x not in _l]
+    _hechas.append(_m)
 CONFIG.setdefault("nitter", {}).setdefault("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
+if _pendientes:  # se guarda en el disco para que no se repita (copia previa en config_copias)
+    try:
+        os.makedirs(os.path.join(DATOS, "config_copias"), mode=0o700, exist_ok=True)
+        _copia = os.path.join(DATOS, "config_copias", f"config-antes-{'-'.join(_pendientes)}.json")
+        with open(os.path.join(DATOS, "config.json"), encoding="utf-8") as _f, open(_copia, "w", encoding="utf-8") as _g:
+            _g.write(_f.read())
+        with open(os.path.join(DATOS, "config.json.tmp"), "w", encoding="utf-8") as _f:
+            json.dump(CONFIG, _f, ensure_ascii=False, indent=2)
+        os.replace(os.path.join(DATOS, "config.json.tmp"), os.path.join(DATOS, "config.json"))
+        print(f"Config: reglas actualizadas ({', '.join(_pendientes)})", flush=True)
+    except OSError as e:
+        print(f"Config: no se pudo guardar la actualización de reglas ({e})", flush=True)
 BANCOS = CONFIG["bancos"]
 
 
@@ -2504,7 +2536,21 @@ def diagnostico_avisos():
                                     "salud": {k: SALUD.get("IA", {}).get(p.get("nombre"), {}).get(k) for k in ("ok", "msg")}}
                                    for p in _ia_proveedores()],
                    "retirados": sorted(_MODELOS_RETIRADOS), "pendientes": ESTADO.get("ia", {}).get("pendientes"),
-                   "errores_sintesis": list(_ERR_SINTESIS)}}
+                   "errores_sintesis": list(_ERR_SINTESIS)},
+            "referentes": utilidad_referentes()}
+
+
+def utilidad_referentes(dias=30):
+    """Cuánto aporta cada cuenta referente de X: posts leídos desde el arranque y alertas que quedaron en los últimos
+    días (las que no tocan al SF peruano se descartan). Sirve para podar o sumar cuentas en la revisión mensual."""
+    leidos = ESTADO.get("referentes_x", {}).get("leidos", {})
+    with _db_lock, db() as con:
+        _tabla_ciber(con)
+        utiles = dict(con.execute("SELECT LOWER(cuenta), COUNT(*) FROM alertas_ciber WHERE fecha >= ? GROUP BY LOWER(cuenta)",
+                                  (iso(ahora() - timedelta(days=dias)),)).fetchall())
+    return {"@" + h.lstrip("@"): {"leidos_desde_arranque": leidos.get(h.lstrip("@").lower(), 0),
+                                  f"alertas_{dias}d": utiles.get("@" + h.lstrip("@").lower(), 0)}
+            for h in _cfg_referentes().get("cuentas", [])}
 
 
 # Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
@@ -2835,6 +2881,11 @@ def _max_en_ventana(marcas, minutos=60):
     return mejor
 
 
+# La institución que opera el monitor (la SBS supervisa a las demás): sus hallazgos se escalan internamente, no se le
+# "requiere" información a sí misma
+ENTIDAD_PROPIA = set(CONFIG.get("entidad_propia", ["SBS"]))
+
+
 def evaluar_supervision(filas, alertas):
     """Evaluación por entidad con la evidencia del periodo, para decidir si algo amerita acción de supervisión.
     Cuenta usuarios distintos (no publicaciones), prensa, comunicados oficiales y fuentes independientes de las
@@ -2876,6 +2927,9 @@ def evaluar_supervision(filas, alertas):
             base = "comunicado de la entidad" if e["comunicado"] else \
                 f"{rafaga} usuarios distintos en una misma hora" + (" y prensa" if e["prensa"] else "")
             hallazgos.append((b, "Alta", f"indisponibilidad probable ({base}{tercero})",
+                              f"Escalar internamente a TI y continuidad del negocio: confirmar el evento, los canales "
+                              f"afectados, la hora de inicio y el estimado de restablecimiento, y preparar la comunicación "
+                              f"al público." if b in ENTIDAD_PROPIA else
                               f"Solicitar a {b} la confirmación del evento, los canales y productos afectados, la hora de "
                               f"inicio y el estimado de restablecimiento; evaluar si corresponde a un evento de "
                               f"interrupción a reportar según la normativa vigente."))
@@ -2890,11 +2944,17 @@ def evaluar_supervision(filas, alertas):
         if "Hudson Rock" in fuentes:  # infostealers: exposición de credenciales de empleados, no un incidente declarado
             fuentes = fuentes - {"Hudson Rock"}
             hallazgos.append((b, "Media", "nuevos equipos de empleados con infostealer según Hudson Rock (credenciales expuestas)",
+                              "Rotar internamente las credenciales afectadas y revisar los accesos de esos equipos."
+                              if b in ENTIDAD_PROPIA else
                               f"Informar a {b} para que rote las credenciales afectadas y revise los accesos de esos equipos."))
         ciber_q = len(e["Ciberseguridad / hackeos"]) + len(e["prensa"])
         if len(fuentes) >= 2 or (fuentes and ciber_q >= 2):
             hallazgos.append((b, "Alta", f"señales de un incidente de ciberseguridad de fuentes independientes "
                                          f"({', '.join(sorted(fuentes)) or 'redes'}{' y prensa' if e['prensa'] else ''}), no confirmado",
+                              f"Escalar de inmediato a seguridad de la información y TI: confirmar o descartar el "
+                              f"incidente, su alcance (sistemas y datos expuestos) y la contención; si hay datos "
+                              f"personales, preparar la comunicación a los afectados y a la autoridad de protección de "
+                              f"datos." if b in ENTIDAD_PROPIA else
                               f"Requerir a {b} que confirme o descarte el incidente, su alcance (sistemas y datos "
                               f"expuestos) y las medidas de contención; si hay datos de clientes, verificar la "
                               f"comunicación a los afectados."))
@@ -3181,6 +3241,8 @@ def revisar_referentes_x():
         except Exception as e:
             errores.append(f"@{h}: {type(e).__name__}")
             continue
+        leidos = ESTADO.setdefault("referentes_x", {}).setdefault("leidos", {})
+        leidos[h.lower()] = leidos.get(h.lower(), 0) + len(posts)
         peruana = h.lower() in {c.lower() for c in cfg.get("cuentas_peru", [])}
         for p in posts:
             ev = evaluar_alerta_ciber(p["texto"], peruana)
@@ -3190,7 +3252,8 @@ def revisar_referentes_x():
     para_avisar = _registrar_alertas(nuevas, al_panel=True)
     _avisar_ciber(para_avisar, cfg)
     ESTADO["referentes_x"] = {"ultima_revision": iso(ahora()), "cuentas": len(cfg.get("cuentas", [])),
-                              "nuevas": len(para_avisar), "errores": errores}
+                              "nuevas": len(para_avisar), "errores": errores,
+                              "leidos": ESTADO.get("referentes_x", {}).get("leidos", {})}
     if para_avisar:
         print(f"[{datetime.now():%H:%M:%S}] Ciberseguridad (X referentes): {len(para_avisar)} alertas nuevas del SF peruano",
               flush=True)
@@ -4651,6 +4714,42 @@ def resumen_monitoreo():
             "notificaciones": {k: CONFIG.get("notificaciones", {}).get(k) for k in ("dias_base", "minimo_ultima_hora", "enfriamiento_minutos")}}
 
 
+def sugerencias_reglas(minimo=3):
+    """Propone reglas a partir de las correcciones del analista: palabras que aparecen en 3 o más mensajes que marcó
+    como NO relevantes de una entidad con alias ambiguos y en ninguno que marcó relevante. Agregarlas a "Palabras que
+    excluyen" evitaría ese ruido en adelante. Solo propone: el analista decide en el panel."""
+    vistas = {normalizar(x) for x in CONFIG.get("contexto_excluir", []) + CONFIG.get("contexto_peru", [])}
+    propias = {w for c in BANCOS.values() for a in c.get("buscar", []) + c.get("alias", []) + c.get("contexto", [])
+               for w in re.findall(r"[a-z0-9ñ]+", normalizar(a))}
+    comunes = ES_FRECUENTES | _RELLENO | propias
+    por_ent = {}
+    with _db_lock, db() as con:
+        filas = con.execute("SELECT texto, bancos, ia_relevante FROM items WHERE corregido = 1 AND ia_relevante IS NOT NULL").fetchall()
+        # palabras de cualquier mensaje visible (relevante para el analista o la IA): una palabra que aparece ahí es
+        # demasiado general para excluir ("país", "presidente")
+        generales = set()
+        for (texto,) in con.execute("SELECT texto FROM items WHERE oculto = 0 ORDER BY fecha DESC LIMIT 5000"):
+            generales |= set(re.findall(r"[a-zñ]{4,}", normalizar(texto or "")))
+    for texto, bancos, relevante in filas:
+        palabras = {w for w in re.findall(r"[a-zñ]{4,}", normalizar(re.sub(r"https?://\S+", " ", texto or "")))
+                    if w not in comunes and w not in vistas and (relevante or w not in generales)}
+        for b in json.loads(bancos or "[]"):
+            if b in BANCOS and BANCOS[b].get("ambiguos"):
+                e = por_ent.setdefault(b, {"si": {}, "no": {}, "ej": {}})
+                for w in palabras:
+                    lado = "si" if relevante else "no"
+                    e[lado][w] = e[lado].get(w, 0) + 1
+                    if not relevante:
+                        e["ej"].setdefault(w, []).append((texto or "")[:120])
+    out = []
+    for b, e in por_ent.items():
+        for w, n in sorted(e["no"].items(), key=lambda x: -x[1]):
+            if n >= minimo and not e["si"].get(w):
+                out.append({"entidad": b, "palabra": w, "no_relevantes": n, "ejemplos": e["ej"][w][:2]})
+    return {"sugerencias": sorted(out, key=lambda s: -s["no_relevantes"])[:30],
+            "correcciones": len(filas)}
+
+
 def config_editable():
     c = CONFIG
     return {
@@ -4658,6 +4757,8 @@ def config_editable():
         "intervalos_minutos": c.get("intervalos_minutos", {}),
         "fuentes": list(FUENTES),
         "bancos": c.get("bancos", {}),
+        "contexto_peru": c.get("contexto_peru", []),
+        "contexto_excluir": c.get("contexto_excluir", []),
         "cuentas_oficiales": {k: v for k, v in c.get("cuentas_oficiales", {}).items() if not k.startswith("_")},
         "trends": {"grupos": c.get("trends", {}).get("grupos", {}), "intervalo_minutos": c.get("trends", {}).get("intervalo_minutos", 60)},
         "apify": {k: c.get("apify", {}).get(k) for k in ("presupuesto_usd_mes", "posts_por_cuenta", "comentarios_max_por_post")},
@@ -4672,12 +4773,16 @@ def config_editable():
     }
 
 
-def _lista_textos(v, campo, maximo=30, patron=TERMINO_OK):
+def _lista_textos(v, campo, maximo=30, patron=TERMINO_OK, espacio_final=False):
+    """espacio_final: en las palabras de contexto el espacio final cuenta ("s/ " son soles; "s/" a secas coincidiría con
+    cualquier enlace .../status/...), así que no se recorta."""
     if not isinstance(v, list) or len(v) > maximo:
         raise ValueError(f"{campo}: debe ser una lista de hasta {maximo} elementos")
     out = []
     for x in v:
-        x = str(x).strip()
+        x = str(x).lstrip() if espacio_final else str(x).strip()
+        if not x.strip():
+            continue
         if x and not patron.match(x):
             raise ValueError(f"{campo}: valor no permitido «{x[:30]}»")
         if x and x not in out:
@@ -4718,8 +4823,12 @@ def validar_config(d):
             if not buscar or not alias:
                 raise ValueError(f"{nombre}: necesita al menos un término de búsqueda y un alias")
             ambiguos = [a for a in _lista_textos(b.get("ambiguos", []), f"{nombre} · ambiguos", 30) if a in alias]
-            bancos[nombre] = {"buscar": buscar, "alias": alias, "ambiguos": ambiguos}
+            contexto = _lista_textos(b.get("contexto", []), f"{nombre} · contexto propio", 80, espacio_final=True)
+            bancos[nombre] = {"buscar": buscar, "alias": alias, "ambiguos": ambiguos, **({"contexto": contexto} if contexto else {})}
         nueva["bancos"] = bancos
+    for k, titulo in (("contexto_peru", "Palabras que indican Perú"), ("contexto_excluir", "Palabras que excluyen")):
+        if k in d:
+            nueva[k] = _lista_textos(d[k], titulo, 150, TERMINO_OK, espacio_final=True)
     if "cuentas_oficiales" in d:
         cuentas = {k: v for k, v in CONFIG.get("cuentas_oficiales", {}).items() if k.startswith("_")}
         for nombre, redes in d["cuentas_oficiales"].items():
@@ -6433,6 +6542,8 @@ class Handler(BaseHTTPRequestHandler):
                                                      "X-Registros": str(n)})
         if u.path == "/api/config":
             return self._send(config_editable())
+        if u.path == "/api/reglas/sugerencias":
+            return self._send(sugerencias_reglas())
         if u.path == "/api/usuarios":
             if self.yo["rol"] != "admin":
                 return self._send({"error": "Solo administradores"}, code=403)

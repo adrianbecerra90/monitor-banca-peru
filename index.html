@@ -888,6 +888,8 @@ $('#nb-excluir').onkeydown=e=>{if(e.key==='Enter'){const w=e.target.value.trim()
 // ---------- Panel de configuración ----------
 let CFG=null,cfgTab='general';
 const lista=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
+// palabras de contexto: el espacio final cuenta ("s/ " son soles; "s/" coincidiría con cualquier enlace)
+const listaCtx=s=>String(s||'').split(',').map(x=>x.replace(/^\s+/,'').replace(/\n+$/,'')).filter(x=>x.trim());
 const TABS_ADMIN=[['resumen','Resumen'],['ciber','Ciberseguridad'],['general','General'],['ejemplos','Ejemplos de la IA'],['nube','Nube de palabras'],['entidades','Entidades'],['cuentas','Cuentas oficiales'],['trends','Google Trends'],['costos','Presupuestos e IA'],['archivo','Archivo histórico y descargas'],['accesos','Accesos'],['cuenta','Mi cuenta']];
 const GRUPOS_CFG=[['general','General y alertas',['general']],['monitoreo','Qué se monitorea',['resumen','entidades','cuentas','ciber','trends','nube']],['ia','IA y presupuestos',['ejemplos','costos']],['datos','Datos y accesos',['archivo','accesos','cuenta']]];
 const tabsVisibles=()=>YO?.rol==='admin'?TABS_ADMIN:[['cuenta','Mi cuenta']];
@@ -896,7 +898,7 @@ async function abrirConfig(){
   $('#cfg-guardar').style.display='';
   CFG=await fetch('/api/config').then(r=>r.json());
   // estructura de trabajo editable (las entidades llevan un id estable para enlazar sus cuentas aunque se renombren)
-  CFG._ents=Object.entries(CFG.bancos).map(([n,b],i)=>({id:i,nombre:n,buscar:b.buscar.join(', '),alias:b.alias.join(', '),ambiguos:(b.ambiguos||[]).join(', '),cuentas:{...(CFG.cuentas_oficiales[n]||{})}}));
+  CFG._ents=Object.entries(CFG.bancos).map(([n,b],i)=>({id:i,nombre:n,buscar:b.buscar.join(', '),alias:b.alias.join(', '),ambiguos:(b.ambiguos||[]).join(', '),contexto:(b.contexto||[]).join(', '),cuentas:{...(CFG.cuentas_oficiales[n]||{})}}));
   CFG._grupos=Object.entries(CFG.trends.grupos).map(([g,t])=>({nombre:g,terminos:t.join(', ')}));
   $('#cfg-msg').textContent='';$('#cfg').classList.add('on');pintarConfig()}
 $('#cfg-abrir').addEventListener('click',()=>{cfgTab='resumen'},true);
@@ -988,15 +990,23 @@ function pintarConfig(){
       const r=await post('/api/ia/reclasificar?dias='+dias).then(r=>r.json());
       $('#rc-msg').textContent=r.error||`${fmt(r.en_cola)} mensajes en cola; el avance se ve en la tarjeta «Clasificación IA».`}}
   if(cfgTab==='entidades'){
-    c.innerHTML=`<p class="ayuda"><b>Términos de búsqueda</b>: lo que se busca en X, noticias, YouTube y Bluesky. <b>Alias</b>: formas en que la gente nombra a la entidad (separados por comas). <b>Ambiguos</b>: alias que solo cuentan si el texto habla de Perú (p. ej. "BBVA" a secas).</p>`+
+    c.innerHTML=`<p class="ayuda"><b>Términos de búsqueda</b>: lo que se busca en X, noticias, YouTube y Bluesky. <b>Alias</b>: formas en que la gente nombra a la entidad (separados por comas). <b>Ambiguos</b>: alias que solo cuentan si el texto habla de Perú (p. ej. "BBVA" a secas).</p>
+    <div class="bloque"><b style="font-size:13px">Reglas de país (para todos los alias ambiguos)</b>
+      <label class="campo">Palabras que indican Perú<textarea id="cfg-ctx-pe">${esc((CFG.contexto_peru||[]).join(', '))}</textarea></label>
+      <label class="campo">Palabras que excluyen <span class="sub">(otro país u otro tema: "ecuador", "kpop"…; nombrar a Perú gana igual)</span><textarea id="cfg-ctx-ex">${esc((CFG.contexto_excluir||[]).join(', '))}</textarea></label>
+      <div id="cfg-sug" class="sub" style="margin-top:6px">Buscando sugerencias en tus correcciones…</div></div>`+
     CFG._ents.map((e,i)=>`<div class="bloque" data-i="${i}"><div class="rej"><label class="campo">Entidad<input type="text" data-f="nombre" value="${esc(e.nombre)}"></label></div>
       <label class="campo">Términos de búsqueda<textarea data-f="buscar">${esc(e.buscar)}</textarea></label>
       <label class="campo">Alias<textarea data-f="alias">${esc(e.alias)}</textarea></label>
       <label class="campo">Alias ambiguos<textarea data-f="ambiguos">${esc(e.ambiguos)}</textarea></label>
+      <label class="campo">Contexto propio <span class="sub">(palabras que, junto a un alias ambiguo, bastan para asignarlo aunque no se nombre a Perú; p. ej. "hackeo", "AFP" para la SBS)</span><textarea data-f="contexto">${esc(e.contexto||'')}</textarea></label>
       <button data-borrar="${i}">Eliminar entidad</button></div>`).join('')+`<button id="cfg-add-ent">+ Añadir entidad</button>`;
     c.querySelectorAll('.bloque').forEach(b=>{const e=CFG._ents[+b.dataset.i];b.querySelectorAll('[data-f]').forEach(x=>x.oninput=()=>e[x.dataset.f]=x.value)});
     c.querySelectorAll('[data-borrar]').forEach(b=>b.onclick=()=>{if(confirm('¿Eliminar «'+CFG._ents[+b.dataset.borrar].nombre+'» del monitoreo?')){CFG._ents.splice(+b.dataset.borrar,1);pintarConfig()}});
-    $('#cfg-add-ent').onclick=()=>{CFG._ents.push({id:Date.now(),nombre:'Nueva entidad',buscar:'',alias:'',ambiguos:'',cuentas:{}});pintarConfig()}}
+    $('#cfg-add-ent').onclick=()=>{CFG._ents.push({id:Date.now(),nombre:'Nueva entidad',buscar:'',alias:'',ambiguos:'',contexto:'',cuentas:{}});pintarConfig()}
+    $('#cfg-ctx-pe').oninput=e=>CFG.contexto_peru=listaCtx(e.target.value);
+    $('#cfg-ctx-ex').oninput=e=>CFG.contexto_excluir=listaCtx(e.target.value);
+    pintarSugerencias()}
   if(cfgTab==='cuentas'){
     c.innerHTML=`<p class="ayuda">Cuentas oficiales de cada entidad: se leen los comentarios de sus publicaciones (Facebook, Instagram y TikTok vía Apify) y las menciones y respuestas en X. Verifica que tengan la insignia de verificación.</p>`+
     CFG._ents.map((e,i)=>`<div class="bloque" data-i="${i}"><b>${esc(e.nombre)}</b><div class="rej" style="margin-top:8px">
@@ -1110,12 +1120,28 @@ function pintarConfig(){
       <div style="margin-top:8px"><button id="ar-quitar" style="display:none">Quitar todo lo restaurado del análisis</button></div></div>`;
         cargarArchivo()}
 }
+// Sugerencias a partir de las correcciones: palabras presentes solo en mensajes marcados como no relevantes
+async function pintarSugerencias(){
+  const el=$('#cfg-sug');if(!el)return;
+  try{
+    const d=await fetch('/api/reglas/sugerencias').then(r=>r.json());
+    if(!$('#cfg-sug'))return;
+    const s=(d.sugerencias||[]).filter(x=>!(CFG.contexto_excluir||[]).includes(x.palabra));
+    if(!s.length){el.textContent=`Sin sugerencias: en tus ${fmt(d.correcciones||0)} correcciones no hay palabras que se repitan solo en mensajes no relevantes.`;return}
+    el.innerHTML=`<b>Sugerencias desde tus correcciones</b> — aparecen en 3 o más mensajes que marcaste como no relevantes y en ninguno relevante:`+
+      s.map((x,i)=>`<div class="frow" style="margin-top:4px"><button data-sug="${i}">+ Excluir «${esc(x.palabra)}»</button>
+        <span>${esc(x.entidad)} · ${x.no_relevantes} no relevantes · <i>${esc(x.ejemplos[0]||'')}</i></span></div>`).join('')+
+      `<div style="margin-top:4px">Lo agregado se aplica al pulsar «Guardar y aplicar».</div>`;
+    el.querySelectorAll('[data-sug]').forEach(b=>b.onclick=()=>{const p=s[+b.dataset.sug].palabra;
+      CFG.contexto_excluir=[...(CFG.contexto_excluir||[]),p];$('#cfg-ctx-ex').value=CFG.contexto_excluir.join(', ');b.disabled=true;b.textContent='✓ '+p})
+  }catch(e){el.textContent=''}}
 async function guardarConfig(){
   const bancos={},cuentas={};
   for(const e of CFG._ents){const n=e.nombre.trim();if(!n)continue;
-    bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos)};cuentas[n]=e.cuentas}
+    bancos[n]={buscar:lista(e.buscar),alias:lista(e.alias),ambiguos:lista(e.ambiguos),contexto:listaCtx(e.contexto||'')};cuentas[n]=e.cuentas}
   const grupos={};for(const g of CFG._grupos){if(g.nombre.trim())grupos[g.nombre.trim()]=lista(g.terminos)}
   const cuerpo={retencion_dias:CFG.retencion_dias,intervalos_minutos:CFG.intervalos_minutos,bancos,cuentas_oficiales:cuentas,
+    contexto_peru:CFG.contexto_peru||[],contexto_excluir:CFG.contexto_excluir||[],
     trends:{grupos,intervalo_minutos:CFG.trends.intervalo_minutos},apify:CFG.apify,scrapedo:CFG.scrapedo,rapidapi:CFG.rapidapi,ia:CFG.ia,ciber:{...CFG.ciber,dominios:Object.fromEntries(Object.entries(CFG.ciber.dominios||{}).filter(([k])=>bancos[k]))}};
   $('#cfg-msg').textContent='Guardando…';$('#cfg-guardar').disabled=true;
   try{

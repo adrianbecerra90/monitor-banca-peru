@@ -87,6 +87,12 @@
       ],
       "ambiguos": [
         "BBVA"
+      ],
+      "contexto": [
+        "cuenta sueldo",
+        "continental",
+        "agente bbva",
+        "cts"
       ]
     },
     "Scotiabank Perú": {
@@ -106,6 +112,12 @@
       "ambiguos": [
         "Scotiabank",
         "Scotia"
+      ],
+      "contexto": [
+        "cuenta sueldo",
+        "crediscotia",
+        "cts",
+        "cuenta free"
       ]
     },
     "Banco de la Nación": {
@@ -358,7 +370,18 @@
     "@pibank_es",
     "rusia",
     "ucrania",
-    "moscu"
+    "moscu",
+    "mexico",
+    "mexicano",
+    "cdmx",
+    "bancomer",
+    "spei",
+    "oxxo",
+    "chile",
+    "chileno",
+    "cuenta rut",
+    "canada",
+    "canadian"
   ],
   "intervalos_minutos": {
     "X": 5,
@@ -750,5 +773,9 @@
       "(site:reddit.com OR inurl:foro OR inurl:forum)"
     ],
     "dia_renovacion": 1
-  }
+  },
+  "_migraciones": [
+    "alcance-2026-10-25",
+    "ambiguos-2026-10-25"
+  ]
 }
