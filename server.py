@@ -1990,6 +1990,11 @@ def _rapid_facebook(rango):
     return out
 
 
+# Fuentes sin ruta por un motivo distinto a una clave faltante (lo que ve el analista en el panel)
+MOTIVO_INACTIVA = {"LinkedIn": "Inactiva: sin proveedor (Bright Data se retiró el 21/10 por no renovarse cada mes); "
+                               "se activará al integrar RapidAPI · Real-Time LinkedIn Scraper"}
+
+
 def fuente_linkedin(rango=None):
     """Publicaciones de las páginas de empresa en LinkedIn. Bright Data se retiró (oct-2026); queda sin proveedor
     hasta integrar el de RapidAPI."""
@@ -2461,7 +2466,7 @@ def escanear_fuente(nombre):
         t0 = time.time()
         items = FUENTES[nombre][0]()
         if items is None:
-            est.update(ok=None, msg="Inactiva: falta clave")
+            est.update(ok=None, msg=MOTIVO_INACTIVA.get(nombre, "Inactiva: falta clave"))
         else:
             n = guardar(items)
             est.update(ok=True, msg=f"{len(items)} leídos, {n} nuevos ({time.time() - t0:.0f}s)", ultima=iso(ahora()), nuevos=n)
