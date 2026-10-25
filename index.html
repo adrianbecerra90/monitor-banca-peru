@@ -45,6 +45,8 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .vistas button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
 .vistas .badge[hidden]{display:none}
 .vistas .badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--neg);color:#fff;font-size:11px;line-height:18px;margin-left:4px}
+.fmini div{display:flex;gap:6px;align-items:baseline;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--line)}.fmini div:last-child{border-bottom:0}
+.fmini .d{flex:none}.fmini b{min-width:112px;font-weight:600}.fmini .sub{margin-left:auto;text-align:right}
 body[data-vista="monitoreo"] [data-vistas]:not([data-vistas~="monitoreo"]),body[data-vista="analisis"] [data-vistas]:not([data-vistas~="analisis"]),
 body[data-vista="ciber"] [data-vistas]:not([data-vistas~="ciber"]),body[data-vista="sistema"] [data-vistas]:not([data-vistas~="sistema"]){display:none}
 body[data-vista="sistema"] .grid{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
@@ -279,6 +281,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
       </div>
     </div>
     <div class="col">
+      <div data-vistas="monitoreo" class="card"><h2>Fuentes · ¿está funcionando? <a href="#sistema" id="fm-detalle" class="sub" style="font-weight:400;text-transform:none;letter-spacing:0">detalle →</a></h2><div id="fuentes-mini" class="fmini"></div></div>
       <div data-vistas="monitoreo" class="card">
         <h2>Sentimiento por entidad</h2>
         <div class="legend"><span style="--c:var(--neg)">Neg.</span><span style="--c:var(--neu)">Neutro</span><span style="--c:var(--pos)">Pos.</span></div>
@@ -685,6 +688,26 @@ function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponi
     // sin resultado todavía: "Pendiente" = iniciando; si el servidor explica el motivo (pausa, sin clave, tope…), se muestra
     const sinRes=!r.msg||r.msg==='Pendiente'?'iniciando…':/clasificando|consultando|reanudando/i.test(r.msg)?r.msg:'inactiva · '+r.msg;
     return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':/clasificando|iniciando/i.test(sinRes)?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?(/clasificando/i.test(r.msg||'')?r.msg:'OK'):r.ok===false?'falló · '+(r.msg||'').split(' · ').pop():sinRes)}</div>`}).join('')+'</div>'}
+// Ficha corta en Monitoreo: un semáforo por fuente (verde al día · ámbar consultando o atrasada · rojo falló · gris detenida
+// por un motivo conocido: sin créditos, sin proveedor, en pausa). El detalle de rutas y proveedores está en Sistema
+function pintarFuentesMini(es,fs){
+  const el=$('#fuentes-mini');if(!el)return;
+  const motivo=(n,f)=>{const msgs=[f.msg||'',...Object.values(es.rutas[n]||{}).map(r=>r.msg||'')].join(' ');
+    const fechas=[...msgs.matchAll(/Apagado hasta el (\d{2})\/(\d{2})/g)].map(x=>x[2]+x[1]).sort(); // la que vuelve antes
+    if(fechas.length)return 'sin créditos hasta el '+fechas[0].slice(2)+'/'+fechas[0].slice(0,2);
+    if(/Inactiva: sin proveedor/i.test(msgs))return 'sin proveedor';if(/falta instalar/i.test(msgs))return 'falta instalar yt-dlp';
+    if(/falta clave|sin clave/i.test(msgs))return 'falta clave';if(/en pausa/i.test(msgs))return '⏸ en pausa';return ''};
+  let alDia=0;
+  const filas=fs.map(([n,f])=>{const int=(es.intervalos[n]||30)*60e3,edad=f.ultima?Date.now()-new Date(f.ultima):Infinity;
+    let c,t;
+    if(pausada(n)){c='var(--warn)';t='⏸ en pausa'}
+    else if(f.ejecutando){c='var(--warn)';t='consultando…'}
+    else if(f.ok===false){c='var(--neg)';t='falló · '+(f.msg||'').split(' · ').pop().slice(0,60)}
+    else if(f.ok===null||f.ok===undefined){const m=motivo(n,f);c='var(--line)';t=m||'aún sin consultar'}
+    else if(edad>3*int+600e3){c='var(--warn)';t='atrasada'}
+    else{c='var(--good)';t='al día';alDia++}
+    return `<div title="${esc(f.msg||'')}"><span class="d" style="background:${c}"></span><b>${esc(n)}</b><span>${esc(t)}</span><span class="sub">${f.ultima?'hace '+hace(f.ultima):'—'}</span></div>`});
+  el.innerHTML=`<div class="sub" style="border:0;padding-bottom:4px">${alDia} de ${fs.length} fuentes al día${es.pausa.todo?' · ⏸ monitoreo en pausa':''}</div>`+filas.join('')}
 async function cargarEstado(){
   const es=await fetch('/api/estado').then(r=>r.json());const primera=!ESTADO;
   if(!primera&&es.version&&ESTADO.version&&es.version!==ESTADO.version){ // el panel se actualizó
@@ -708,6 +731,7 @@ async function cargarEstado(){
     <div class="sub">Clasifica sentimiento, si es queja, gravedad, categoría y si es atribuible a la entidad. Lo que no trata del sistema financiero peruano se oculta.</div>`;
   $('#ia-card').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
   $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${pausada('Google Trends')?'var(--warn)':'var(--good)'}"></span><b>Google Trends</b>${es.pausa.todo?'':`<button data-p="Google Trends">${pausada('Google Trends')?'▶':'⏸'}</button>`}<br>${ultimaAct(es.trends_estado?.actualizado)}<br><span class="sub">${pausada('Google Trends')?'⏸ En pausa':'Interés cada hora · tendencias cada 15 min'}</span>${rutasHTML(es.rutas['Google Trends'])}</div>`);
+  pintarFuentesMini(es,fs);
   // proveedores de pago: misma ficha para todos
   $('#fuentes').insertAdjacentHTML('beforeend','<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:8px"><b style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Proveedores de pago</b></div>');
   for(const p of es.proveedores||[]){
@@ -787,6 +811,7 @@ function abrirVista(v,guardar=true){if(!['monitoreo','ciber','analisis','sistema
   if(v==='ciber'&&typeof marcarCiberVisto==='function')marcarCiberVisto();
   if(v==='monitoreo'||v==='analisis')setTimeout(()=>window.dispatchEvent(new Event('resize')),0)}
 document.querySelectorAll('.vistas [role=tab]').forEach(b=>b.onclick=()=>{abrirVista(b.dataset.vista);window.scrollTo({top:0})});
+$('#fm-detalle').onclick=e=>{e.preventDefault();abrirVista('sistema')};
 (function(){let v=location.hash.slice(1);if(!v){try{v=localStorage.getItem('monitor.vista')||''}catch(e){}}abrirVista(v||'monitoreo',false)})();
 window.addEventListener('hashchange',()=>abrirVista(location.hash.slice(1),false));
 // En el celular los filtros se pliegan (solo queda el periodo)
