@@ -130,7 +130,8 @@
       "buscar": [
         "SBS Perú",
         "Superintendencia de Banca",
-        "SBSPeru"
+        "SBSPeru",
+        "la SBS"
       ],
       "alias": [
         "SBS Perú",
@@ -158,13 +159,17 @@
         "BancoPichinchaPeru",
         "bancopichincha.pe",
         "bancopichinchaperu",
-        "#BancoPichincha",
         "Banco Pichincha",
-        "Pichincha"
+        "Pichincha",
+        "BancoPichincha",
+        "@pibank_pe",
+        "pibank_pe"
       ],
       "ambiguos": [
         "Banco Pichincha",
-        "Pichincha"
+        "Pichincha",
+        "Pibank",
+        "BancoPichincha"
       ]
     },
     "Interseguro": {
@@ -247,7 +252,11 @@
     "agente kasnet",
     "multired",
     "interbank",
-    "banco de la nacion"
+    "banco de la nacion",
+    "trea",
+    "tcea",
+    "alfin",
+    "efectibank"
   ],
   "contexto_excluir": [
     "paraguay",
@@ -273,7 +282,18 @@
     "ecuatoriana",
     "quito",
     "guayaquil",
-    "cuenca ecuador"
+    "cuenca ecuador",
+    "españa",
+    "colombia",
+    "bogota",
+    "medellin",
+    "€",
+    "euros",
+    "🇪🇨",
+    "🇪🇸",
+    "🇨🇴",
+    "pibank.es",
+    "@pibank_es"
   ],
   "intervalos_minutos": {
     "X": 5,
@@ -443,7 +463,15 @@
     "paginas_tiempo_real": 1,
     "paginas_historico": 40,
     "pausa_seg": 3,
-    "consultas_en_paralelo": 3
+    "consultas_en_paralelo": 3,
+    "contexto_busqueda": [
+      "peru",
+      "perú",
+      "lima",
+      "soles",
+      "yape",
+      "plin"
+    ]
   },
   "ia": {
     "_nota": "Proveedores de IA en activo-activo (NVIDIA, OpenRouter y Groq): se reparten el trabajo y si uno cae los otros lo asumen.",

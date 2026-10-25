@@ -117,6 +117,24 @@ if os.environ.get("PANEL_URL"):
 # config del disco se descartan; la próxima vez que se guarde la configuración desaparecen del archivo
 for _k in ("brightdata", "creatorcrawl", "instaloader", "scrapecreators", "scrapingbee"):
     CONFIG.pop(_k, None)
+# Alcance (25/10/2026): se busca "la SBS" (antes solo "SBS Perú"/"Superintendencia de Banca" y se perdían tuits como
+# "Hackearon la SBS?"); Pibank y @BancoPichincha (la cuenta de Ecuador) exigen contexto de Perú (Pibank opera también
+# en España y Colombia). Solo suma: lo que el analista agregó en el panel se respeta
+for _b, _cambios in {"SBS": {"buscar": ["la SBS"]},
+                     "Banco Pichincha": {"alias": ["BancoPichincha", "@pibank_pe", "pibank_pe"],
+                                         "ambiguos": ["Pibank", "BancoPichincha"]}}.items():
+    for _k, _v in _cambios.items() if _b in CONFIG.get("bancos", {}) else ():
+        _l = CONFIG["bancos"][_b].setdefault(_k, [])
+        _l += [x for x in _v if x not in _l]
+if "Banco Pichincha" in CONFIG.get("bancos", {}):  # "#BancoPichincha" contaba sin contexto y atrapaba a @BancoPichincha
+    CONFIG["bancos"]["Banco Pichincha"]["alias"] = [a for a in CONFIG["bancos"]["Banco Pichincha"]["alias"]
+                                                    if a != "#BancoPichincha"]
+_ex = CONFIG.setdefault("contexto_excluir", [])
+_ex += [x for x in ("españa", "colombia", "bogota", "medellin", "€", "euros", "🇪🇨", "🇪🇸", "🇨🇴", "pibank.es", "@pibank_es")
+        if x not in _ex]
+_cp = CONFIG.setdefault("contexto_peru", [])  # TREA/TCEA son términos de la regulación peruana (España usa TAE)
+_cp += [x for x in ("trea", "tcea", "alfin", "efectibank") if x not in _cp]
+CONFIG.setdefault("nitter", {}).setdefault("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
 BANCOS = CONFIG["bancos"]
 
 
@@ -464,7 +482,9 @@ def detectar_bancos(texto, es_peru=False):
     """Entidades mencionadas. Los alias ambiguos (p.ej. 'BBVA' o 'SBS' a secas) solo
     cuentan si la fuente es peruana o el texto tiene contexto de Perú."""
     t = HOMONIMOS.sub(" ", normalizar(texto))
-    peru = (es_peru or any(c in t for c in _ctx_peru)) and not any(c in t for c in _ctx_excluir)
+    # nombrar a Perú gana a la exclusión ("Pibank aterriza en Perú… operaba en España y Colombia")
+    peru = bool(CONTEXTO_PE.search(t)) or \
+        ((es_peru or any(c in t for c in _ctx_peru)) and not any(c in t for c in _ctx_excluir))
     out = []
     for b, seguros, dudosos in _bancos_re:
         if any(p.search(t) for p in seguros) or (peru and any(p.search(t) for p in dudosos)):
@@ -1541,7 +1561,15 @@ def x_nitter(rango=None):
         if h:
             partes += [f"to:{h}", f"@{h}"]
         consultas.append("(" + " OR ".join(partes) + ") lang:es")
-    limite = iso(datetime.fromisoformat(rango[0]).replace(tzinfo=timezone.utc)) if rango else None
+    # Nombres ambiguos ("la SBS", "el BBVA", "Scotia") que no están en "buscar": se buscan junto a palabras de Perú;
+    # sin esto, "no funciona el BBVA, no puedo yapear" no llegaba nunca (solo se buscaba "BBVA Perú")
+    buscados = {normalizar(t) for c in BANCOS.values() for t in c["buscar"]}
+    amb = list(dict.fromkeys(a for c in BANCOS.values() for a in c.get("ambiguos", [])
+                             if normalizar(a) not in buscados and "." not in a))
+    ctx = cfg.get("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
+    if amb and ctx:
+        consultas.append("(" + " OR ".join(f'"{a}"' for a in amb) + ") (" + " OR ".join(ctx) + ") lang:es")
+    limite =iso(datetime.fromisoformat(rango[0]).replace(tzinfo=timezone.utc)) if rango else None
     tope = iso(datetime.fromisoformat(rango[1]).replace(tzinfo=timezone.utc)) if rango else None
     paginas = cfg.get("paginas_historico", 40) if rango else cfg.get("paginas_tiempo_real", 1)
 
@@ -1571,6 +1599,8 @@ def x_nitter(rango=None):
                     m_aut = re.search(r"https?://[^/]+/(\w+)/status/", i.findtext("link", ""))
                     autor = "@" + m_aut.group(1) if m_aut else autor
                 desc = i.findtext("description", "") or ""
+                cita = re.search(r"<blockquote.*?</blockquote>", desc, re.S)  # el tweet citado: referencia indirecta
+                cita = limpiar_html(cita.group(0))[:500] if cita else ""
                 desc = re.split(r"<blockquote|<hr", desc)[0] or desc  # sin el tweet citado
                 texto = re.sub(r"^R to @\w+:\s*", "", limpiar_html(desc) or titulo)
                 texto = re.sub(r"\s*[—-]*\s*https?://\S*nitter\S*", "", texto)  # enlaces internos de Nitter
@@ -1581,7 +1611,7 @@ def x_nitter(rango=None):
                 if tope and fecha > tope:
                     continue
                 it = {"id": "x:" + link.rsplit("/", 1)[-1], "fuente": "X", "autor": autor, "texto": texto,
-                      "fecha": fecha, "url": link}
+                      "fecha": fecha, "url": link, **({"contexto": cita} if cita else {})}
                 a = autor.lstrip("@").lower()
                 if a in oficiales:
                     it.update(tipo="oficial", bancos_fijos=[oficiales[a]], peru=True, cuenta=oficiales[a])
@@ -3036,6 +3066,23 @@ PROVEE_SF = re.compile(r"\b(proveedor\w*|presta servicios|brinda servicios|servi
                        r"vendor|provider|supplier|clientes)\b.{0,60}\b(bancos?|banca|entidades financieras|instituciones financieras|"
                        r"financial institutions|banks|aseguradoras|insurers|afps?|cajas municipales|sector financiero)\b")
 CONTEXTO_PE = re.compile(r"\b(peru|peruan[oa]s?|lima)\b|\.pe\b|\.com\.pe\b|🇵🇪")
+# Víctima en otro país según el titular ("🇪🇨 ... ECUADORIAN FINANCIAL ENTITIES (BANCO PICHINCHA ...)")
+PAIS_AJENO = re.compile(r"\b(ecuador\w*|ecuatorian[oa]s?|colombi\w*|espana|spain|chile(no|na|an)?s?|mexic\w*|argentin\w*|"
+                        r"bolivi\w*|venezuel\w*|paragua\w*|urugua\w*|brasil\w*|brazil\w*|panam\w*|guatemal\w*|hondur\w*|"
+                        r"costa rica|dominican\w*|portugal)\b")
+# Marcas con matriz o filial fuera del Perú: un incidente allá puede afectar a la filial peruana por vía indirecta
+GRUPO_CON_FILIAL_PE = re.compile(r"\b(banco pichincha|pichincha|pibank|bbva|scotiabank|santander|falabella|ripley|"
+                                 r"citibank|bci|gnb|mapfre|compartamos)\b")
+
+
+def _pais_ajeno(cabecera):
+    """El país que el titular nombra como víctima, si no es Perú (por nombre o por bandera)."""
+    c = normalizar(cabecera)
+    if CONTEXTO_PE.search(c):
+        return None
+    m = PAIS_AJENO.search(c)
+    banderas = [b for b in re.findall(r"[\U0001F1E6-\U0001F1FF]{2}", cabecera) if b != "🇵🇪"]
+    return m.group(0).title() if m else banderas[0] if banderas else None
 
 
 def _cfg_referentes():
@@ -3058,6 +3105,13 @@ def evaluar_alerta_ciber(texto, cuenta_peruana=False):
     peru = cuenta_peruana or CONTEXTO_PE.search(t) is not None or "🇵🇪" in (texto or "")
     # sin una entidad nombrada, Perú debe ser el país de la víctima (titular o ficha), no un dato al pasar
     cabecera = (texto or "").split("\n", 1)[0]
+    ajeno = _pais_ajeno(cabecera)
+    if ajeno:  # la víctima está en otro país: no se atribuye a la entidad peruana del mismo nombre
+        grupo = GRUPO_CON_FILIAL_PE.search(t)
+        if not grupo:
+            return None
+        return {"entidades": [], "organizacion": f"{grupo.group(0).title()} ({ajeno})"[:80],
+                "sector": "Grupo extranjero con filial en Perú"}
     pais = re.search(r"(pais|country|ubicacion|location)\s*:\s*([^\n•|]{2,40})", t)
     peru_victima = (cuenta_peruana or CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
                     or bool(pais and CONTEXTO_PE.search(pais.group(2))))
