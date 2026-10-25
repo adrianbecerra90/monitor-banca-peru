@@ -717,8 +717,8 @@ async function cargarEstado(){
     const saldoBajo=p.saldo&&parseInt(String(p.saldo).replace(/\D/g,''))<50;
     $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${col}"></span><b>${esc(p.nombre)}</b> <span class="sub">(pago por uso)</span>${p.clave&&p.apagado_hasta?(YO?.rol==='admin'?`<button data-enc-p="${esc(p.nombre)}" title="Encender ya (no esperar a la renovación)">⏻ Encender</button>`:''):p.clave&&!es.pausa.todo?`<button data-p="${esc(p.nombre)}" title="${p.pausa?'Reanudar':'Pausar'}">${p.pausa?'▶':'⏸'}</button>`:''}
       <br><span class="sub">${esc(estado)} · ${esc(p.redes)}</span>
-      ${p.clave&&(p.saldo||p.uso)?`<br><span class="sub" style="${saldoBajo?'color:var(--neg);font-weight:600':''}">${p.saldo?'Saldo: '+esc(p.saldo)+(saldoBajo?' ⚠ casi agotado':'')+' · ':''}${p.uso?'Consumo: '+esc(p.uso):''}</span>`:''}
-      ${p.clave?rutasHTML(p.rutas):''}</div>`)}
+      ${p.clave&&(p.saldo||p.uso)?`<br><span class="sub" style="${saldoBajo?'color:var(--neg);font-weight:600':''}">${p.saldo?'Saldo: '+esc(p.saldo)+(saldoBajo?' ⚠ casi agotado':'')+' · ':''}${p.uso?'Consumo: '+esc(p.uso)+(apagado?' (contador de este servidor; el proveedor informó el cupo del mes agotado)':''):''}</span>`:''}
+      ${!p.clave?'':apagado?`<div class="rutas">${Object.keys(p.rutas||{}).map(n=>`<div><span class="d" style="background:var(--line)"></span>${esc(n)} · ⏻ apagado hasta el ${esc(apagado)} (sin créditos; se reanuda solo)</div>`).join('')}</div>`:rutasHTML(p.rutas)}</div>`)}
   $('#fuentes').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
   $('#fuentes').querySelectorAll('button[data-enc-p]').forEach(b=>b.onclick=async()=>{
     b.disabled=true;const r=await post('/api/encender?'+new URLSearchParams({tipo:'proveedor',nombre:b.dataset.encP})).then(r=>r.json());
