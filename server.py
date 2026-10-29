@@ -2585,7 +2585,8 @@ def utilidad_referentes(dias=30):
 # Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
            "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
-TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas",
+TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico de quejas": "pico-de-quejas", "Pico de menciones críticas": "pico-de-menciones-criticas",
+               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas",
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
 
 
@@ -2836,13 +2837,14 @@ def _revisar_pico(cfg, medida):
         normal = (f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora · "
                   f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
         if medida == "quejas":
-            titulo, tipo = f"Pico de quejas: {quien}", "Pico por hora"
-            texto = f"{n} quejas en la última hora sobre {quien} (de {c['total']} menciones{': ' + foco if foco else ''}). " + normal
+            titulo, tipo = f"Pico de quejas: {quien}", "Pico de quejas"
+            texto = (f"Quejas: {n} en la última hora sobre {quien}{' (' + foco + ')' if foco else ''}.\n"
+                     f"Menciones: {c['total']} en total en la misma hora.\n" + normal)
             nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
         else:
-            titulo, tipo = f"Pico de críticas: {quien}", "Pico de críticas"
-            texto = (f"{n} críticas sin incidente en la última hora sobre {quien} (de {c['total']} menciones): malestar "
-                     f"reputacional, no una falla reportada. " + normal)
+            titulo, tipo = f"Pico de menciones críticas: {quien}", "Pico de menciones críticas"
+            texto = (f"Menciones críticas: {n} en la última hora sobre {quien} (de {c['total']} menciones): malestar "
+                     f"reputacional, no una falla reportada.\nQuejas: {c['quejas']} en la misma hora.\n" + normal)
             nivel_p = "Medio"
         try:
             enviar_notificacion(titulo, texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None,
@@ -3023,7 +3025,8 @@ def reporte_periodico(desde, hasta, banco=None):
     por_ent = {}
     for r in filas:
         for b in json.loads(r["bancos"] or "[]"):
-            e = por_ent.setdefault(b, {"neg": 0, "quejas": 0, "criticas": 0})
+            e = por_ent.setdefault(b, {"neg": 0, "quejas": 0, "criticas": 0, "menciones": 0})
+            e["menciones"] += 1
             e["neg"] += r["sentimiento"] == "negativo"
             e["quejas"] += bool(r["es_queja"])
             e["criticas"] += r["sentimiento"] == "negativo" and not r["es_queja"]
@@ -3043,11 +3046,28 @@ def reporte_periodico(desde, hasta, banco=None):
     if sint.get("frase"):
         temas = " · ".join(sint.get("temas") or [])
         lineas += [f"**Qué está pasando:** {sint['frase']}" + (f" ({temas})" if temas else ""), ""]
-    lineas.append(f"**Cifras:** {len(filas)} menciones · {quejas} quejas ({graves} grave{'s' if graves != 1 else ''}) · {criticas} críticas sin incidente")
-    if top:
-        lineas.append("**Más afectadas:** " + "; ".join(
-            f"{b} ({e['quejas']} queja{'s' if e['quejas'] != 1 else ''}" +
-            (f", {e['criticas']} crítica{'s' if e['criticas'] != 1 else ''}" if e["criticas"] else "") + ")" for b, e in top))
+    # Quejas (un usuario reporta un problema con el servicio: riesgo operacional) y menciones (toda la conversación,
+    # incluidas noticias y opiniones: riesgo reputacional) van por separado; antes se mezclaban en una sola línea
+    pl = lambda n, s, p=None: f"{n} {s if n == 1 else (p or s + 's')}"
+    con_queja = [(b, e) for b, e in top if e["quejas"]]
+    cats_q = {}
+    for r in filas:
+        if r["es_queja"]:
+            for c in json.loads(r["categorias"] or "[]"):
+                cats_q[c] = cats_q.get(c, 0) + 1
+    lineas.append(f"**Quejas** (usuarios que reportan un problema): {quejas}" + (f" · {pl(graves, 'grave')}" if quejas else ""))
+    if con_queja:
+        lineas.append("- Por entidad: " + "; ".join(f"{b} {e['quejas']}" for b, e in con_queja))
+    if cats_q:
+        lineas.append("- Por tipo: " + "; ".join(f"{c} {n}" for c, n in sorted(cats_q.items(), key=lambda x: -x[1])[:4]))
+    pos = sum(r["sentimiento"] == "positivo" for r in filas)
+    noticias = sum('"tipo": "noticia"' in (r["meta"] or "") for r in filas)
+    lineas += ["", f"**Menciones** (toda la conversación): {len(filas)} · {pl(criticas, 'crítica')} sin queja · "
+                   f"{pl(pos, 'positiva')} · {pl(noticias, 'noticia')}"]
+    mas_mencionadas = sorted(por_ent.items(), key=lambda x: (-x[1]["menciones"], x[0]))[:5]
+    if mas_mencionadas:
+        lineas.append("- Por entidad: " + "; ".join(
+            f"{b} {e['menciones']}" + (f" ({pl(e['criticas'], 'crítica')})" if e["criticas"] else "") for b, e in mas_mencionadas))
     if alertas:
         lineas += ["", f"**Ciberseguridad:** {len(alertas)} alerta(s) nueva(s)"]
         for a in alertas[:5]:
