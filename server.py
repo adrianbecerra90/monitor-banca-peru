@@ -3275,7 +3275,8 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     fmt_l = lambda d: d.astimezone(LIMA).strftime("%a %d/%m %H:%M").replace("Mon", "lun").replace("Tue", "mar") \
         .replace("Wed", "mié").replace("Thu", "jue").replace("Fri", "vie").replace("Sat", "sáb").replace("Sun", "dom")
     horas = (hasta - desde).total_seconds() / 3600
-    cab = f"{NIVEL_COLOR[nivel]} **{nivel.upper()}** · {fmt_l(desde)} → {hasta.astimezone(LIMA):%H:%M} ({horas:.1f} h)".replace(".0 h", " h")
+    fin = fmt_l(hasta) if desde.astimezone(LIMA).date() != hasta.astimezone(LIMA).date() else f"{hasta.astimezone(LIMA):%H:%M}"
+    cab = f"{NIVEL_COLOR[nivel]} **{nivel.upper()}** · {fmt_l(desde)} → {fin} ({horas:.1f} h)".replace(".0 h", " h")
     if hallazgos:
         principal = hallazgos[0]
         frase = f"**{principal[2]}:** {principal[3]}."
@@ -3287,7 +3288,7 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     else:
         frase = "Sin incidentes relevantes; las quejas están dentro de lo habitual."
     linea_q = _cifra("Quejas", actual["Quejas"], ant["Quejas"], normal["Quejas"]) + \
-        f" · usuarios distintos ({actual['_n']} publicaciones" + (f"; {tarde} llegaron tarde" if tarde else "") + ")"
+        f" · usuarios distintos ({actual['_n']} publicaciones" + (f"; {tarde} {'llegó' if tarde == 1 else 'llegaron'} tarde" if tarde else "") + ")"
     lineas = [cab, frase, "", linea_q, ""]
     for tema, _ in TEMAS_REPORTE:
         cifra = _cifra(tema, actual[tema], ant[tema], normal[tema])
@@ -3316,6 +3317,36 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M}{' · ' + banco if banco else ''}"
     corto = re.sub(r"[*]", "", "\n".join([cab, frase, linea_q]))  # el celular no muestra Markdown
     return titulo, "\n".join(lineas), NIVEL_AVISO[nivel], corto
+
+
+def reporte_a_pedido(d, enviar=False):
+    """Reporte fuera de horario (panel o monitor local): últimas N horas, desde una fecha o desde el reporte anterior;
+    opcionalmente de una entidad. Mismo formato y reglas que los programados."""
+    hasta = ahora().astimezone(LIMA)
+    try:
+        horas = float(d.get("horas") or 0)
+    except (TypeError, ValueError):
+        horas = 0
+    banco = d.get("banco") if d.get("banco") in BANCOS else None
+    if d.get("desde"):
+        try:
+            desde = datetime.fromisoformat(str(d["desde"]))
+        except ValueError:
+            raise ValueError("desde no válido")
+        desde = desde if desde.tzinfo else desde.replace(tzinfo=LIMA)
+        if not hasta - timedelta(days=7) <= desde < hasta:
+            raise ValueError("el periodo debe empezar en los últimos 7 días")
+    else:
+        desde = hasta - timedelta(hours=min(horas, 72)) if horas > 0 else _reporte_anterior(hasta, _cfg_reportes())
+    titulo, texto, nivel, corto = reporte_periodico(desde, hasta, banco, registrar=enviar)
+    if banco or d.get("desde") or horas > 0:
+        titulo = (f"Reporte {banco + ' · ' if banco else ''}" +
+                  (f"última {'hora' if horas == 1 else f'{horas:g} horas'}" if horas > 0 and not d.get("desde")
+                   else f"desde {desde.astimezone(LIMA):%d/%m %H:%M}") + f" hasta {hasta:%d/%m %H:%M}")
+    if enviar:
+        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
+                            url=CONFIG.get("notificaciones", {}).get("enlace") or None, corto=corto)
+    return {"titulo": titulo, "texto": texto, "corto": corto, "nivel": nivel, "enviado": enviar, "desde": iso(desde)}
 
 
 def trabajador_reportes():
@@ -6943,30 +6974,12 @@ class Handler(BaseHTTPRequestHandler):
                 d = self._json_cuerpo(5_000)
             except ValueError:
                 d = {}
-            hasta = ahora().astimezone(LIMA)
             try:
-                horas = float(d.get("horas") or 0)
-            except (TypeError, ValueError):
-                horas = 0
-            banco = d.get("banco") if d.get("banco") in BANCOS else None
-            if d.get("desde"):
-                try:
-                    desde = datetime.fromisoformat(str(d["desde"]))
-                    desde = desde if desde.tzinfo else desde.replace(tzinfo=LIMA)
-                except ValueError:
-                    return self._send({"error": "desde no válido"}, code=400)
-            else:
-                desde = hasta - timedelta(hours=min(horas, 72)) if horas > 0 else _reporte_anterior(hasta, _cfg_reportes())
-            titulo, texto, nivel, corto = reporte_periodico(desde, hasta, banco, registrar=d.get("enviar") is True)
-            if banco or d.get("desde") or horas > 0:
-                titulo = (f"Reporte {banco + ' · ' if banco else ''}" +
-                          (f"última {'hora' if horas == 1 else f'{horas:g} horas'}" if horas > 0 and not d.get("desde")
-                           else f"desde {desde.astimezone(LIMA):%d/%m %H:%M}") + f" hasta {hasta:%d/%m %H:%M}")
-            if d.get("enviar") is True:
-                enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
-                                    url=CONFIG.get("notificaciones", {}).get("enlace") or None, corto=corto)
-            return self._send({"titulo": titulo, "texto": texto, "corto": corto, "nivel": nivel,
-                               "enviado": d.get("enviar") is True, "desde": iso(desde)})
+                return self._send(reporte_a_pedido(d, enviar=d.get("enviar") is True))
+            except ValueError as e:
+                return self._send({"error": str(e)}, code=400)
+            except RuntimeError as e:
+                return self._send({"error": str(e)[:200]}, code=502)
         if u.path == "/api/sync/avisos/prueba":  # prueba de avisos lanzada por el monitor local (diagnóstico)
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
@@ -7021,11 +7034,20 @@ class Handler(BaseHTTPRequestHandler):
                 d = self._json_cuerpo()
                 cambiar_mi_clave(self.yo["usuario"], str(d.get("actual", "")), str(d.get("nueva", "")), ip)
                 return self._send({"ok": True})
+            if u.path == "/api/reporte/vista":  # cualquier usuario: ver un reporte a pedido sin enviarlo
+                return self._send(reporte_a_pedido(self._json_cuerpo(5_000)))
             if u.path == "/api/chat":  # cualquier usuario: solo lee la base
                 d = self._json_cuerpo(20_000)
                 return self._send(chat_monitor(d.get("pregunta"), self.yo["usuario"], d.get("filtros"), d.get("historial")))
             if self.yo["rol"] != "admin":  # el resto de acciones son solo para administradores
                 return self._send({"error": "Tu cuenta es de solo lectura"}, code=403)
+            if u.path == "/api/reporte/enviar":  # administradores: lo envía a Teams y al celular
+                try:
+                    r = reporte_a_pedido(self._json_cuerpo(5_000), enviar=True)
+                except RuntimeError as e:  # ningún canal lo recibió: se muestra el motivo en el panel
+                    return self._send({"error": str(e)[:200]}, code=502)
+                registrar(self.yo["usuario"], f"envió el reporte a pedido «{r['titulo']}»"[:120], ip)
+                return self._send(r)
             if u.path == "/api/usuarios":
                 d = self._json_cuerpo()
                 crear_usuario(str(d.get("usuario", "")), str(d.get("clave", "")), str(d.get("rol", "lector")),

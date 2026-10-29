@@ -130,20 +130,22 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 .tip b{display:block;margin-bottom:3px}.tip .sin-cuadro::before{display:none}.tip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
 .hist{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .hist label{font-size:12px;color:var(--ink2)}
-#cfg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
-#cfg.on{display:flex}
-#cfg .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
-#cfg header{position:static;border-radius:12px 12px 0 0}
+#cfg,#rep{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
+#cfg.on,#rep.on{display:flex}
+#cfg .caja,#rep .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#cfg header,#rep header{position:static;border-radius:12px 12px 0 0}
 #cfg .tabs{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding:10px 16px;border-bottom:1px solid var(--line)}
-#cfg .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
-#cfg .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+#cfg .cuerpo,#rep .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
+#cfg .pie,#rep .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
 #cfg label.campo{display:grid;gap:4px;font-size:12px;color:var(--ink2);margin-bottom:10px}
 #cfg textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-height:38px;resize:vertical}
 #cfg input[type=text],#cfg input[type=number],#cfg select{width:100%}
 #cfg .bloque{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
 #cfg .rej{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
 #cfg .ayuda{font-size:12px;color:var(--muted);margin:0 0 12px}
-#cfg-msg{font-size:13px;margin-right:auto}
+#cfg-msg,#rep-msg{font-size:13px;margin-right:auto}
+#rep .caja{width:min(760px,100%)}#rep .filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+#rep-txt{font-size:13.5px;line-height:1.5}#rep-txt .li{padding-left:14px;text-indent:-10px}#rep-txt .sep{height:8px}#rep-corto{white-space:pre-wrap;font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:10px}
 .exp{display:grid;gap:8px}.exp .fila{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.exp label{font-size:12px;color:var(--ink2)}
 body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{display:none!important}
 #cfg table.us{width:100%;border-collapse:collapse;font-size:13px}#cfg table.us td,#cfg table.us th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:middle}
@@ -165,6 +167,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <a id="csv" href="#"><button>Exportar CSV</button></a>
     <span class="sub" id="yo"></span>
     <button id="pausa-global" class="solo-admin" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
+    <button id="rep-abrir" title="Generar un reporte a pedido">📝 Reporte</button>
     <button id="cfg-abrir" title="Configuración">⚙ Configuración</button>
     <button class="pri solo-admin" id="refresh">Consultar ahora</button>
     <button id="salir" title="Cerrar sesión">Salir</button>
@@ -303,6 +306,27 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
       <div data-vistas="sistema" class="card"><h2>Clasificación IA</h2><div class="src" id="ia-card"></div></div>
       <div data-vistas="sistema" class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
     </div>
+  </div>
+</div>
+
+<div id="rep" role="dialog" aria-modal="true" aria-label="Reporte a pedido">
+  <div class="caja">
+    <header><h1>📝 Reporte a pedido</h1><button id="rep-cerrar" aria-label="Cerrar">✕</button></header>
+    <div class="cuerpo">
+      <div class="filtros">
+        <label class="sub">Periodo <select id="rep-per">
+          <option value="ant">Desde el último reporte</option><option value="1">Última hora</option>
+          <option value="3">Últimas 3 horas</option><option value="6">Últimas 6 horas</option>
+          <option value="hoy">Hoy (desde las 00:00)</option><option value="24">Últimas 24 horas</option>
+          <option value="desde">Desde una fecha…</option></select></label>
+        <input type="datetime-local" id="rep-desde" style="display:none" aria-label="Desde">
+        <label class="sub">Entidad <select id="rep-ent"><option value="">Todas</option></select></label>
+        <button class="pri" id="rep-ver">Ver reporte</button>
+      </div>
+      <div id="rep-txt" class="sub">Elige el periodo y pulsa «Ver reporte». Se muestra aquí sin enviarse.</div>
+      <div id="rep-corto-box" style="display:none"><div class="sub" style="margin-top:12px"><b>Lo que llega al celular:</b></div><div id="rep-corto"></div></div>
+    </div>
+    <div class="pie"><span id="rep-msg"></span><button id="rep-cancelar">Cerrar</button><button class="pri solo-admin" id="rep-enviar" disabled>Enviar a Teams y celular</button></div>
   </div>
 </div>
 
@@ -1178,6 +1202,34 @@ async function guardarConfig(){
     for(let i=0;i<40;i++){try{const r=await fetch('/api/estado');if(r.ok){location.reload();return}}catch(e){}await new Promise(r=>setTimeout(r,1000))}
     $('#cfg-msg').textContent='El monitor tarda en volver; recarga la página en unos segundos.'
   }catch(e){$('#cfg-msg').textContent='Error de conexión: '+e;$('#cfg-guardar').disabled=false}}
+// Reporte a pedido: mismo formato y reglas que los programados; se ve sin enviar y, si eres admin, se envía
+function repCuerpo(){const per=$('#rep-per').value,ent=$('#rep-ent').value,c={};
+  if(per==='hoy'){const d=new Date().toLocaleString('sv-SE',{timeZone:'America/Lima'}).slice(0,10);c.desde=d+'T00:00:00-05:00'}
+  else if(per==='desde'){if(!$('#rep-desde').value)return null;c.desde=$('#rep-desde').value+':00-05:00'}
+  else if(per!=='ant')c.horas=+per;
+  if(ent)c.banco=ent;return c}
+function repHTML(t){return t.split('\n').map(l=>{if(!l.trim())return '<div class="sep"></div>';
+  let x=esc(l).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/(^|[^*])\*([^*]+)\*/g,'$1<i>$2</i>');
+  return /^- /.test(l)?`<div class="li">• ${x.slice(2)}</div>`:`<div>${x}</div>`}).join('')}
+let REP=null;
+async function repVer(){const c=repCuerpo();if(!c){$('#rep-msg').textContent='Elige la fecha de inicio';return}
+  $('#rep-msg').textContent='Generando…';$('#rep-enviar').disabled=true;
+  try{const r=await fetch('/api/reporte/vista',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(c)});
+    const d=await r.json();if(!r.ok){$('#rep-msg').textContent='⚠ '+(d.error||'Error');return}
+    REP=c;$('#rep-txt').className='';$('#rep-txt').innerHTML=`<div class="sub" style="margin-bottom:6px">${esc(d.titulo)}</div>`+repHTML(d.texto);
+    $('#rep-corto').textContent=d.corto||'';$('#rep-corto-box').style.display=d.corto?'':'none';
+    $('#rep-msg').textContent='Vista previa: no se ha enviado.';$('#rep-enviar').disabled=YO?.rol!=='admin'}
+  catch(e){$('#rep-msg').textContent='Error de conexión: '+e}}
+$('#rep-abrir').onclick=()=>{const s=$('#rep-ent');if(s.options.length<2)(ESTADO?.bancos||[]).forEach(b=>s.add(new Option(b,b)));$('#rep').classList.add('on')};
+$('#rep-per').onchange=e=>{$('#rep-desde').style.display=e.target.value==='desde'?'':'none'};
+$('#rep-ver').onclick=repVer;
+$('#rep-enviar').onclick=async()=>{if(!REP||!confirm('¿Enviar este reporte a Teams y al celular?'))return;
+  $('#rep-enviar').disabled=true;$('#rep-msg').textContent='Enviando…';
+  const r=await fetch('/api/reporte/enviar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(REP)}).then(r=>r.json()).catch(e=>({error:String(e)}));
+  $('#rep-msg').textContent=r.error?'⚠ '+r.error:'✓ Enviado a Teams y al celular.'};
+$('#rep-cerrar').onclick=$('#rep-cancelar').onclick=()=>$('#rep').classList.remove('on');
+$('#rep').onclick=e=>{if(e.target.id==='rep')$('#rep').classList.remove('on')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#rep').classList.remove('on')});
 $('#cfg-abrir').onclick=abrirConfig;
 $('#cfg-cerrar').onclick=$('#cfg-cancelar').onclick=()=>$('#cfg').classList.remove('on');
 $('#cfg').onclick=e=>{if(e.target.id==='cfg')$('#cfg').classList.remove('on')};
