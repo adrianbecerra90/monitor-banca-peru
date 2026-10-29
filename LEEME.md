@@ -148,6 +148,27 @@ El repositorio ya incluye un `Dockerfile`. Pasos:
 Notas: el plan Hobby de Railway cuesta unos US$5/mes. Desde servidores en la nube, Nitter (X) y Google Trends pueden
 bloquear más que desde una conexión doméstica; el monitor usa rutas de respaldo.
 
+## Reporte periódico: reglas
+
+- **Qué cuenta:** lo capturado en el periodo (así no se pierde lo que llega tarde), sin cargas históricas. Las cifras
+  son **usuarios distintos** con queja (un usuario que repite 10 veces cuenta una), solo de fuentes activas.
+- **Queja** es un problema concreto que alguien vivió; opiniones, insultos y rumores son críticas, no quejas.
+- **Referencias de cada cifra:** *anterior* (el reporte previo, ajustado a la duración y al horario del actual) y
+  *normal* (mediana de las mismas horas en los últimos 7 días). Flecha ↑/↓ si la diferencia supera 2 desviaciones
+  (√referencia) y al menos 3 casos; si no, =.
+- **Interrupción o casos aislados** (por entidad): *confirmada* (crítico) con comunicado oficial de falla, 6+ usuarios
+  distintos en una misma hora, o 3+ en una hora con prensa o en 2+ redes; *probable* (grave) con 3 a 5 usuarios en una
+  hora; *mantenimiento o tercero* (informativo) si la entidad lo anuncia así y no hay 6+ usuarios; *casos aislados* si
+  las quejas están repartidas (menos de 3 usuarios en cualquier hora).
+- **Fraudes e incidencias operativas:** patrón con 3+ usuarios distintos de la misma entidad (en seguimiento); grave
+  con 6+ o con prensa. Los fraudes se agrupan por modalidad (QR falso, SMS o enlace, llamada, cuenta tomada…).
+- **Ciberseguridad, por eventos y sin números:** las alertas de una entidad en 7 días son un evento (NUEVO,
+  actualización o en curso), con su confirmación (prensa o no confirmado) y sus fuentes. Infostealers y dominios que
+  imitan van aparte: son exposiciones, no incidentes.
+- **Nivel:** un solo color, el del hallazgo más grave, y nunca menor que un aviso inmediato enviado en el periodo.
+  Las recomendaciones salen para lo grave o crítico; si ya se emitió en las últimas 12 h, se indica "sigue vigente".
+- El celular recibe la cabecera, la primera línea y la de quejas; Teams, el reporte completo.
+
 ## Ciberseguridad (CSIRT)
 
 La tarjeta «Ciberseguridad · alertas» junta, filtrado al sistema financiero, seguros, AFP y sus proveedores en Perú:

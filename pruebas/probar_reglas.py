@@ -36,7 +36,46 @@ for c in casos["ciber"]:
     r = None if ev is None else sorted(ev["entidades"])
     if r != (None if c["espera"] is None else sorted(c["espera"])):
         fallos.append(f"ciber · «{c['texto'][:70]}» → {ev}, se esperaba {c['espera']}")
-total = len(casos["entidades"]) + len(casos["cita"]) + len(casos["ciber"])
+# Regla de interrupción y de patrones del reporte (casos sintéticos: cuándo es una caída y cuándo son casos aislados)
+from datetime import datetime, timedelta, timezone
+H = datetime(2026, 11, 3, 20, 30, tzinfo=timezone.utc)
+
+
+def fila(min_antes, autor, texto="no puedo entrar a la app", tipo="", cats=("App / canales caídos",), queja=1,
+         fuente="X", b="Interbank"):
+    return {"id": autor + str(min_antes), "_bancos": [b], "_cats": set(cats), "_meta": {"tipo": tipo} if tipo else {},
+            "es_queja": queja, "_autor": autor, "texto": texto, "fecha": srv.iso(H - timedelta(minutes=min_antes)),
+            "fuente": fuente}
+
+
+interrupciones = [
+    ("2 quejas sueltas", [fila(200, "a"), fila(20, "b")], "aislado"),
+    ("5 quejas repartidas en 5 h", [fila(300 - i * 60, "u%d" % i) for i in range(5)], "aislado"),
+    ("4 usuarios en 40 min", [fila(50 - i * 10, "u%d" % i) for i in range(4)], "Grave"),
+    ("3 usuarios en 1 h + prensa", [fila(50, "a"), fila(40, "b"), fila(30, "c"),
+                                    fila(25, "rpp", "Se cae la app de Interbank", "noticia", fuente="Noticias")], "Crítico"),
+    ("3 usuarios en 2 redes", [fila(50, "a"), fila(40, "b", fuente="Facebook"), fila(30, "c")], "Crítico"),
+    ("7 usuarios en 1 h", [fila(55 - i * 7, "u%d" % i) for i in range(7)], "Crítico"),
+    ("comunicado oficial", [fila(30, "interbank", "Estamos presentando intermitencia en nuestra app", "oficial", queja=0)],
+     "Crítico"),
+    ("mantenimiento anunciado + 4 usuarios",
+     [fila(60, "interbank", "Hoy realizaremos un mantenimiento programado de nuestra app", "oficial", queja=0)]
+     + [fila(50 - i * 10, "u%d" % i) for i in range(4)], "Normal"),
+    ("un usuario repite 6 veces", [fila(50 - i * 5, "mismo") for i in range(6)], "aislado"),
+]
+for nombre, filas_, espera in interrupciones:
+    v = srv.evaluar_interrupcion("Interbank", filas_, H)
+    if (v or {}).get("nivel") != espera:
+        fallos.append(f"interrupción · {nombre} → {v and v['nivel']}, se esperaba {espera}")
+fraudes = [fila(100 - i * 10, "u%d" % i, t, cats=("Fraude / seguridad",), b="Yape") for i, t in enumerate(
+    ["me cobraron con un QR falso", "pagué con QR y era falso", "QR trucado", "me robaron por un link", "cargo no reconocido"])]
+if (srv.evaluar_patron("Yape", fraudes, "Fraude / seguridad", "Fraudes") or {}).get("nivel") != "En seguimiento" or \
+        srv.evaluar_patron("Yape", fraudes[:2], "Fraude / seguridad", "Fraudes") is not None:
+    fallos.append("patrón · fraude: 5 usuarios debe ser 'En seguimiento' y 2 usuarios, sin patrón")
+for x, ref, espera in [(2, 1, "="), (4, 1, "↑"), (96, 80, "="), (96, 60, "↑"), (5, 20, "↓")]:
+    if srv._flecha(x, ref) != espera:
+        fallos.append(f"flecha · {x} frente a {ref} → {srv._flecha(x, ref)}, se esperaba {espera}")
+total = len(casos["entidades"]) + len(casos["cita"]) + len(casos["ciber"]) + len(interrupciones) + 1 + 5
 print(f"Casos fijos: {total - len(fallos)}/{total} correctos")
 for f in fallos:
     print("  ✗", f)
