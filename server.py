@@ -3291,7 +3291,7 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     else:
         frase = "Sin incidentes relevantes; las quejas están dentro de lo habitual."
     linea_q = _cifra("Quejas", actual["Quejas"], ant["Quejas"], normal["Quejas"]) + \
-        f" · usuarios distintos ({actual['_n']} publicaciones" + (f"; {tarde} {'llegó' if tarde == 1 else 'llegaron'} tarde" if tarde else "") + ")"
+        f" · usuarios distintos ({actual['_n']} publicaci{'ón' if actual['_n'] == 1 else 'ones'}" + (f"; {tarde} {'llegó' if tarde == 1 else 'llegaron'} tarde" if tarde else "") + ")"
     lineas = [cab, frase, "", linea_q, ""]
     for tema, _ in TEMAS_REPORTE:
         cifra = _cifra(tema, actual[tema], ant[tema], normal[tema])
@@ -3302,9 +3302,13 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     lineas.append("")
     if ciber:
         lineas.append("**Ciberseguridad**")
-        inc = [e for e in ciber if e["clase"] == "incidente"][:6]
+        # los eventos con novedades van completos; los que siguen en curso sin novedades, en una sola línea
+        inc = [e for e in ciber if e["clase"] == "incidente" and e["estado"] != "en curso"][:6]
         expo = [e for e in ciber if e["clase"] != "incidente"][:3]
         lineas += [f"- {e['texto']}" for e in inc + expo]
+        en_curso = [e["entidad"] for e in ciber if e["clase"] == "incidente" and e["estado"] == "en curso"]
+        if en_curso:
+            lineas.append(f"- En curso, sin novedades: {', '.join(en_curso)}.")
     else:
         lineas.append("**Ciberseguridad:** sin eventos nuevos ni actualizaciones.")
     if avisos:
