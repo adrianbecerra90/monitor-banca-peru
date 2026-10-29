@@ -3170,10 +3170,13 @@ def eventos_ciber(desde, hasta, banco=None):
         fuentes = sorted({a["cuenta"] for a in e["alertas"]})
         actores = []
         for a in e["alertas"]:
-            m = re.search(r"(?:actor(?: de amenaza)?|grupo(?: de ransomware)?|threat actor)\s*[\"“']?([A-Za-z0-9_.-]{3,30})[\"”']?",
+            # el nombre del actor solo se toma si va entre comillas ("TEAMSTARS", "SWICK ROOT") o en la ficha
+            # "Actor de amenaza: X"; sin eso, "threat actor offers…" daba nombres falsos
+            m = re.search(r"(?:actor(?: de amenaza)?|grupo(?: de ransomware)?|threat actor)\s*(?:[\"“]([^\"”\n]{3,30})[\"”]|:\s*([^\n•|,]{3,30}))",
                           a["texto"] or "", re.I)
-            if m and m.group(1).lower() not in ("de", "the", "malicioso", "maliciosos") and m.group(1) not in actores:
-                actores.append(m.group(1))
+            nombre = (m.group(1) or m.group(2)).strip(" .") if m else ""
+            if nombre and nombre not in actores:
+                actores.append(nombre)
         # "Dire" y "Direwolf" son el mismo actor: se queda el nombre más completo
         actores = [x for x in actores if not any(y != x and y.lower().startswith(x.lower()) for y in actores)]
         en_prensa = any(b in json.loads(p["bancos"] or "[]") for p in prensa)
@@ -3311,7 +3314,8 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     if recs:
         lineas += ["", "**Recomendaciones**"]
         lineas += ["- " + _recomendacion(b, tema, RECOMENDACION[tema](b), registrar) for b, tema in dict.fromkeys(recs)]
-    inactivas = [n for n in FUENTES if n not in fuentes_disponibles()]
+    disp = fuentes_disponibles()
+    inactivas = [n for n in FUENTES if n not in disp or n in MOTIVO_INACTIVA]
     if inactivas:
         lineas += ["", f"*Sin cobertura en este periodo: {', '.join(inactivas)}.*"]
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M}{' · ' + banco if banco else ''}"
