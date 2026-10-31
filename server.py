@@ -144,6 +144,8 @@ MIGRACIONES_REGLAS = {
         "SBS (finanzas OR seguros OR afp OR superintendencia OR banca OR hackeo OR filtración OR lavado) lang:es"]},
     # Cuentas verificadas en el pie de página de cada web oficial (25/10/2026): interseguro.pe y pichincha.pe.
     # Pichincha Perú no tiene X; Plin no tiene TikTok ni X; Italtel solo tiene cuentas globales (Italia), no de Perú
+    "linkedin-scotiabank-2026-10-31": {"cuentas_oficiales": {  # el enlace de LinkedIn en scotiabank.com.pe
+        "Scotiabank Perú": {"linkedin": "https://www.linkedin.com/company/scotiabank/"}}},
     "cuentas-2026-10-25": {"cuentas_oficiales": {
         "Interseguro": {"facebook": "https://www.facebook.com/interseguro/",
                         "instagram": "https://www.instagram.com/interseguroperu/",
@@ -2111,10 +2113,13 @@ def _linkedin_paginas(rango):
     with _db_lock, db() as con:  # se marca antes de llamar: un error no hace reintentar la misma página en bucle
         con.execute("INSERT OR REPLACE INTO linkedin_revisadas VALUES (?, ?)", (url, iso(ahora())))
     d = _linkedin_get("/get-company-posts", username=slug, start="0")
+    # Páginas globales (Scotiabank Perú no tiene página propia: su web enlaza a la de Scotiabank, la de Canadá): solo
+    # cuentan las publicaciones que nombran al Perú; el resto es de otros países y no se atribuye a la entidad
+    global_ = slug.lower() in cfg.get("paginas_globales", ["scotiabank"])
     out = []
     for p in d.get("data") or []:
         purl = p.get("postUrl") or p.get("shareUrl") or ""
-        if not purl:
+        if not purl or (global_ and not CONTEXTO_PE.search(normalizar(p.get("text") or ""))):
             continue
         ts = p.get("postedDateTimestamp")
         fecha = _epoch(int(ts) // 1000) if str(ts).isdigit() else p.get("postedDate")

@@ -440,7 +440,8 @@
       "x": "scotiabankpe",
       "facebook": "https://www.facebook.com/ScotiabankPE",
       "instagram": "https://www.instagram.com/scotiabankpe/",
-      "tiktok": "https://www.tiktok.com/@scotiabankpe"
+      "tiktok": "https://www.tiktok.com/@scotiabankpe",
+      "linkedin": "https://www.linkedin.com/company/scotiabank/"
     },
     "Banco de la Nación": {
       "x": "BancodelaNacion",
@@ -793,12 +794,16 @@
     "cuentas-2026-10-25",
     "picos-30min-2026-10-31",
     "eventos-2026-10-31",
-    "google-linkedin-2026-10-31"
+    "google-linkedin-2026-10-31",
+    "linkedin-scotiabank-2026-10-31"
   ],
   "linkedin_api": {
-    "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen.",
+    "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú.",
     "max_creditos_mes": 45,
     "reserva": 3,
-    "intervalo_horas": 16
+    "intervalo_horas": 16,
+    "paginas_globales": [
+      "scotiabank"
+    ]
   }
 }
