@@ -91,8 +91,11 @@ todo el histórico se reclasifica con las reglas nuevas.
 
 - Indicadores, quejas por banco y categoría, evolución por hora.
 - Filtros por banco, red, categoría, gravedad y texto. Exportación a CSV (Excel).
-- Alerta de **pico**: 5 o más quejas en una hora y al menos 3 veces el promedio horario
+- Alerta de **pico** en el panel: 4 o más quejas en 30 min y al menos 3 veces el promedio de 30 min
   de las 48 h previas (posible caída o incidente).
+- Aviso de **pico** a Teams y celular: quejas (o críticas) de los últimos 30 min por encima de promedio + 2σ de los
+  tramos de 30 min de los últimos 7 días (día y noche por separado). Se revisa cada 5 min; si el pico sigue, se
+  vuelve a avisar cada 30 min (`notificaciones.pico_ventana_min` y `enfriamiento_minutos`).
 - Avisos de escritorio opcionales para quejas graves (fraude, clonación, cuentas bloqueadas, caídas).
 
 Los datos se guardan en `quejas.db` (SQLite).
@@ -159,7 +162,8 @@ bloquear más que desde una conexión doméstica; el monitor usa rutas de respal
 - **Interrupción o casos aislados** (por entidad): *confirmada* (crítico) con comunicado oficial de falla, 6+ usuarios
   distintos en una misma hora, o 3+ en una hora con prensa o en 2+ redes; *probable* (grave) con 3 a 5 usuarios en una
   hora; *mantenimiento o tercero* (informativo) si la entidad lo anuncia así y no hay 6+ usuarios; *casos aislados* si
-  las quejas están repartidas (menos de 3 usuarios en cualquier hora).
+  las quejas están repartidas (menos de 3 usuarios en cualquier hora). El reporte mira una hora para no perder caídas
+  que se acumulan despacio; los avisos al instante y los picos avisan antes, con ventanas de 30 min.
 - **Fraudes e incidencias operativas:** patrón con 3+ usuarios distintos de la misma entidad (en seguimiento); grave
   con 6+ o con prensa. Los fraudes se agrupan por modalidad (QR falso, SMS o enlace, llamada, cuenta tomada…).
 - **Ciberseguridad, por eventos y sin números:** las alertas de una entidad en 7 días son un evento (NUEVO,

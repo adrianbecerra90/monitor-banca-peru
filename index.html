@@ -696,7 +696,7 @@ async function cargarStats(){
     $('#k-net-spark').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="30" role="img" aria-label="Evolución del sentimiento neto"><line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-dasharray="2 2"/><path d="${d}" fill="none" stroke="var(--ink2)" stroke-width="1.5"/></svg><div class="sub" style="font-size:10px">Evolución por ${GRAN_TXT[st.granularidad]} (línea punteada = 0)</div>`}
   else $('#k-net-spark').innerHTML='';
   $('#k-quejas').textContent=fmt(st.quejas);$('#k-graves').textContent=fmt(st.graves);
-  $('#picos').innerHTML=st.picos.filter(p=>!alertaCerrada('pico:'+p.banco,p.ultima_hora,3)).map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en la última hora (promedio ${p.promedio}/h). Posible incidente o caída.<button class="cerrar" data-k="${esc('pico:'+p.banco)}" data-n="${p.ultima_hora}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
+  $('#picos').innerHTML=st.picos.filter(p=>!alertaCerrada('pico:'+p.banco,p.ultima_hora,3)).map(p=>`<div class="alerta">⚠️ <b>Pico de quejas: ${esc(p.banco)}</b> — ${p.ultima_hora} en los últimos 30 min (promedio ${p.promedio} cada 30 min). Posible incidente o caída.<button class="cerrar" data-k="${esc('pico:'+p.banco)}" data-n="${p.ultima_hora}" title="Cerrar alerta" aria-label="Cerrar alerta">✕</button></div>`).join('');
   serie(st);entidadesTiempo(st);calor(st);entidades(st);
   barras($('#cats'),Object.entries(st.por_categoria).sort((a,b)=>b[1]-a[1]),F.categoria,n=>{F.categoria=F.categoria===n?'':n;pintarFiltros();recargar()});
   barras($('#redes'),Object.entries(st.por_fuente).sort((a,b)=>b[1]-a[1]),F.fuente.length===1?F.fuente[0]:'',n=>{F.fuente=F.fuente.length===1&&F.fuente[0]===n?[]:[n];pintarFiltros();recargar()});
@@ -986,7 +986,7 @@ function pintarConfig(){
       ${CFG._ents.map(e=>`<tr style="border-top:1px solid var(--line);vertical-align:top"><td><b>${esc(e.nombre)}</b></td><td>${esc(e.buscar)}</td><td>${Object.entries(e.cuentas||{}).map(([r,v])=>`${esc(r)}: ${esc(String(v).replace(/^https:\/\/(www\.)?/,''))}`).join('<br>')||'<span class="sub">—</span>'}</td><td>${esc(lst((cb.dominios||{})[e.nombre]))||'<span class="sub">—</span>'}</td></tr>`).join('')}</tbody></table></div>
     <div class="bloque"><b>Disponibilidad, fallas y quejas</b> · ${ir('general')}
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tbody>${(m.disponibilidad||[]).map(f=>`<tr style="border-top:1px solid var(--line)"><td style="white-space:nowrap"><b>${esc(f.fuente)}</b></td><td style="white-space:nowrap">cada ${cada(f.minutos)}</td><td class="sub">${esc(f.desc||'')}</td></tr>`).join('')}</tbody></table>
-      <div class="sub" style="margin-top:6px">Alerta al celular cuando la última hora supera promedio + 2σ (base ${m.notificaciones?.dias_base||7} días, mínimo ${m.notificaciones?.minimo_ultima_hora||5} negativas, sin repetir en ${m.notificaciones?.enfriamiento_minutos||120} min).</div></div>
+      <div class="sub" style="margin-top:6px">Alerta al celular cuando los últimos ${m.notificaciones?.pico_ventana_min||30} min superan promedio + 2σ (base ${m.notificaciones?.dias_base||7} días); si el pico sigue, se repite cada ${m.notificaciones?.enfriamiento_minutos||30} min.</div></div>
     <div class="bloque"><b>Ciberseguridad</b> · ${ir('ciber')}
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tbody>${(m.ciber||[]).map(f=>`<tr style="border-top:1px solid var(--line)"><td><b>${esc(f.fuente)}</b></td><td style="white-space:nowrap">cada ${cada(f.minutos)}</td></tr>`).join('')}</tbody></table>
       <div class="sub" style="margin-top:6px">X: ${esc(lst((cb.referentes_x||[]).map(h=>'@'+h)))} · Telegram público: ${esc(lst(cb.canales_telegram))} · Actores vigilados: ${esc(lst(cb.actores))}</div></div>`;
@@ -1022,7 +1022,7 @@ function pintarConfig(){
     c.querySelectorAll('[data-int]').forEach(i=>i.oninput=()=>CFG.intervalos_minutos[i.dataset.int]=i.value);
     pintarApagados(ESTADO.apagados||[]);
     const NT=ESTADO.notificaciones||{},ints=NT.intentos||[];
-    c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Notificaciones (celular y Teams)</b> <span class="sub">(graves y críticos al instante; picos por hora sobre promedio + 2σ; ciberseguridad)</span>
+    c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Notificaciones (celular y Teams)</b> <span class="sub">(graves y críticos al instante; picos cada 30 min sobre promedio + 2σ; ciberseguridad)</span>
       <div class="sub" style="margin-top:6px">${NT.configuradas?'✅ Activas en este monitor: '+[NT.ntfy?'ntfy (celular)':'',NT.teams?'Teams':''].filter(Boolean).join(' · ')+(NT.ultima_revision?' · última revisión hace '+hace(NT.ultima_revision):''):'⚪ No configuradas en este monitor: falta NOTIFY_NTFY_TOPIC o TEAMS_WEBHOOK_URL.'}</div>
       <div class="frow" style="margin-top:8px;gap:8px"><button id="nt-prueba">Enviar notificación de prueba</button><span class="sub" id="nt-msg"></span></div>
       <div id="nt-log" style="margin-top:8px"></div></div>`);

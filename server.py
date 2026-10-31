@@ -154,6 +154,10 @@ MIGRACIONES_REGLAS = {
                    "Scotiabank Perú": {"contexto": ["cuenta sueldo", "crediscotia", "cts", "cuenta free"]}},
         "contexto_excluir": ["mexico", "mexicano", "cdmx", "bancomer", "spei", "oxxo", "chile", "chileno", "cuenta rut",
                              "canada", "canadian"]},
+    # 31/10/2026: los picos se miden en ventanas de 30 min (antes 1 hora) y, si siguen, se avisa cada 30 min (antes
+    # 120); el enlace de los avisos apunta al servidor nuevo (Railway y Northflank se dieron de baja)
+    "picos-30min-2026-10-31": {"notificaciones": {"pico_ventana_min": 30, "enfriamiento_minutos": 30,
+                                                  "enlace": "https://136-114-162-86.sslip.io"}},
 }
 _hechas = CONFIG.setdefault("_migraciones", [])
 _pendientes = [m for m in MIGRACIONES_REGLAS if m not in _hechas]
@@ -178,6 +182,7 @@ for _m in _pendientes:
                 _cu.setdefault(_red, _url)
     _l = CONFIG.setdefault("nitter", {}).setdefault("consultas_extra", [])
     _l += [x for x in _c.get("nitter_consultas_extra", []) if x not in _l]
+    CONFIG.setdefault("notificaciones", {}).update(_c.get("notificaciones", {}))
     _hechas.append(_m)
 CONFIG.setdefault("nitter", {}).setdefault("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
 if _pendientes:  # se guarda en el disco para que no se repita (copia previa en config_copias)
@@ -783,7 +788,7 @@ def guardar(items, en_vivo=True):
                                "texto": it["texto"][:3000], "url": it.get("url", ""), "fecha": fecha,
                                "es_queja": int(es_queja), "categorias": cats, "severidad": sev,
                                "sentimiento": sent, "tipo": it.get("tipo", ""), "cuenta": it.get("cuenta", "")})
-    if en_vivo and nuevos:  # lo grave se avisa al celular en el acto, sin esperar al umbral por hora
+    if en_vivo and nuevos:  # lo grave se avisa al celular en el acto, sin esperar al umbral de picos
         threading.Thread(target=avisar_graves, args=(nuevos,), daemon=True).start()
     # Solo se empujan al panel las publicaciones recientes (no las de una carga histórica)
     if en_vivo and nuevos:
@@ -2660,11 +2665,17 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
 MEDIDAS_PICO = {"quejas": "es_queja = 1", "criticas": "sentimiento = 'negativo' AND es_queja = 0"}
 
 
-def _umbrales_por_hora(clave_fn, dias=7, medida="quejas"):
-    """Promedio y desviación por hora (franja día 6–22 y noche) de la medida (quejas o críticas), solo con fuentes
-    disponibles. Devuelve {clave: {"dia": (prom, sd, n), "noche": (...)}} con clave = "Total" o la entidad."""
+def _tramo(t, minutos):
+    """Inicio del tramo de 'minutos' (30 → :00 o :30, hora de Lima) que contiene a t."""
+    t = t.astimezone(LIMA).replace(second=0, microsecond=0)
+    return t.replace(minute=t.minute - t.minute % minutos)
+
+
+def _umbrales_por_tramo(clave_fn, dias=7, medida="quejas", minutos=30):
+    """Promedio y desviación por tramo de 'minutos' (franja día 6–22 y noche) de la medida (quejas o críticas), solo
+    con fuentes disponibles. Devuelve {clave: {"dia": (prom, sd, n), "noche": (...)}} con clave = "Total" o la entidad."""
     disp = fuentes_disponibles()
-    fin = ahora().replace(minute=0, second=0, microsecond=0)
+    fin = _tramo(ahora(), minutos)
     ini = fin - timedelta(days=dias)
     with _db_lock, db() as con:
         filas = con.execute(f"SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND {MEDIDAS_PICO[medida]} "
@@ -2673,17 +2684,16 @@ def _umbrales_por_hora(clave_fn, dias=7, medida="quejas"):
     for r in filas:
         if _origen(r["id"], r["fuente"]) not in disp:
             continue
-        h = datetime.fromisoformat(r["fecha"]).astimezone(LIMA).replace(minute=0, second=0, microsecond=0)
+        h = _tramo(datetime.fromisoformat(r["fecha"]), minutos)
         for k in clave_fn(r):
             cuentas.setdefault(k, {}).setdefault(h, 0)
             cuentas[k][h] += 1
-    horas = [ini + timedelta(hours=i) for i in range(dias * 24)]
+    horas = [ini + timedelta(minutes=minutos * i) for i in range(dias * 24 * 60 // minutos)]
     res = {}
     for k, por_hora in cuentas.items():
         res[k] = {}
         for franja in ("dia", "noche"):
-            vals = [por_hora.get(h.astimezone(LIMA).replace(minute=0, second=0, microsecond=0), 0) for h in horas
-                    if (6 <= h.astimezone(LIMA).hour < 22) == (franja == "dia")]
+            vals = [por_hora.get(h, 0) for h in horas if (6 <= h.astimezone(LIMA).hour < 22) == (franja == "dia")]
             n = len(vals)
             p = sum(vals) / n if n else 0
             sd = (sum((v - p) ** 2 for v in vals) / n) ** 0.5 if n else 0
@@ -2692,7 +2702,7 @@ def _umbrales_por_hora(clave_fn, dias=7, medida="quejas"):
     return res
 
 
-# Aviso inmediato de lo grave (no espera al umbral por hora): se dispara al capturar la publicación
+# Aviso inmediato de lo grave (no espera al umbral de picos): se dispara al capturar la publicación
 _GRAVES = {"vistos": {}, "ultimo_aviso": {}, "lock": threading.Lock()}
 
 
@@ -2786,7 +2796,7 @@ def avisar_graves(nuevos):
 
 
 def revisar_umbral_notificar():
-    """Picos por hora (promedio + 2σ de su propia historia), por separado: de quejas (operacional; nivel Medio o
+    """Picos por tramo de 30 min (promedio + 2σ de su propia historia), por separado: de quejas (operacional; nivel Medio o
     Grave) y de críticas sin incidente (reputacional; siempre Medio). Total y por entidad."""
     cfg = CONFIG.get("notificaciones", {})
     if not cfg.get("activas", True) or not _hay_canal_aviso():
@@ -2800,13 +2810,14 @@ def revisar_umbral_notificar():
 
 def _revisar_pico(cfg, medida):
     clave_fn = lambda r: ["Total"] + json.loads(r["bancos"] or "[]")
-    umbrales = _umbrales_por_hora(clave_fn, cfg.get("dias_base", 7), medida)
+    minutos = cfg.get("pico_ventana_min", 30)
+    umbrales = _umbrales_por_tramo(clave_fn, cfg.get("dias_base", 7), medida, minutos)
     disp = fuentes_disponibles()
-    hace1h = iso(ahora() - timedelta(hours=1))
+    desde_v = iso(ahora() - timedelta(minutes=minutos))
     with _db_lock, db() as con:
         recientes = con.execute("SELECT id, fuente, bancos, sentimiento, es_queja, categorias FROM items "
                                 "WHERE oculto = 0 AND fecha >= ? AND fecha <= ? "
-                                "AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (hace1h, iso(ahora()))).fetchall()
+                                "AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (desde_v, iso(ahora()))).fetchall()
     ahora_n, contexto = {}, {}
     for r in recientes:
         if _origen(r["id"], r["fuente"]) not in disp:
@@ -2823,40 +2834,44 @@ def _revisar_pico(cfg, medida):
                     if cat in FOCO:
                         c["foco"][cat] = c["foco"].get(cat, 0) + 1
     franja = "dia" if 6 <= ahora().astimezone(LIMA).hour < 22 else "noche"
-    enviadas = []
-    # Primero las entidades; "Total" solo avisa si ninguna entidad lo explica ya en esta misma revisión
+    enviadas, explicado = [], False
+    # Primero las entidades; "Total" solo avisa si ninguna entidad está en pico (avisada ahora o hace poco)
     orden = sorted(ahora_n.items(), key=lambda x: (x[0] == "Total", -x[1]))
     for k, n in orden:
-        if k == "Total" and enviadas:
+        if k == "Total" and explicado:
             continue
         u = umbrales.get(k, {})
         p, sd, muestras = u.get(franja, (0, 0, 0))
         umbral = p + 2 * sd
-        if u.get("base", 0) < cfg.get("base_escasa", 20):
-            umbral = max(umbral, cfg.get("piso_base_escasa", 8))  # con poca historia, la desviación engaña
-        if muestras < 24 or n <= umbral or n < max(cfg.get("minimo", 3), cfg.get("minimo_ultima_hora", 5)):
+        if u.get("base", 0) < cfg.get("base_escasa", 20):  # con poca historia, la desviación engaña
+            umbral = max(umbral, cfg.get("piso_base_escasa", 8) * minutos / 60, cfg.get("minimo", 3))
+        # mínimo de casos en la ventana (el de una hora, a escala; nunca menos de 'minimo')
+        minimo = max(cfg.get("minimo", 3), round(cfg.get("minimo_ultima_hora", 5) * minutos / 60))
+        if muestras < 24 * 60 // minutos or n <= umbral or n < minimo:
             continue
+        explicado = True
         if time.time() - _NOTIF["ultima"].get((medida, k), 0) < cfg.get("enfriamiento_minutos", 120) * 60:
             continue
         _NOTIF["ultima"][(medida, k)] = time.time()
         _NOTIF.setdefault("enviadas", []).append(time.time())
         alertas_hora = sum(1 for t in _NOTIF["enviadas"] if time.time() - t < 3600)
+        en_ventana = f"en los últimos {minutos} min" if minutos != 60 else "en la última hora"
         quien = "todas las entidades" if k == "Total" else k
         c = contexto.get(k, {"total": n, "quejas": 0, "foco": {}})
         nombres = {"App / canales caídos": "caídas", "Errores operativos": "errores operativos",
                    "Fraude / seguridad": "fraude", "Ciberseguridad / hackeos": "ciberseguridad"}
         foco = ", ".join(f"{v} {nombres[cat]}" for cat, v in sorted(c["foco"].items(), key=lambda x: -x[1]))
-        normal = (f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} por hora · "
+        normal = (f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} cada {minutos} min · "
                   f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
         if medida == "quejas":
             titulo, tipo = f"Pico de quejas: {quien}", "Pico de quejas"
-            texto = (f"Quejas: {n} en la última hora sobre {quien}{' (' + foco + ')' if foco else ''}.\n"
-                     f"Menciones: {c['total']} en total en la misma hora.\n" + normal)
+            texto = (f"Quejas: {n} {en_ventana} sobre {quien}{' (' + foco + ')' if foco else ''}.\n"
+                     f"Menciones: {c['total']} en total en el mismo lapso.\n" + normal)
             nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
         else:
             titulo, tipo = f"Pico de menciones críticas: {quien}", "Pico de menciones críticas"
-            texto = (f"Menciones críticas: {n} en la última hora sobre {quien} (de {c['total']} menciones): malestar "
-                     f"reputacional, no una falla reportada.\nQuejas: {c['quejas']} en la misma hora.\n" + normal)
+            texto = (f"Menciones críticas: {n} {en_ventana} sobre {quien} (de {c['total']} menciones): malestar "
+                     f"reputacional, no una falla reportada.\nQuejas: {c['quejas']} en el mismo lapso.\n" + normal)
             nivel_p = "Medio"
         try:
             enviar_notificacion(titulo, texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None,
@@ -3043,6 +3058,8 @@ def evaluar_interrupcion(b, filas, hasta):
     - MANTENIMIENTO / TERCERO (informativo): la entidad lo anuncia como mantenimiento o falla de un tercero y no hay
       una ráfaga de 6+ usuarios.
     - CASOS AISLADOS: quejas de caída repartidas en el tiempo (menos de 3 usuarios en cualquier hora).
+    El reporte mira una hora para no perder caídas que se acumulan despacio; los avisos inmediatos y los picos avisan
+    antes, con ventanas de 30 min.
     Sigue activa si la última queja es de los últimos 30 min del periodo."""
     marcas, redes, prensa, comunicado, aviso_mant = [], {}, set(), None, False
     for r in filas:
@@ -5057,7 +5074,7 @@ def resumen_monitoreo():
     ciber = [{"fuente": "Cuentas referentes en X", "minutos": _cfg_referentes().get("intervalo_minutos", 10)}] + \
             [{"fuente": nombres.get(k, k), "minutos": v} for k, v in fc.items() if v]
     return {"disponibilidad": disp, "ciber": ciber,
-            "notificaciones": {k: CONFIG.get("notificaciones", {}).get(k) for k in ("dias_base", "minimo_ultima_hora", "enfriamiento_minutos")}}
+            "notificaciones": {k: CONFIG.get("notificaciones", {}).get(k) for k in ("dias_base", "minimo_ultima_hora", "enfriamiento_minutos", "pico_ventana_min")}}
 
 
 def sugerencias_reglas(minimo=3):
@@ -6378,10 +6395,10 @@ def _estadisticas(qs):
     with _db_lock, db() as con:
         rows = [dict(r) for r in con.execute(
             f"SELECT id, bancos, fuente, categorias, es_queja, severidad, fecha, sentimiento FROM items{sql}", args)]
-        # para picos: quejas última hora vs. 48 h previas, siempre sobre datos recientes
+        # para picos: quejas de los últimos 30 min vs. 48 h previas, siempre sobre datos recientes
         recientes = [dict(r) for r in con.execute(
             "SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND es_queja = 1 AND fecha >= ?",
-            (iso(ahora() - timedelta(hours=49)),))]
+            (iso(ahora() - timedelta(hours=48, minutes=30)),))]
     disp = fuentes_disponibles()
     fuera = sorted({_origen(r["id"], r["fuente"]) for r in rows} - disp)
     sel_bancos = [b for b in qs.get("banco", [""])[0].split(",") if b]
@@ -6440,15 +6457,16 @@ def _estadisticas(qs):
             tot["graves"] += r["severidad"] >= 3
             for c in json.loads(r["categorias"]) or ["Otras"]:
                 por_cat[c] = por_cat.get(c, 0) + 1
-    hace1h = iso(ahora() - timedelta(hours=1))
+    hace30 = iso(ahora() - timedelta(minutes=30))
     ultima, base = {}, {}
     for r in recientes:
         if _origen(r["id"], r["fuente"]) not in disp:  # el pico se mide con las mismas fuentes antes y ahora
             continue
         for b in json.loads(r["bancos"]):
-            (ultima if r["fecha"] >= hace1h else base)[b] = (ultima if r["fecha"] >= hace1h else base).get(b, 0) + 1
-    picos = [{"banco": b, "ultima_hora": n, "promedio": round(base.get(b, 0) / 48, 1)}
-             for b, n in ultima.items() if n >= 5 and n >= 3 * max(base.get(b, 0) / 48, 1)]
+            (ultima if r["fecha"] >= hace30 else base)[b] = (ultima if r["fecha"] >= hace30 else base).get(b, 0) + 1
+    # 96 tramos de 30 min en 48 h; "ultima_hora" conserva el nombre del campo por compatibilidad (son 30 min)
+    picos = [{"banco": b, "ultima_hora": n, "promedio": round(base.get(b, 0) / 96, 1)}
+             for b, n in ultima.items() if n >= 4 and n >= 3 * max(base.get(b, 0) / 96, 1)]
     return {**tot, "por_banco": por_banco, "por_categoria": por_cat, "por_fuente": por_fuente,
             "serie": _serie_continua(serie, ini, fin, gran), "granularidad": gran,
             "entidades_serie": _series_entidades(por_entidad, ini, fin, gran),

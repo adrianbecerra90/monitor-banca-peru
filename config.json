@@ -717,12 +717,12 @@
     "reserva_diaria_pct": 25
   },
   "notificaciones": {
-    "_nota": "Avisos al celular (ntfy) cuando las menciones negativas de la última hora superan promedio + 2σ (día/noche, últimos 'dias_base' días, solo fuentes disponibles). Total y por entidad.",
+    "_nota": "Avisos a Teams y al celular cuando las quejas (o críticas) de los últimos 'pico_ventana_min' minutos superan promedio + 2σ de tramos iguales (día/noche, últimos 'dias_base' días, solo fuentes disponibles). Total y por entidad. Si el pico sigue, se repite cada 'enfriamiento_minutos'.",
     "activas": true,
     "dias_base": 7,
     "minimo": 3,
-    "enfriamiento_minutos": 120,
-    "enlace": "https://monitor-banca-peru-production.up.railway.app",
+    "enfriamiento_minutos": 30,
+    "enlace": "https://136-114-162-86.sslip.io",
     "minimo_ultima_hora": 5,
     "piso_base_escasa": 8,
     "base_escasa": 20,
@@ -732,7 +732,8 @@
     "graves_para_critico": 6,
     "caidas_para_grave": 3,
     "caidas_para_critico": 6,
-    "_nota_graves": "Aviso inmediato solo con el evento valorado: N usuarios distintos de la misma entidad y tipo en la ventana (una queja suelta no avisa). Crítico: aviso oficial, el doble de usuarios, o corroboración en 2+ fuentes o prensa."
+    "_nota_graves": "Aviso inmediato solo con el evento valorado: N usuarios distintos de la misma entidad y tipo en la ventana (una queja suelta no avisa). Crítico: aviso oficial, el doble de usuarios, o corroboración en 2+ fuentes o prensa.",
+    "pico_ventana_min": 30
   },
   "x_referentes": {
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
@@ -787,6 +788,7 @@
     "alcance-2026-10-25",
     "consultas-sbs-2026-10-25",
     "ambiguos-2026-10-25",
-    "cuentas-2026-10-25"
+    "cuentas-2026-10-25",
+    "picos-30min-2026-10-31"
   ]
 }
