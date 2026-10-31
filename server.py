@@ -1998,14 +1998,92 @@ def _rapid_facebook(rango):
 
 
 # Fuentes sin ruta por un motivo distinto a una clave faltante (lo que ve el analista en el panel)
-MOTIVO_INACTIVA = {"LinkedIn": "Inactiva: sin proveedor (Bright Data se retiró el 21/10 por no renovarse cada mes); "
-                               "se activará al integrar RapidAPI · Real-Time LinkedIn Scraper"}
+MOTIVO_INACTIVA = {}
+
+# LinkedIn: Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes; 1 crédito trae las últimas 50
+# publicaciones de una página). Cuenta aparte de la de Facebook. Una página por consulta, cada 'intervalo_horas', la
+# que lleva más tiempo sin revisarse: con 10 páginas, cada una se revisa cada ~6-7 días (publican pocas por semana).
+LINKEDIN_HOST = "professional-network-data.p.rapidapi.com"
+
+
+def _linkedin_get(ruta, **q):
+    prov, cfg = "Professional Network Data", CONFIG.get("linkedin_api", {})
+    exigir_disponible(prov)
+    usados, tope = _creditos_mes(prov), cfg.get("max_creditos_mes", 45)
+    est = ESTADO.setdefault("linkedin_api", {})
+    if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 3)):
+        agotar(prov, f"Cuota agotada ({usados} de {tope} créditos este mes)")
+    req = urllib.request.Request(f"https://{LINKEDIN_HOST}{ruta}?" + urllib.parse.urlencode(q),
+                                 headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": LINKEDIN_HOST,
+                                          "User-Agent": UA})
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(400).decode("utf-8", "ignore")
+        if e.code == 429:
+            agotar(prov, "Cuota mensual del plan gratuito agotada")
+        if e.code == 403 and "not subscribed" in cuerpo:
+            raise RutaInactiva("Inactiva: la clave de RapidAPI no está suscrita a Professional Network Data")
+        raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(cuerpo.encode()))
+    with resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+        h = resp.headers
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        con.execute("INSERT INTO uso_proveedores VALUES (?, ?, 1) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + 1", (ahora().strftime("%Y-%m"), prov))
+    restantes, limite, reset = (h.get(f"X-RateLimit-Credits-{k}") for k in ("Remaining", "Limit", "Reset"))
+    est.update(usados_mes=usados + 1, tope=tope,
+               restantes=int(restantes) if str(restantes).isdigit() else est.get("restantes"),
+               limite_plan=int(limite) if str(limite).isdigit() else est.get("limite_plan"))
+    if str(reset).isdigit():
+        est["renovacion"] = iso(ahora() + timedelta(seconds=int(reset)))
+    if not d.get("success", True):
+        raise RuntimeError(str(d.get("message") or "respuesta sin éxito")[:160])
+    return d
 
 
 def fuente_linkedin(rango=None):
-    """Publicaciones de las páginas de empresa en LinkedIn. Bright Data se retiró (oct-2026); queda sin proveedor
-    hasta integrar el de RapidAPI."""
-    return None
+    """Publicaciones de las páginas de empresa en LinkedIn (Professional Network Data, RapidAPI)."""
+    return ejecutar_rutas("LinkedIn", [("Professional Network Data", _linkedin_paginas, "activo")], rango)
+
+
+def _linkedin_paginas(rango):
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise RutaInactiva("Sin clave: añade RAPIDAPI_KEY en .env")
+    if en_pausa("Professional Network Data"):
+        raise RutaInactiva("⏸ En pausa")
+    if rango:  # las cargas históricas no gastan el cupo (50 al mes): cada consulta ya trae 50 publicaciones
+        return []
+    mapa = cuentas("linkedin")
+    if not mapa:
+        raise RutaInactiva("Inactiva: ninguna entidad tiene página de LinkedIn en Configuración")
+    cfg = CONFIG.get("linkedin_api", {})
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS linkedin_revisadas (url TEXT PRIMARY KEY, fecha TEXT)")
+        vistas = dict(con.execute("SELECT url, fecha FROM linkedin_revisadas").fetchall())
+    ultima = max(vistas.values(), default="")
+    if ultima and ahora() - datetime.fromisoformat(ultima) < timedelta(hours=cfg.get("intervalo_horas", 16)):
+        return []
+    url = min(mapa, key=lambda u: vistas.get(u, ""))  # la que lleva más tiempo sin revisarse (o nunca)
+    banco = mapa[url]
+    slug = re.sub(r"[?#].*$", "", url).rstrip("/").rsplit("/", 1)[-1]
+    with _db_lock, db() as con:  # se marca antes de llamar: un error no hace reintentar la misma página en bucle
+        con.execute("INSERT OR REPLACE INTO linkedin_revisadas VALUES (?, ?)", (url, iso(ahora())))
+    d = _linkedin_get("/get-company-posts", username=slug, start="0")
+    out = []
+    for p in d.get("data") or []:
+        purl = p.get("postUrl") or p.get("shareUrl") or ""
+        if not purl:
+            continue
+        ts = p.get("postedDateTimestamp")
+        fecha = _epoch(int(ts) // 1000) if str(ts).isdigit() else p.get("postedDate")
+        out.append({"id": f"linkedin:post:{p.get('urn') or purl}", "fuente": "LinkedIn", "tipo": "post_oficial",
+                    "peru": True, "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "url": purl, "fecha": fecha,
+                    "texto": p.get("text") or "(publicación sin texto)",
+                    "metricas": {"reacciones": p.get("totalReactionCount"), "compartidos": p.get("repostsCount")}})
+    print(f"  LinkedIn · {banco}: {len(out)} publicaciones leídas", flush=True)
+    return out
 
 
 def fuente_facebook(rango=None):
@@ -2199,7 +2277,7 @@ FUENTES = {
     "YouTube": (fuente_youtube, "API oficial (YOUTUBE_API_KEY) + yt-dlp (gratis, con comentarios) + búsqueda web"),
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
-    "LinkedIn": (fuente_linkedin, "Publicaciones de las páginas de empresa (sin proveedor: pendiente RapidAPI)"),
+    "LinkedIn": (fuente_linkedin, "Publicaciones de las páginas de empresa: Professional Network Data (RapidAPI, una página cada 16 h)"),
     "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía Scrape.do (plan gratuito mensual, ritmo diario)"),
 }
 
@@ -2241,7 +2319,7 @@ except OSError:
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify",
-             "Scrape.do": "scrapedo", "RapidAPI": "rapidapi"}
+             "Scrape.do": "scrapedo", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
         AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
@@ -5113,7 +5191,7 @@ def resumen_proveedores():
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
-    ap, ra = (ESTADO.get(k, {}) for k in ("apify", "rapidapi"))
+    ap, ra, li = (ESTADO.get(k, {}) for k in ("apify", "rapidapi", "linkedin_api"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
@@ -5124,6 +5202,10 @@ def resumen_proveedores():
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
               f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
               [("Facebook", "RapidAPI")]),
+        ficha("Professional Network Data", "RAPIDAPI_KEY", "LinkedIn (páginas de empresa) · RapidAPI, cuota aparte",
+              f"{li['restantes']} de {li.get('limite_plan', '?')} créditos del plan" if li.get("restantes") is not None else None,
+              f"{_creditos_mes('Professional Network Data')} de {CONFIG.get('linkedin_api', {}).get('max_creditos_mes', 45)} créditos este mes",
+              [("LinkedIn", "Professional Network Data")]),
     ]
 
 

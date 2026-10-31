@@ -792,5 +792,11 @@
     "cuentas-2026-10-25",
     "picos-30min-2026-10-31",
     "eventos-2026-10-31"
-  ]
+  ],
+  "linkedin_api": {
+    "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen.",
+    "max_creditos_mes": 45,
+    "reserva": 3,
+    "intervalo_horas": 16
+  }
 }
