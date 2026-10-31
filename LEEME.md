@@ -93,9 +93,16 @@ todo el histórico se reclasifica con las reglas nuevas.
 - Filtros por banco, red, categoría, gravedad y texto. Exportación a CSV (Excel).
 - Alerta de **pico** en el panel: 4 o más quejas en 30 min y al menos 3 veces el promedio de 30 min
   de las 48 h previas (posible caída o incidente).
-- Aviso de **pico** a Teams y celular: quejas (o críticas) de los últimos 30 min por encima de promedio + 2σ de los
-  tramos de 30 min de los últimos 7 días (día y noche por separado). Se revisa cada 5 min; si el pico sigue, se
-  vuelve a avisar cada 30 min (`notificaciones.pico_ventana_min` y `enfriamiento_minutos`).
+- Aviso de **pico** a Teams y celular: usuarios distintos con quejas (o críticas) en los últimos 30 min por encima de
+  promedio + 2σ de los tramos de 30 min de los últimos 7 días (día y noche por separado). Se revisa cada 5 min.
+- **Cada pico o caída es un evento por entidad**, con avisos solo cuando algo cambia:
+  - *apertura* (Teams y celular) al detectarse el pico o la caída;
+  - *escalamiento* (Teams y celular, al instante) si sube de nivel o se duplican los usuarios (y son 3+ más);
+  - *recordatorio* (solo Teams) cada 60 min si sigue igual, con la duración y lo acumulado;
+  - *cierre* (Teams y celular) tras 30 min sin pico: duración, total de quejas y usuarios, máximo y nivel alcanzado.
+
+  El aviso de caída y el pico de la misma entidad son el mismo evento: no llegan por duplicado. Ajustes en
+  `notificaciones`: `pico_ventana_min`, `recordatorio_min`, `cierre_min`, `escalar_minimo`.
 - Avisos de escritorio opcionales para quejas graves (fraude, clonación, cuentas bloqueadas, caídas).
 
 Los datos se guardan en `quejas.db` (SQLite).

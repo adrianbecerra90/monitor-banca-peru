@@ -158,6 +158,8 @@ MIGRACIONES_REGLAS = {
     # 120); el enlace de los avisos apunta al servidor nuevo (Railway y Northflank se dieron de baja)
     "picos-30min-2026-10-31": {"notificaciones": {"pico_ventana_min": 30, "enfriamiento_minutos": 30,
                                                   "enlace": "https://136-114-162-86.sslip.io"}},
+    # 31/10/2026: cada pico o caída es un evento por entidad: apertura, escalamiento, recordatorio (solo Teams) y cierre
+    "eventos-2026-10-31": {"notificaciones": {"recordatorio_min": 60, "cierre_min": 30, "escalar_minimo": 3}},
 }
 _hechas = CONFIG.setdefault("_migraciones", [])
 _pendientes = [m for m in MIGRACIONES_REGLAS if m not in _hechas]
@@ -2591,11 +2593,11 @@ def utilidad_referentes(dias=30):
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
            "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
 TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico de quejas": "pico-de-quejas", "Pico de menciones críticas": "pico-de-menciones-criticas",
-               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas",
+               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas", "Cierre de evento": "cierre-de-evento",
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
 
 
-URL_PANEL = "https://monitor-banca-peru-production.up.railway.app/"
+URL_PANEL = "https://136-114-162-86.sslip.io/"
 
 
 def _url_panel():
@@ -2603,10 +2605,11 @@ def _url_panel():
 
 
 def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None,
-                        corto=None):
+                        corto=None, solo_teams=False):
     """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
     tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). `corto`: versión breve para el
-    celular (ntfy); Teams recibe siempre el mensaje completo."""
+    celular (ntfy); Teams recibe siempre el mensaje completo. `solo_teams`: no suena en el celular (recordatorios), salvo
+    que Teams no esté configurado."""
     enviados, errores = 0, []
     pie = f"\n\nMás información: {_url_panel()}"  # pie fijo en todos los avisos
     corto = f"{corto.rstrip()}{pie}" if corto else None
@@ -2618,6 +2621,8 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
         etiquetas = ",".join(x for x in (etiquetas, TIPOS_AVISO.get(tipo, ""),
                                          "nivel-" + normalizar(nivel or "").replace(" ", "-") if nivel else "") if x)
     tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
+    if solo_teams and _urls_teams():
+        tema = ""
     if re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema):
         servidor = os.environ.get("NOTIFY_NTFY_SERVER", "https://ntfy.sh").rstrip("/")
         titulo_n = (f"[{nivel.upper()}] " if nivel else "") + titulo
@@ -2678,37 +2683,36 @@ def _umbrales_por_tramo(clave_fn, dias=7, medida="quejas", minutos=30):
     fin = _tramo(ahora(), minutos)
     ini = fin - timedelta(days=dias)
     with _db_lock, db() as con:
-        filas = con.execute(f"SELECT id, fuente, bancos, fecha FROM items WHERE oculto = 0 AND {MEDIDAS_PICO[medida]} "
+        filas = con.execute(f"SELECT id, fuente, bancos, autor, fecha FROM items WHERE oculto = 0 AND {MEDIDAS_PICO[medida]} "
                             "AND fecha >= ? AND fecha < ? AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (iso(ini), iso(fin))).fetchall()
     cuentas = {}
     for r in filas:
         if _origen(r["id"], r["fuente"]) not in disp:
             continue
         h = _tramo(datetime.fromisoformat(r["fecha"]), minutos)
-        for k in clave_fn(r):
-            cuentas.setdefault(k, {}).setdefault(h, 0)
-            cuentas[k][h] += 1
+        for k in clave_fn(r):  # usuarios distintos por tramo, como se mide el pico
+            cuentas.setdefault(k, {}).setdefault(h, set()).add((r["autor"] or r["id"]).lower())
     horas = [ini + timedelta(minutes=minutos * i) for i in range(dias * 24 * 60 // minutos)]
     res = {}
     for k, por_hora in cuentas.items():
         res[k] = {}
         for franja in ("dia", "noche"):
-            vals = [por_hora.get(h, 0) for h in horas if (6 <= h.astimezone(LIMA).hour < 22) == (franja == "dia")]
+            vals = [len(por_hora.get(h, ())) for h in horas if (6 <= h.astimezone(LIMA).hour < 22) == (franja == "dia")]
             n = len(vals)
             p = sum(vals) / n if n else 0
             sd = (sum((v - p) ** 2 for v in vals) / n) ** 0.5 if n else 0
             res[k][franja] = (p, sd, n)
-        res[k]["base"] = sum(por_hora.values())
+        res[k]["base"] = sum(len(v) for v in por_hora.values())
     return res
 
 
 # Aviso inmediato de lo grave (no espera al umbral de picos): se dispara al capturar la publicación
-_GRAVES = {"vistos": {}, "ultimo_aviso": {}, "lock": threading.Lock()}
+_GRAVES = {"vistos": {}, "lock": threading.Lock()}
 
 
 def _valorar_evento(b, clase, ventana):
     """Valora el evento de una entidad con lo visto en la ventana: una queja suelta no es un evento.
-    Devuelve (nivel, resumen): nivel None (no avisar), 'Grave' o 'Crítico'."""
+    Devuelve (nivel, resumen, usuarios): nivel None (no avisar), 'Grave' o 'Crítico'."""
     cfg = CONFIG.get("notificaciones", {})
     vistos = [v for v in _GRAVES["vistos"].get((clase, b), []) if time.time() - v["t"] < ventana]
     _GRAVES["vistos"][(clase, b)] = vistos
@@ -2735,21 +2739,151 @@ def _valorar_evento(b, clase, ventana):
     critico = (comunicado and not externo) or n_aut >= critico_n or (n_aut >= minimo and (n_fue >= 2 or medios or confirmado)) \
         or (medios and n_aut >= 2)
     if critico and not externo:
-        return "Crítico", resumen
+        return "Crítico", resumen, n_aut
     if critico or n_aut >= minimo or medios or comunicado or (confirmado and n_aut >= 2):
-        return "Grave", resumen
-    return None, resumen
+        return "Grave", resumen, n_aut
+    return None, resumen, n_aut
+
+
+# ---------------- Eventos por entidad ----------------
+# Un pico o una caída de una entidad es un evento abierto; se avisa solo cuando algo cambia:
+#   apertura (Teams y celular) → escalamiento (al instante si sube de nivel o se duplican los usuarios)
+#   → recordatorio (solo Teams, cada 'recordatorio_min' si sigue igual) → cierre (Teams y celular, tras 'cierre_min'
+#   sin pico), con la duración y lo acumulado. Se guardan en el disco para que un reinicio no repita la apertura.
+_EVENTOS = {"abiertos": {}, "lock": threading.RLock()}
+RANGO_NIVEL = {"Medio": 1, "Grave": 2, "Crítico": 3}
+ARCHIVO_EVENTOS = os.path.join(DATOS, "eventos_abiertos.json")
+
+
+def _guardar_eventos():
+    try:
+        with open(ARCHIVO_EVENTOS, "w", encoding="utf-8") as f:
+            json.dump(_EVENTOS["abiertos"], f, ensure_ascii=False)
+    except OSError as e:
+        print(f"  Eventos: no se pudo guardar ({e})", flush=True)
+
+
+def _cargar_eventos():
+    try:
+        with open(ARCHIVO_EVENTOS, encoding="utf-8") as f:
+            _EVENTOS["abiertos"] = json.load(f)
+    except (OSError, ValueError):
+        _EVENTOS["abiertos"] = {}
+
+
+_cargar_eventos()
+
+
+def _evento_registrar(medida, k, nivel, usuarios, origen):
+    """Suma actividad al evento de la entidad y decide el aviso: 'apertura', 'sube' (de nivel), 'crece' (se duplican
+    los usuarios) o None (sin novedad)."""
+    cfg = CONFIG.get("notificaciones", {})
+    clave, t = f"{medida}|{k}", time.time()
+    with _EVENTOS["lock"]:
+        ev = _EVENTOS["abiertos"].get(clave)
+        if not ev:
+            _EVENTOS["abiertos"][clave] = {"medida": medida, "entidad": k, "origen": origen, "inicio": t, "nivel": nivel,
+                                           "nivel_max": nivel, "usuarios_aviso": usuarios, "max_usuarios": usuarios,
+                                           "ultimo_aviso": t, "ultima_actividad": t}
+            _guardar_eventos()
+            return "apertura"
+        ev["ultima_actividad"] = t
+        ev["max_usuarios"] = max(ev["max_usuarios"], usuarios)
+        # Subir de nivel escala si llega a Crítico o si además hay 'escalar_minimo' usuarios más (evita que un usuario
+        # de diferencia alrededor del umbral haga saltar el aviso); duplicar los usuarios escala siempre
+        mas = usuarios - ev["usuarios_aviso"] >= cfg.get("escalar_minimo", 3)
+        sube = RANGO_NIVEL.get(nivel, 0) > RANGO_NIVEL.get(ev["nivel"], 0) and (nivel == "Crítico" or mas)
+        duplica = usuarios >= 2 * ev["usuarios_aviso"] and mas
+        fase = "sube" if sube else "crece" if duplica else None
+        if fase:
+            antes = ev["usuarios_aviso"]
+            ev.update(nivel=nivel if sube else ev["nivel"], usuarios_aviso=usuarios, ultimo_aviso=t, usuarios_antes=antes)
+            ev["nivel_max"] = ev["nivel"] if RANGO_NIVEL.get(ev["nivel"], 0) > RANGO_NIVEL.get(ev["nivel_max"], 0) else ev["nivel_max"]
+        _guardar_eventos()
+        return fase
+
+
+def _duracion(segundos):
+    m = max(1, round(segundos / 60))
+    return f"{m // 60} h {m % 60:02d} min" if m >= 60 else f"{m} min"
+
+
+def _acumulado_evento(ev):
+    """Quejas (o críticas) de la entidad desde el inicio del evento: total, usuarios distintos y fuentes."""
+    ventana = CONFIG.get("notificaciones", {}).get("pico_ventana_min", 30)
+    desde = datetime.fromtimestamp(ev["inicio"], LIMA) - timedelta(minutes=ventana)
+    disp = fuentes_disponibles()
+    with _db_lock, db() as con:
+        filas = con.execute(f"SELECT id, fuente, bancos, autor FROM items WHERE oculto = 0 AND {MEDIDAS_PICO[ev['medida']]} "
+                            "AND fecha >= ? AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (iso(desde),)).fetchall()
+    n, autores, fuentes = 0, set(), set()
+    for r in filas:
+        if _origen(r["id"], r["fuente"]) not in disp:
+            continue
+        if ev["entidad"] != "Total" and ev["entidad"] not in json.loads(r["bancos"] or "[]"):
+            continue
+        n += 1
+        autores.add((r["autor"] or r["id"]).lower())
+        fuentes.add(r["fuente"])
+    return n, len(autores), sorted(fuentes)
+
+
+def _seguir_eventos(medida):
+    """Recordatorio (solo Teams) de los eventos que siguen igual y cierre de los que ya no tienen pico."""
+    cfg = CONFIG.get("notificaciones", {})
+    cierre, recordar = cfg.get("cierre_min", 30) * 60, cfg.get("recordatorio_min", 60) * 60
+    t = time.time()
+    with _EVENTOS["lock"]:
+        pendientes = [(c, dict(ev)) for c, ev in _EVENTOS["abiertos"].items() if ev["medida"] == medida]
+    for clave, ev in pendientes:
+        quien = "todas las entidades" if ev["entidad"] == "Total" else ev["entidad"]
+        nombre = "quejas" if medida == "quejas" else "menciones críticas"
+        inicio = datetime.fromtimestamp(ev["inicio"], LIMA)
+        if t - ev["ultima_actividad"] >= cierre:
+            n, usuarios, fuentes = _acumulado_evento(ev)
+            fin = datetime.fromtimestamp(ev["ultima_actividad"], LIMA)
+            titulo = f"Normalizado · {quien}"
+            texto = (f"Sin pico de {nombre} desde las {fin:%H:%M}. Duró {_duracion(ev['ultima_actividad'] - ev['inicio'])} "
+                     f"({inicio:%H:%M}–{fin:%H:%M}).\nTotal: {n} {nombre} de {usuarios} usuarios distintos"
+                     f"{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo {ev['max_usuarios']} usuarios en "
+                     f"{cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
+            with _EVENTOS["lock"]:
+                _EVENTOS["abiertos"].pop(clave, None)
+                _guardar_eventos()
+            _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", prioridad="default", etiquetas="white_check_mark")
+        elif t - ev["ultima_actividad"] <= 600 and t - ev["ultimo_aviso"] >= recordar:
+            n, usuarios, fuentes = _acumulado_evento(ev)
+            with _EVENTOS["lock"]:
+                if clave in _EVENTOS["abiertos"]:
+                    _EVENTOS["abiertos"][clave]["ultimo_aviso"] = t
+                    _guardar_eventos()
+            titulo = f"Sigue · {quien}: {nombre}"
+            texto = (f"Activo desde las {inicio:%H:%M} ({_duracion(t - ev['inicio'])}). Acumulado: {n} {nombre} de "
+                     f"{usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}.\n"
+                     f"Nivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
+            _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
+                           ev["nivel"], solo_teams=True)
+
+
+def _avisar_evento(titulo, texto, tipo, nivel, solo_teams=False, **kw):
+    try:
+        enviar_notificacion(titulo, texto, url=CONFIG.get("notificaciones", {}).get("enlace") or None, tipo=tipo,
+                            nivel=nivel, solo_teams=solo_teams, **kw)
+        print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {titulo} · {texto}", flush=True)
+    except Exception as e:
+        print(f"  Notificación fallida ({type(e).__name__}: {e})", flush=True)
 
 
 def avisar_graves(nuevos):
     """Aviso inmediato solo cuando el evento está valorado: varios usuarios distintos, varias fuentes, prensa
     o aviso oficial. Una queja directa, por grave que sea para quien la escribe, no es crítica por sí sola:
-    queda en el panel y en el reporte programado."""
+    queda en el panel y en el reporte programado. Abre el evento de la entidad o lo escala; si ya está abierto con
+    el mismo nivel, no se repite (el seguimiento lo hace _seguir_eventos)."""
     cfg = CONFIG.get("notificaciones", {})
     if not cfg.get("graves_inmediatos", True) or not _hay_canal_aviso():
         return
     corte = iso(ahora() - timedelta(hours=2))  # solo lo reciente (no cargas históricas ni publicaciones viejas)
-    ventana, enfriar = cfg.get("graves_ventana_min", 30) * 60, cfg.get("graves_enfriamiento_min", 30) * 60
+    ventana = cfg.get("graves_ventana_min", 30) * 60
     for n in nuevos:
         if n.get("fecha", "") < corte or n.get("tipo") in ("post_oficial", "alerta_ciber"):
             continue
@@ -2770,21 +2904,21 @@ def avisar_graves(nuevos):
         for b in n.get("bancos") or []:
             with _GRAVES["lock"]:
                 _GRAVES["vistos"].setdefault((clase, b), []).append(registro)
-                nivel, resumen = _valorar_evento(b, clase, ventana)
+                nivel, resumen, n_aut = _valorar_evento(b, clase, ventana)
                 if not nivel:
                     continue
-                ultimo = _GRAVES["ultimo_aviso"].get((clase, b), (0, None))
-                # escalar de Grave a Crítico avisa siempre; si no, se respeta el enfriamiento por entidad y tipo
-                if time.time() - ultimo[0] < enfriar and not (nivel == "Crítico" and ultimo[1] != "Crítico"):
+                fase = _evento_registrar("quejas", b, nivel, n_aut, clase)
+                if not fase:
                     continue
-                _GRAVES["ultimo_aviso"][(clase, b)] = (time.time(), nivel)
                 ejemplos = [v for v in _GRAVES["vistos"][(clase, b)] if v["oficial"] or v["medio"]][-2:] or \
                            _GRAVES["vistos"][(clase, b)][-3:]
             critico = nivel == "Crítico"
             cats = ", ".join(sorted(cats_foco)) or ("comunicado oficial de falla" if tipo_oficial == "comunicado"
                                                     else "falla confirmada por la entidad")
-            titulo = f"{nivel.upper() if critico else nivel} · {b}: {cats}"
-            cuerpo = f"Valoración: {resumen}.\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
+            titulo = {"sube": "Escala a ", "crece": "Crece · "}.get(fase, "") + f"{nivel.upper() if critico else nivel} · {b}: {cats}"
+            antes = _EVENTOS["abiertos"].get(f"quejas|{b}", {}).get("usuarios_antes")
+            cuerpo = f"Valoración: {resumen}" + (f" (en el aviso anterior: {antes})" if fase == "crece" and antes else "") \
+                + ".\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
                 enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
                                     tipo="Queja crítica" if critico else "Queja grave", nivel=nivel,
@@ -2796,14 +2930,16 @@ def avisar_graves(nuevos):
 
 
 def revisar_umbral_notificar():
-    """Picos por tramo de 30 min (promedio + 2σ de su propia historia), por separado: de quejas (operacional; nivel Medio o
-    Grave) y de críticas sin incidente (reputacional; siempre Medio). Total y por entidad."""
+    """Picos por tramo de 30 min (promedio + 2σ de su propia historia, en usuarios distintos), por separado: de quejas
+    (operacional; nivel Medio o Grave) y de críticas sin incidente (reputacional; siempre Medio). Total y por entidad.
+    Cada pico abre o escala el evento de la entidad; el seguimiento (recordatorio y cierre) va en _seguir_eventos."""
     cfg = CONFIG.get("notificaciones", {})
     if not cfg.get("activas", True) or not _hay_canal_aviso():
         return []
     enviadas = []
     for medida in ("quejas", "criticas"):
         enviadas += _revisar_pico(cfg, medida)
+        _seguir_eventos(medida)
     ESTADO["notificaciones"] = {"ultima_revision": iso(ahora()), "enviadas": enviadas or ESTADO.get("notificaciones", {}).get("enviadas", [])}
     return enviadas
 
@@ -2815,19 +2951,20 @@ def _revisar_pico(cfg, medida):
     disp = fuentes_disponibles()
     desde_v = iso(ahora() - timedelta(minutes=minutos))
     with _db_lock, db() as con:
-        recientes = con.execute("SELECT id, fuente, bancos, sentimiento, es_queja, categorias FROM items "
+        recientes = con.execute("SELECT id, fuente, bancos, autor, sentimiento, es_queja, categorias FROM items "
                                 "WHERE oculto = 0 AND fecha >= ? AND fecha <= ? "
                                 "AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (desde_v, iso(ahora()))).fetchall()
-    ahora_n, contexto = {}, {}
+    usuarios_k, contexto = {}, {}
     for r in recientes:
         if _origen(r["id"], r["fuente"]) not in disp:
             continue
         cuenta = bool(r["es_queja"]) if medida == "quejas" else (r["sentimiento"] == "negativo" and not r["es_queja"])
         for k in clave_fn(r):
-            c = contexto.setdefault(k, {"total": 0, "quejas": 0, "foco": {}})
+            c = contexto.setdefault(k, {"total": 0, "casos": 0, "quejas": 0, "foco": {}})
             c["total"] += 1
-            if cuenta:
-                ahora_n[k] = ahora_n.get(k, 0) + 1
+            if cuenta:  # se cuentan usuarios distintos: alguien que publica 5 veces no es un pico
+                usuarios_k.setdefault(k, set()).add((r["autor"] or r["id"]).lower())
+                c["casos"] += 1
             if r["es_queja"]:
                 c["quejas"] += 1
                 for cat in json.loads(r["categorias"] or "[]"):
@@ -2835,8 +2972,8 @@ def _revisar_pico(cfg, medida):
                         c["foco"][cat] = c["foco"].get(cat, 0) + 1
     franja = "dia" if 6 <= ahora().astimezone(LIMA).hour < 22 else "noche"
     enviadas, explicado = [], False
-    # Primero las entidades; "Total" solo avisa si ninguna entidad está en pico (avisada ahora o hace poco)
-    orden = sorted(ahora_n.items(), key=lambda x: (x[0] == "Total", -x[1]))
+    # Primero las entidades; "Total" solo avisa si ninguna entidad está en pico
+    orden = sorted(((k, len(v)) for k, v in usuarios_k.items()), key=lambda x: (x[0] == "Total", -x[1]))
     for k, n in orden:
         if k == "Total" and explicado:
             continue
@@ -2845,41 +2982,37 @@ def _revisar_pico(cfg, medida):
         umbral = p + 2 * sd
         if u.get("base", 0) < cfg.get("base_escasa", 20):  # con poca historia, la desviación engaña
             umbral = max(umbral, cfg.get("piso_base_escasa", 8) * minutos / 60, cfg.get("minimo", 3))
-        # mínimo de casos en la ventana (el de una hora, a escala; nunca menos de 'minimo')
+        # mínimo de usuarios en la ventana (el de una hora, a escala; nunca menos de 'minimo')
         minimo = max(cfg.get("minimo", 3), round(cfg.get("minimo_ultima_hora", 5) * minutos / 60))
         if muestras < 24 * 60 // minutos or n <= umbral or n < minimo:
             continue
         explicado = True
-        if time.time() - _NOTIF["ultima"].get((medida, k), 0) < cfg.get("enfriamiento_minutos", 120) * 60:
+        if medida == "quejas":
+            nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
+        else:
+            nivel_p = "Medio"
+        fase = _evento_registrar(medida, k, nivel_p, n, "pico")
+        if not fase:
             continue
-        _NOTIF["ultima"][(medida, k)] = time.time()
-        _NOTIF.setdefault("enviadas", []).append(time.time())
-        alertas_hora = sum(1 for t in _NOTIF["enviadas"] if time.time() - t < 3600)
-        en_ventana = f"en los últimos {minutos} min" if minutos != 60 else "en la última hora"
         quien = "todas las entidades" if k == "Total" else k
-        c = contexto.get(k, {"total": n, "quejas": 0, "foco": {}})
+        c = contexto.get(k, {"total": n, "casos": n, "quejas": 0, "foco": {}})
         nombres = {"App / canales caídos": "caídas", "Errores operativos": "errores operativos",
                    "Fraude / seguridad": "fraude", "Ciberseguridad / hackeos": "ciberseguridad"}
         foco = ", ".join(f"{v} {nombres[cat]}" for cat, v in sorted(c["foco"].items(), key=lambda x: -x[1]))
-        normal = (f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} cada {minutos} min · "
-                  f"{'1.ª' if alertas_hora == 1 else str(alertas_hora) + '.ª'} alerta de la última hora.")
+        normal = f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} usuarios cada {minutos} min."
+        escala = {"sube": "Escala · ", "crece": "Crece · "}.get(fase, "")
         if medida == "quejas":
-            titulo, tipo = f"Pico de quejas: {quien}", "Pico de quejas"
-            texto = (f"Quejas: {n} {en_ventana} sobre {quien}{' (' + foco + ')' if foco else ''}.\n"
-                     f"Menciones: {c['total']} en total en el mismo lapso.\n" + normal)
-            nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
+            titulo, tipo = f"{escala}Pico de quejas: {quien}", "Pico de quejas"
+            texto = (f"Quejas: {n} usuarios distintos ({c['casos']} publicaciones) en los últimos {minutos} min sobre "
+                     f"{quien}{' (' + foco + ')' if foco else ''}.\nMenciones: {c['total']} en total en el mismo lapso.\n" + normal)
         else:
-            titulo, tipo = f"Pico de menciones críticas: {quien}", "Pico de menciones críticas"
-            texto = (f"Menciones críticas: {n} {en_ventana} sobre {quien} (de {c['total']} menciones): malestar "
-                     f"reputacional, no una falla reportada.\nQuejas: {c['quejas']} en el mismo lapso.\n" + normal)
-            nivel_p = "Medio"
-        try:
-            enviar_notificacion(titulo, texto, url=cfg.get("enlace") or os.environ.get("SYNC_URL") or None,
-                                tipo=tipo, nivel=nivel_p)
-            enviadas.append({"clave": k, "medida": medida, "n": n, "umbral": round(umbral, 1)})
-            print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {titulo} · {texto}", flush=True)
-        except Exception as e:
-            print(f"  Notificación fallida ({type(e).__name__}: {e})", flush=True)
+            titulo, tipo = f"{escala}Pico de menciones críticas: {quien}", "Pico de menciones críticas"
+            texto = (f"Menciones críticas: {n} usuarios distintos en los últimos {minutos} min sobre {quien} (de {c['total']} "
+                     f"menciones): malestar reputacional, no una falla reportada.\nQuejas: {c['quejas']} en el mismo lapso.\n" + normal)
+        if fase == "crece":
+            texto += f"\nEn el aviso anterior eran {_EVENTOS['abiertos'].get(f'{medida}|{k}', {}).get('usuarios_antes')} usuarios."
+        _avisar_evento(titulo, texto, tipo, nivel_p)
+        enviadas.append({"clave": k, "medida": medida, "n": n, "umbral": round(umbral, 1), "fase": fase})
     return enviadas
 
 
@@ -5074,7 +5207,7 @@ def resumen_monitoreo():
     ciber = [{"fuente": "Cuentas referentes en X", "minutos": _cfg_referentes().get("intervalo_minutos", 10)}] + \
             [{"fuente": nombres.get(k, k), "minutos": v} for k, v in fc.items() if v]
     return {"disponibilidad": disp, "ciber": ciber,
-            "notificaciones": {k: CONFIG.get("notificaciones", {}).get(k) for k in ("dias_base", "minimo_ultima_hora", "enfriamiento_minutos", "pico_ventana_min")}}
+            "notificaciones": {k: CONFIG.get("notificaciones", {}).get(k) for k in ("dias_base", "minimo_ultima_hora", "pico_ventana_min", "recordatorio_min", "cierre_min")}}
 
 
 def sugerencias_reglas(minimo=3):
