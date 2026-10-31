@@ -160,6 +160,8 @@ MIGRACIONES_REGLAS = {
                                                   "enlace": "https://136-114-162-86.sslip.io"}},
     # 31/10/2026: cada pico o caída es un evento por entidad: apertura, escalamiento, recordatorio (solo Teams) y cierre
     "eventos-2026-10-31": {"notificaciones": {"recordatorio_min": 60, "cierre_min": 30, "escalar_minimo": 3}},
+    # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
+    "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
 }
 _hechas = CONFIG.setdefault("_migraciones", [])
 _pendientes = [m for m in MIGRACIONES_REGLAS if m not in _hechas]
@@ -185,6 +187,9 @@ for _m in _pendientes:
     _l = CONFIG.setdefault("nitter", {}).setdefault("consultas_extra", [])
     _l += [x for x in _c.get("nitter_consultas_extra", []) if x not in _l]
     CONFIG.setdefault("notificaciones", {}).update(_c.get("notificaciones", {}))
+    if _c.get("scrapedo_sitios") and CONFIG.get("scrapedo", {}).get("sitios"):  # sin lista propia ya usa SITIOS_GOOGLE
+        _l = CONFIG["scrapedo"]["sitios"]
+        _l += [x for x in _c["scrapedo_sitios"] if x not in _l]
     _hechas.append(_m)
 CONFIG.setdefault("nitter", {}).setdefault("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
 if _pendientes:  # se guarda en el disco para que no se repita (copia previa en config_copias)
@@ -1794,7 +1799,13 @@ def _epoch(v):
 
 # ---------------- Scrape.do: búsqueda en Google de menciones públicas en redes y foros ----------------
 # Plan gratuito mensual (10 créditos por búsqueda). El saldo del mes se reparte por día para que alcance todo el mes.
-SITIOS_GOOGLE = ["site:facebook.com", "(site:tiktok.com OR site:instagram.com)", "(site:reddit.com OR inurl:foro OR inurl:forum)"]
+SITIOS_GOOGLE = ["site:facebook.com", "(site:tiktok.com OR site:instagram.com)", "(site:reddit.com OR inurl:foro OR inurl:forum)",
+                 "(site:linkedin.com/posts OR site:linkedin.com/pulse)"]
+# En LinkedIn casi nadie "reclama": se habla de incidentes, caídas, fraudes, ciberataques y sanciones (empleados, gremios,
+# consultores, prensa). Esos grupos usan estas palabras en lugar de las de queja.
+SITIOS_INCIDENTES = ("linkedin.com",)
+PALABRAS_INCIDENTE = ('(caída OR interrupción OR incidente OR fraude OR estafa OR ciberataque OR hackeo OR filtración '
+                      'OR ransomware OR multa OR sanción OR reclamo)')
 
 def sd_google(consulta):
     """Una búsqueda en Google vía Scrape.do (10 créditos). Respeta el tope mensual y la cuota del día.
@@ -1846,7 +1857,20 @@ def buscar_google(consulta):
 
 
 RED_POR_DOMINIO = {"facebook.com": "Facebook", "instagram.com": "Instagram", "tiktok.com": "TikTok",
-                   "reddit.com": "Reddit", "x.com": "X", "twitter.com": "X", "youtube.com": "YouTube"}
+                   "reddit.com": "Reddit", "x.com": "X", "twitter.com": "X", "youtube.com": "YouTube",
+                   "linkedin.com": "LinkedIn"}
+
+
+def _autor_web(url, dominio):
+    """Autor de un resultado de Google cuando la URL lo dice (para contar usuarios distintos); si no, el dominio.
+    LinkedIn: /posts/<usuario>_… y /pulse/<titulo>-<usuario>; Facebook e Instagram: el primer tramo de la ruta."""
+    ruta = urllib.parse.urlparse(url).path.strip("/").split("/")
+    if dominio.endswith("linkedin.com") and len(ruta) >= 2 and ruta[0] == "posts":
+        return ruta[1].split("_")[0] or dominio
+    if dominio.endswith(("facebook.com", "instagram.com", "tiktok.com")) and ruta and ruta[0] and \
+            ruta[0] not in ("groups", "watch", "story.php", "permalink.php", "p", "reel", "share", "photo", "video"):
+        return ruta[0].lstrip("@")
+    return dominio
 
 
 def fuente_busqueda_web(rango=None):
@@ -1858,8 +1882,23 @@ def fuente_busqueda_web(rango=None):
     quejas = '(reclamo OR problema OR estafa OR "no funciona" OR caído OR bloqueada OR queja)'
     out = []
     cfg = CONFIG.get("scrapedo", {})
-    for sitios in cfg.get("sitios") or SITIOS_GOOGLE:
-        for r in buscar_google(f"{sitios} ({terminos}) {quejas}"):
+    grupos = cfg.get("sitios") or SITIOS_GOOGLE
+    # Rotación: primero el grupo que lleva más tiempo sin buscarse. La cuota diaria alcanza para ~3 búsquedas; así
+    # todos los grupos se cubren aunque haya más grupos que búsquedas por día.
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS busqueda_web_grupos (grupo TEXT PRIMARY KEY, fecha TEXT)")
+        vistos = dict(con.execute("SELECT grupo, fecha FROM busqueda_web_grupos").fetchall())
+    for sitios in sorted(grupos, key=lambda g: vistos.get(g, "")):
+        palabras = PALABRAS_INCIDENTE if any(d in sitios for d in SITIOS_INCIDENTES) else quejas
+        try:
+            resultados = buscar_google(f"{sitios} ({terminos}) {palabras}")
+        except RutaInactiva:
+            if out:  # la cuota del día se acabó a mitad: lo ya leído vale; el resto sigue en la próxima vuelta
+                break
+            raise
+        with _db_lock, db() as con:
+            con.execute("INSERT OR REPLACE INTO busqueda_web_grupos VALUES (?, ?)", (sitios, iso(ahora())))
+        for r in resultados:
             url = url_segura(r.get("url"))
             if not url:
                 continue
@@ -1870,7 +1909,8 @@ def fuente_busqueda_web(rango=None):
             if not fecha or fecha < iso(ahora() - timedelta(days=cfg.get("max_dias", 3))):
                 continue  # sin fecha fiable o antiguo: no es una mención nueva
             out.append({"id": "web:" + url.split("?")[0], "fuente": red, "tipo": "", "peru": True, "via": "Google",
-                        "autor": dominio, "texto": (r.get("title") or "") + ". " + desc, "fecha": fecha, "url": url})
+                        "autor": _autor_web(url, dominio), "texto": (r.get("title") or "") + ". " + desc, "fecha": fecha,
+                        "url": url})
         time.sleep(1)
     return out
 
@@ -2278,7 +2318,7 @@ FUENTES = {
     "Noticias": (fuente_noticias, "Google News PE, Bing News y RSS de medios peruanos"),
     "Bluesky": (fuente_bluesky, "API pública"),
     "LinkedIn": (fuente_linkedin, "Publicaciones de las páginas de empresa: Professional Network Data (RapidAPI, una página cada 16 h)"),
-    "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, Reddit y foros, vía Scrape.do (plan gratuito mensual, ritmo diario)"),
+    "Búsqueda Google": (fuente_busqueda_web, "Menciones públicas en Facebook, TikTok, Instagram, LinkedIn, Reddit y foros, vía Scrape.do (plan gratuito mensual, ritmo diario, grupos en rotación)"),
 }
 
 ESTADO = {"fuentes": {n: {"ok": None, "msg": "Pendiente", "desc": d} for n, (_, d) in FUENTES.items()},
@@ -5196,7 +5236,7 @@ def resumen_proveedores():
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
               [("Facebook", "Apify"), ("Instagram", "Apify"), ("TikTok", "Apify"), ("X", "Apify (respaldo de pago)")]),
-        ficha("Scrape.do", "SCRAPEDO_TOKEN", "Búsqueda Google: Facebook, TikTok, Instagram, Reddit, foros", None,
+        ficha("Scrape.do", "SCRAPEDO_TOKEN", "Búsqueda Google: Facebook, TikTok, Instagram, LinkedIn, Reddit, foros", None,
               f"{_creditos_mes('Scrape.do')} de {CONFIG.get('scrapedo', {}).get('max_creditos_mes', 900)} créditos este mes", []),
         ficha("RapidAPI", "RAPIDAPI_KEY", "Facebook (Facebook Scraper)",
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
