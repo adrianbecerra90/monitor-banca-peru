@@ -162,6 +162,9 @@ MIGRACIONES_REGLAS = {
                                                   "enlace": "https://136-114-162-86.sslip.io"}},
     # 31/10/2026: cada pico o caída es un evento por entidad: apertura, escalamiento, recordatorio (solo Teams) y cierre
     "eventos-2026-10-31": {"notificaciones": {"recordatorio_min": 60, "cierre_min": 30, "escalar_minimo": 3}},
+    # 02/11/2026 (auditoría de avisos): el evento se cierra tras 45 min sin quejas (antes 30, sin pico) y el pico de
+    # "todas las entidades" exige 8 usuarios (3 repartidos entre entidades distintas eran ruido)
+    "avisos-calibracion-2026-11-02": {"notificaciones": {"cierre_min": 45, "total_minimo": 8}},
     # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
 }
@@ -1518,6 +1521,9 @@ def x_apify(rango=None):
 AVISO_OFICIAL_CAIDA = re.compile(r"\b(intermitencia|inconvenientes? (con|en) (nuestr|la app|el app|la banca|los canales)|"
                                  r"estamos (trabajando|presentando)|restablec\w*|fuera de servicio|mantenimiento programado|"
                                  r"no (esta|estan) disponibles?)\b")
+# La entidad comunica que ya está resuelto: cierra el evento (no es un aviso de falla)
+AVISO_RESTABLECIDO = re.compile(r"\b(restablecid[oa]s?|ha sido restablecid|(funcionando|operando|opera|funciona) con normalidad|"
+                                r"(ya|nuevamente) (se encuentra[n]? |esta[n]? )?(operativ|disponible|funcionando)|solucionad[oa]s?)")
 # La falla es de un tercero (PayPal, una pasarela, un proveedor) o es un mantenimiento planificado: no es caída propia
 AVISO_EXTERNO = re.compile(r"\b(externa|externo|ajen[oa] a nuestr|proveedor|terceros?|paypal|mantenimiento programado|"
                            r"ventana de mantenimiento)\b")
@@ -2848,7 +2854,7 @@ def _valorar_evento(b, clase, ventana):
     n_aut, n_fue = len(autores), len(fuentes)
     minimo = cfg.get("caidas_para_grave" if clase == "caida" else "graves_para_grave", 3)
     critico_n = cfg.get("caidas_para_critico" if clase == "caida" else "graves_para_critico", 6)
-    partes = [f"{n_aut} usuario{'s' if n_aut != 1 else ''} distinto{'s' if n_aut != 1 else ''}"]
+    partes = [f"{n_aut} usuario{'s' if n_aut != 1 else ''} distinto{'s' if n_aut != 1 else ''}"] if n_aut else []
     if n_fue > 1:
         partes.append(f"{n_fue} fuentes ({', '.join(sorted(fuentes))})")
     if medios:
@@ -2856,7 +2862,7 @@ def _valorar_evento(b, clase, ventana):
     if confirmado:
         partes.append(("comunicado" if comunicado else "respuesta a un cliente") + " de la entidad" +
                       (" (atribuye la falla a un tercero o a un mantenimiento)" if externo else ""))
-    resumen = " · ".join(partes) + f" en {ventana // 60} min"
+    resumen = (" · ".join(partes) or "sin quejas de usuarios aún") + f" en {ventana // 60} min"
     # Una respuesta oficial a un cliente confirma, pero no es un evento por sí sola: suma como corroboración.
     # Lo atribuido a un tercero o a un mantenimiento nunca pasa de Grave.
     critico = (comunicado and not externo) or n_aut >= critico_n or (n_aut >= minimo and (n_fue >= 2 or medios or confirmado)) \
@@ -2873,7 +2879,7 @@ def _valorar_evento(b, clase, ventana):
 #   apertura (Teams y celular) → escalamiento (al instante si sube de nivel o se duplican los usuarios)
 #   → recordatorio (solo Teams, cada 'recordatorio_min' si sigue igual) → cierre (Teams y celular, tras 'cierre_min'
 #   sin pico), con la duración y lo acumulado. Se guardan en el disco para que un reinicio no repita la apertura.
-_EVENTOS = {"abiertos": {}, "lock": threading.RLock()}
+_EVENTOS = {"abiertos": {}, "cerrados": {}, "lock": threading.RLock()}  # cerrados: por si luego llega el restablecimiento
 RANGO_NIVEL = {"Medio": 1, "Grave": 2, "Crítico": 3}
 ARCHIVO_EVENTOS = os.path.join(DATOS, "eventos_abiertos.json")
 
@@ -2881,7 +2887,9 @@ ARCHIVO_EVENTOS = os.path.join(DATOS, "eventos_abiertos.json")
 def _guardar_eventos():
     try:
         with open(ARCHIVO_EVENTOS, "w", encoding="utf-8") as f:
-            json.dump(_EVENTOS["abiertos"], f, ensure_ascii=False)
+            limite = time.time() - 12 * 3600
+            _EVENTOS["cerrados"] = {k: v for k, v in _EVENTOS["cerrados"].items() if v.get("cerrado", 0) > limite}
+            json.dump({"abiertos": _EVENTOS["abiertos"], "cerrados": _EVENTOS["cerrados"]}, f, ensure_ascii=False)
     except OSError as e:
         print(f"  Eventos: no se pudo guardar ({e})", flush=True)
 
@@ -2889,9 +2897,12 @@ def _guardar_eventos():
 def _cargar_eventos():
     try:
         with open(ARCHIVO_EVENTOS, encoding="utf-8") as f:
-            _EVENTOS["abiertos"] = json.load(f)
+            d = json.load(f)
+        if "abiertos" not in d:  # formato anterior: solo los abiertos
+            d = {"abiertos": d, "cerrados": {}}
+        _EVENTOS.update(abiertos=d["abiertos"], cerrados=d.get("cerrados", {}))
     except (OSError, ValueError):
-        _EVENTOS["abiertos"] = {}
+        _EVENTOS.update(abiertos={}, cerrados={})
 
 
 _cargar_eventos()
@@ -2916,7 +2927,8 @@ def _evento_registrar(medida, k, nivel, usuarios, origen):
         # de diferencia alrededor del umbral haga saltar el aviso); duplicar los usuarios escala siempre
         mas = usuarios - ev["usuarios_aviso"] >= cfg.get("escalar_minimo", 3)
         sube = RANGO_NIVEL.get(nivel, 0) > RANGO_NIVEL.get(ev["nivel"], 0) and (nivel == "Crítico" or mas)
-        duplica = usuarios >= 2 * ev["usuarios_aviso"] and mas
+        # "crece" no se repite al minuto del aviso anterior (la caída y el pico llegan casi juntos): espera 15 min
+        duplica = usuarios >= 2 * ev["usuarios_aviso"] and mas and t - ev["ultimo_aviso"] >= cfg.get("crece_espera_min", 15) * 60
         fase = "sube" if sube else "crece" if duplica else None
         if fase:
             antes = ev["usuarios_aviso"]
@@ -2931,61 +2943,113 @@ def _duracion(segundos):
     return f"{m // 60} h {m % 60:02d} min" if m >= 60 else f"{m} min"
 
 
-def _acumulado_evento(ev):
-    """Quejas (o críticas) de la entidad desde el inicio del evento: total, usuarios distintos y fuentes."""
+def _acumulado_evento(ev, desde=None):
+    """Quejas (o críticas) de usuarios sobre la entidad desde el inicio del evento (sin prensa ni cuentas oficiales):
+    total, usuarios distintos, fuentes y la primera y última publicación. La duración sale de ahí, no de cuándo
+    se envió el aviso."""
     ventana = CONFIG.get("notificaciones", {}).get("pico_ventana_min", 30)
-    desde = datetime.fromtimestamp(ev["inicio"], LIMA) - timedelta(minutes=ventana)
+    desde = desde or datetime.fromtimestamp(ev["inicio"], LIMA) - timedelta(minutes=ventana)
     disp = fuentes_disponibles()
     with _db_lock, db() as con:
-        filas = con.execute(f"SELECT id, fuente, bancos, autor FROM items WHERE oculto = 0 AND {MEDIDAS_PICO[ev['medida']]} "
-                            "AND fecha >= ? AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'", (iso(desde),)).fetchall()
-    n, autores, fuentes = 0, set(), set()
+        filas = con.execute(f"SELECT id, fuente, bancos, autor, fecha, meta FROM items WHERE oculto = 0 AND "
+                            f"{MEDIDAS_PICO[ev['medida']]} AND fecha >= ? AND fecha <= ?", (iso(desde), iso(ahora()))).fetchall()
+    n, autores, fuentes, fechas = 0, set(), set(), []
     for r in filas:
-        if _origen(r["id"], r["fuente"]) not in disp:
+        if _origen(r["id"], r["fuente"]) not in disp or not _es_de_usuario(json.loads(r["meta"] or "{}")):
             continue
         if ev["entidad"] != "Total" and ev["entidad"] not in json.loads(r["bancos"] or "[]"):
             continue
         n += 1
         autores.add((r["autor"] or r["id"]).lower())
         fuentes.add(r["fuente"])
-    return n, len(autores), sorted(fuentes)
+        fechas.append(datetime.fromisoformat(r["fecha"]))
+    return n, len(autores), sorted(fuentes), (min(fechas) if fechas else None), (max(fechas) if fechas else None)
+
+
+def _texto_duracion(primera, ultima):
+    if not primera:
+        return ""
+    p, u = primera.astimezone(LIMA), ultima.astimezone(LIMA)
+    if (u - p).total_seconds() < 600:
+        return f"quejas concentradas alrededor de las {p:%H:%M}"
+    return f"quejas entre las {p:%H:%M} y las {u:%H:%M} (~{_duracion((u - p).total_seconds())})"
 
 
 def _seguir_eventos(medida):
-    """Recordatorio (solo Teams) de los eventos que siguen igual y cierre de los que ya no tienen pico."""
+    """Recordatorio (solo Teams) de los eventos que siguen activos y cierre de los que ya no reciben quejas.
+    Un evento sigue activo mientras lleguen quejas de usuarios (no basta con que el conteo baje del umbral: una caída
+    de horas tiene tramos con menos quejas); se cierra tras 'cierre_min' sin quejas nuevas o con el comunicado de
+    restablecimiento de la entidad (_cerrar_por_restablecimiento)."""
     cfg = CONFIG.get("notificaciones", {})
-    cierre, recordar = cfg.get("cierre_min", 30) * 60, cfg.get("recordatorio_min", 60) * 60
+    cierre, recordar = cfg.get("cierre_min", 45) * 60, cfg.get("recordatorio_min", 60) * 60
     t = time.time()
     with _EVENTOS["lock"]:
         pendientes = [(c, dict(ev)) for c, ev in _EVENTOS["abiertos"].items() if ev["medida"] == medida]
     for clave, ev in pendientes:
         quien = "todas las entidades" if ev["entidad"] == "Total" else ev["entidad"]
         nombre = "quejas" if medida == "quejas" else "menciones críticas"
-        inicio = datetime.fromtimestamp(ev["inicio"], LIMA)
-        if t - ev["ultima_actividad"] >= cierre:
-            n, usuarios, fuentes = _acumulado_evento(ev)
-            fin = datetime.fromtimestamp(ev["ultima_actividad"], LIMA)
-            titulo = f"Normalizado · {quien}"
-            texto = (f"Sin pico de {nombre} desde las {fin:%H:%M}. Duró {_duracion(ev['ultima_actividad'] - ev['inicio'])} "
-                     f"({inicio:%H:%M}–{fin:%H:%M}).\nTotal: {n} {nombre} de {usuarios} usuarios distintos"
-                     f"{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo {ev['max_usuarios']} usuarios en "
-                     f"{cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
+        n, usuarios, fuentes, primera, ultima = _acumulado_evento(ev)
+        actividad = max(ultima.timestamp() if ultima else 0, ev["ultima_actividad"])
+        if t - actividad >= cierre:
             with _EVENTOS["lock"]:
                 _EVENTOS["abiertos"].pop(clave, None)
+                _EVENTOS["cerrados"][clave] = {**ev, "cerrado": t}
                 _guardar_eventos()
-            _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", prioridad="default", etiquetas="white_check_mark")
-        elif t - ev["ultima_actividad"] <= 600 and t - ev["ultimo_aviso"] >= recordar:
-            n, usuarios, fuentes = _acumulado_evento(ev)
+            if not usuarios:  # abierto solo por prensa o por la entidad, sin quejas de usuarios: no hay nada que cerrar
+                print(f"[{datetime.now():%H:%M:%S}] Evento cerrado sin aviso (sin quejas de usuarios): {quien}", flush=True)
+                continue
+            fin = datetime.fromtimestamp(actividad, LIMA)
+            titulo = f"Sin quejas nuevas · {quien}"
+            texto = (f"Sin {nombre} nuevas desde las {fin:%H:%M} ({cfg.get('cierre_min', 45)} min); la entidad no "
+                     f"confirmó el restablecimiento.\nEvento: {_texto_duracion(primera, ultima)}. Total: {n} {nombre} de "
+                     f"{usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
+                     f"{ev['max_usuarios']} en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
+            relevante = RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5
+            _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", solo_teams=not relevante,
+                           prioridad="default", etiquetas="white_check_mark")
+        elif t - ev["ultimo_aviso"] >= recordar and t - actividad <= 15 * 60:  # solo si siguen llegando quejas
             with _EVENTOS["lock"]:
                 if clave in _EVENTOS["abiertos"]:
                     _EVENTOS["abiertos"][clave]["ultimo_aviso"] = t
                     _guardar_eventos()
             titulo = f"Sigue · {quien}: {nombre}"
-            texto = (f"Activo desde las {inicio:%H:%M} ({_duracion(t - ev['inicio'])}). Acumulado: {n} {nombre} de "
-                     f"{usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}.\n"
-                     f"Nivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
+            texto = (f"Evento abierto: {_texto_duracion(primera, ultima) or 'sin quejas de usuarios aún'}. Acumulado: "
+                     f"{n} {nombre} de {usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
+                     f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
             _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
                            ev["nivel"], solo_teams=True)
+
+
+def _cerrar_por_restablecimiento(b, item):
+    """La entidad comunica que el servicio ya está restablecido: cierra el evento abierto con ese dato (es la mejor
+    hora de fin). Si no había evento, avisa solo en Teams: pudo haber una falla que no se detectó."""
+    clave = f"quejas|{b}"
+    with _EVENTOS["lock"]:
+        ev = _EVENTOS["abiertos"].pop(clave, None)
+        previo = _EVENTOS["cerrados"].pop(clave, None)
+        if not ev and previo and time.time() - previo["cerrado"] < 12 * 3600:
+            ev = previo  # se había dado por cerrado sin quejas nuevas: el comunicado fija la hora real de fin
+        _guardar_eventos()
+    hora = datetime.fromisoformat(item.get("fecha") or iso(ahora())).astimezone(LIMA)
+    cita = re.sub(r"\s+", " ", item.get("texto") or "")[:200]
+    if ev:
+        n, usuarios, fuentes, primera, _ = _acumulado_evento(ev)
+        dur = f"~{_duracion((hora - primera).total_seconds())} desde la primera queja ({primera.astimezone(LIMA):%H:%M})" \
+            if primera and hora > primera else "sin quejas de usuarios registradas"
+        nota = (f" (el monitor lo había dado por cerrado a las {datetime.fromtimestamp(ev['cerrado'], LIMA):%H:%M} "
+                f"por falta de quejas nuevas)" if ev.get("cerrado") else "")
+        texto = (f"{b} confirma el restablecimiento a las {hora:%H:%M}: {dur}{nota}.\nTotal: {n} quejas de {usuarios} usuarios "
+                 f"distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}. Nivel máximo: {ev['nivel_max']}.\n"
+                 f"«{cita}»")
+        _avisar_evento(f"Restablecido · {b}", texto, "Cierre de evento", "Informativo", prioridad="default",
+                       etiquetas="white_check_mark", solo_teams=not (RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5))
+        return
+    sombra = {"medida": "quejas", "entidad": b, "inicio": time.time()}
+    n, usuarios, _, _, _ = _acumulado_evento(sombra, desde=ahora() - timedelta(hours=6))
+    texto = (f"{b} comunica a las {hora:%H:%M} que restableció un servicio; no se había abierto un evento "
+             f"({usuarios} usuarios con quejas en las últimas 6 h).\n«{cita}»")
+    _avisar_evento(f"Restablecimiento comunicado · {b}", texto, "Cierre de evento", "Informativo", solo_teams=True,
+                   prioridad="low", etiquetas="information_source")
 
 
 def _avisar_evento(titulo, texto, tipo, nivel, solo_teams=False, **kw):
@@ -3011,6 +3075,11 @@ def avisar_graves(nuevos):
         if n.get("fecha", "") < corte or n.get("tipo") in ("post_oficial", "alerta_ciber"):
             continue
         t_norm = normalizar(n.get("texto", ""))
+        # solo un comunicado general (la respuesta "@cliente … funciona con normalidad" suele negar una falla)
+        if n.get("tipo") == "oficial" and AVISO_RESTABLECIDO.search(t_norm) and not (n.get("texto") or "").lstrip().startswith("@"):
+            for b in n.get("bancos") or []:
+                _cerrar_por_restablecimiento(b, n)
+            continue
         oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(t_norm)
         # "@cliente Hola, lamentamos…" es la respuesta a una persona; sin @ al inicio es un comunicado general
         tipo_oficial = ("confirmacion" if (n.get("texto") or "").lstrip().startswith("@") else "comunicado") if oficial else ""
@@ -3107,6 +3176,8 @@ def _revisar_pico(cfg, medida):
             umbral = max(umbral, cfg.get("piso_base_escasa", 8) * minutos / 60, cfg.get("minimo", 3))
         # mínimo de usuarios en la ventana (el de una hora, a escala; nunca menos de 'minimo')
         minimo = max(cfg.get("minimo", 3), round(cfg.get("minimo_ultima_hora", 5) * minutos / 60))
+        if k == "Total":  # repartido entre varias entidades suele ser ruido; solo avisa un volumen alto de todo el sistema
+            minimo = max(minimo, cfg.get("total_minimo", 8))
         if muestras < 24 * 60 // minutos or n <= umbral or n < minimo:
             continue
         explicado = True
@@ -3122,7 +3193,7 @@ def _revisar_pico(cfg, medida):
         nombres = {"App / canales caídos": "caídas", "Errores operativos": "errores operativos",
                    "Fraude / seguridad": "fraude", "Ciberseguridad / hackeos": "ciberseguridad"}
         foco = ", ".join(f"{v} {nombres[cat]}" for cat, v in sorted(c["foco"].items(), key=lambda x: -x[1]))
-        normal = f"Umbral {umbral:.1f} · lo normal de {'día' if franja == 'dia' else 'noche'}: {p:.1f} usuarios cada {minutos} min."
+        normal = f"Lo normal a esta hora ({'día' if franja == 'dia' else 'noche'}): {p:.1f} usuarios cada {minutos} min.".replace(".0 ", " ")
         escala = {"sube": "Escala · ", "crece": "Crece · "}.get(fase, "")
         if medida == "quejas":
             titulo, tipo = f"{escala}Pico de quejas: {quien}", "Pico de quejas"
@@ -3132,9 +3203,12 @@ def _revisar_pico(cfg, medida):
             titulo, tipo = f"{escala}Pico de menciones críticas: {quien}", "Pico de menciones críticas"
             texto = (f"Menciones críticas: {n} usuarios distintos en los últimos {minutos} min sobre {quien} (de {c['total']} "
                      f"menciones): malestar reputacional, no una falla reportada.\nQuejas: {c['quejas']} en el mismo lapso.\n" + normal)
+        ev = _EVENTOS["abiertos"].get(f"{medida}|{k}", {})
         if fase == "crece":
-            texto += f"\nEn el aviso anterior eran {_EVENTOS['abiertos'].get(f'{medida}|{k}', {}).get('usuarios_antes')} usuarios."
-        _avisar_evento(titulo, texto, tipo, nivel_p)
+            texto += f"\nEn el aviso anterior eran {ev.get('usuarios_antes')} usuarios."
+        # el nivel del aviso es el del evento (una caída ya valorada Grave no baja a Medio por venir del pico)
+        nivel_ev = ev.get("nivel") if RANGO_NIVEL.get(ev.get("nivel"), 0) > RANGO_NIVEL.get(nivel_p, 0) else nivel_p
+        _avisar_evento(titulo, texto, tipo, nivel_ev)
         enviadas.append({"clave": k, "medida": medida, "n": n, "umbral": round(umbral, 1), "fase": fase})
     return enviadas
 
@@ -3302,8 +3376,24 @@ def _referencias(desde, hasta, banco=None):
     return ajustado, normal
 
 
-def _cifra(nombre, x, ant, normal):
-    return f"**{nombre}: {x}** · anterior {ant} {_flecha(x, ant)} · normal {normal} {_flecha(x, normal)}"
+def _comparacion(x, ant, normal):
+    """La comparación en palabras (sin flechas): primero contra lo normal de ese horario, luego contra el reporte
+    anterior. La regla es la de _flecha: solo cuenta como distinto si la diferencia es clara."""
+    def frente(ref, que):
+        d = _flecha(x, ref)
+        return f"{'por encima de' if d == '↑' else 'por debajo de' if d == '↓' else 'dentro de'} {que} ({ref})"
+    d_ant = _flecha(x, ant)
+    anterior = {"↑": "más que en", "↓": "menos que en"}.get(d_ant, "similar a") + (" el" if d_ant != "=" else "l") + \
+        f" reporte anterior ({ant})"
+    return f"{frente(normal, 'lo normal para este horario')}; {anterior}"
+
+
+def _cifra(nombre, x, ant, normal, unidad="usuarios"):
+    if not x and normal <= 1 and ant <= 1:
+        return f"**{nombre}:** sin casos."
+    if x < 3 and normal < 3:  # uno o dos casos: compararlos con 0 o 1 no dice nada
+        return f"**{nombre}:** {x} {unidad if x != 1 else unidad.rstrip('s')}."
+    return f"**{nombre}:** {x} {unidad if x != 1 else unidad.rstrip('s')} — {_comparacion(x, ant, normal)}."
 
 
 def evaluar_interrupcion(b, filas, hasta):
@@ -3538,7 +3628,7 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
                     for b in r["_bancos"]:
                         cuenta.setdefault(b, set()).add(r["_autor"])
             top = sorted(cuenta.items(), key=lambda x: -len(x[1]))[:3]
-            lineas = ["- repartidas: " + ", ".join(f"{b} {len(u)}" for b, u in top)]
+            lineas = ["- Casos aislados, sin un evento por entidad. Más mencionadas: " + ", ".join(f"{b} {len(u)}" for b, u in top) + "."]
         bloques[tema] = lineas
     ciber = eventos_ciber(desde, hasta, banco)
     hallazgos += [(e["nivel"], "Ciberseguridad", e["entidad"], e["resumen"]) for e in ciber if e["nivel"] != "Normal"]
@@ -3563,15 +3653,17 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
         frase = "Sin incidentes puntuales; quejas por encima de lo normal, repartidas entre entidades."
     else:
         frase = "Sin incidentes relevantes; las quejas están dentro de lo habitual."
-    linea_q = _cifra("Quejas", actual["Quejas"], ant["Quejas"], normal["Quejas"]) + \
-        f" · usuarios distintos ({actual['_n']} publicaci{'ón' if actual['_n'] == 1 else 'ones'}" + (f"; {tarde} {'llegó' if tarde == 1 else 'llegaron'} tarde" if tarde else "") + ")"
+    pub = f"{actual['_n']} publicaci{'ón' if actual['_n'] == 1 else 'ones'}" + \
+        (f", {tarde} {'llegó' if tarde == 1 else 'llegaron'} tarde" if tarde else "")
+    linea_q = _cifra("Quejas", actual["Quejas"], ant["Quejas"], normal["Quejas"], f"usuarios ({pub})")
+    nombres_tema = {"Interrupciones": "Caídas e interrupciones"}
     lineas = [cab, frase, "", linea_q, ""]
     for tema, _ in TEMAS_REPORTE:
-        cifra = _cifra(tema, actual[tema], ant[tema], normal[tema])
+        cifra = _cifra(nombres_tema.get(tema, tema), actual[tema], ant[tema], normal[tema])
         if bloques[tema]:
             lineas += [cifra] + bloques[tema]
         else:
-            lineas.append(cifra + " · sin casos relevantes")
+            lineas.append(cifra if "sin casos" in cifra else cifra + " Sin patrón por entidad: casos aislados.")
     lineas.append("")
     if ciber:
         lineas.append("**Ciberseguridad**")
@@ -3581,7 +3673,7 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
         lineas += [f"- {e['texto']}" for e in inc + expo]
         en_curso = [e["entidad"] for e in ciber if e["clase"] == "incidente" and e["estado"] == "en curso"]
         if en_curso:
-            lineas.append(f"- En curso, sin novedades: {', '.join(en_curso)}.")
+            lineas.append(f"- Sin novedades en este periodo (eventos de los últimos 7 días): {', '.join(en_curso)}.")
     else:
         lineas.append("**Ciberseguridad:** sin eventos nuevos ni actualizaciones.")
     if avisos:
@@ -3595,6 +3687,8 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     inactivas = [n for n in FUENTES if n not in disp or n in MOTIVO_INACTIVA]
     if inactivas:
         lineas += ["", f"*Sin cobertura en este periodo: {', '.join(inactivas)}.*"]
+    lineas.append("*Cifras en usuarios distintos. Normal: mediana de las mismas horas en los últimos 7 días. Reporte "
+                  "anterior: ajustado a la misma duración y horario.*")
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M}{' · ' + banco if banco else ''}"
     corto = re.sub(r"[*]", "", "\n".join([cab, frase, linea_q]))  # el celular no muestra Markdown
     return titulo, "\n".join(lineas), NIVEL_AVISO[nivel], corto
@@ -3944,7 +4038,7 @@ def _avisar_ciber(alertas, cfg):
         return
     corte = iso(ahora() - timedelta(hours=cfg.get("notificar_horas", 24)))
     for a in alertas:
-        if a["fecha"] < corte or (a.get("sector") == "Actor vigilado" and not a.get("entidades")):
+        if a["fecha"] < corte or (a.get("sector") == "Actor vigilado" and not a.get("entidades")) or a.get("solo_reporte"):
             continue
         quien = ", ".join(a["entidades"]) or a["organizacion"] or a["sector"]
         tipo = re.search(r"\|\s*([^|]{3,40}?)\s*\|", a["texto"])
@@ -4236,8 +4330,12 @@ def ciber_infostealers():
                 if nuevos_us >= max(50, prev[0] * 0.05):
                     motivo.append(f"{nuevos_us} usuarios más con credenciales robadas (total {fila[4]})")
                 if motivo:
+                    # uno o dos empleados más entre cientos no es una novedad que amerite aviso: va al reporte
+                    significativo = sistemas_nuevos or nuevos_emp >= CONFIG.get("ciber", {}).get("infostealer_min_empleados", 3) \
+                        or nuevos_us >= max(50, prev[0] * 0.05)
                     expuestos = ", ".join(f"{k} ({v})" for k, v in det["sistemas"][:3])
                     alertas.append({"id": f"hr:{dom}:{dia}", "cuenta": "Hudson Rock", "fecha": iso(ahora()),
+                                    "solo_reporte": not significativo,
                                     "url": "https://www.hudsonrock.com/threat-intelligence-cybercrime-tools",
                                     "entidades": [ent], "organizacion": dom, "sector": "Infostealers",
                                     "texto": f"Infostealers | {ent} ({dom})\n" + "; ".join(motivo) +
@@ -5144,6 +5242,19 @@ def _guardar_ia(filas, res):
                         (sent, int(queja), sev, json.dumps(cats, ensure_ascii=False),
                          0 if d.get("relevante") is False else 1, str(d.get("motivo", ""))[:200], int(atribuible), r["id"]))
         _aplicar_ia(con)
+        # Las reglas de la captura no reconocen bien las caídas ("se cayó", "error inesperado"): con la clasificación de
+        # la IA se valoran de nuevo las quejas recientes para el aviso inmediato (antes solo se veían como pico, tarde)
+        ids = [r["id"] for r in filas if res.get(r["id"])]
+        recientes = [dict(x) for x in con.execute(
+            f"SELECT id, fuente, bancos, autor, texto, url, fecha, es_queja, categorias, severidad, meta FROM items "
+            f"WHERE id IN ({','.join('?' * len(ids))}) AND oculto = 0 AND es_queja = 1 AND fecha >= ?",
+            (*ids, iso(ahora() - timedelta(hours=2))))] if ids else []
+    if recientes:
+        for x in recientes:
+            meta = json.loads(x.pop("meta") or "{}")
+            x.update(bancos=json.loads(x["bancos"] or "[]"), categorias=json.loads(x["categorias"] or "[]"),
+                     tipo=meta.get("tipo", ""))
+        threading.Thread(target=avisar_graves, args=(recientes,), daemon=True).start()
 
 
 _IA_EN_CURSO = {"ids": set(), "lock": threading.Lock()}  # publicaciones que algún proveedor está clasificando ahora

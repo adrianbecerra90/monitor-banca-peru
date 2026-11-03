@@ -734,8 +734,9 @@
     "_nota_graves": "Aviso inmediato solo con el evento valorado: N usuarios distintos de la misma entidad y tipo en la ventana (una queja suelta no avisa). Crítico: aviso oficial, el doble de usuarios, o corroboración en 2+ fuentes o prensa.",
     "pico_ventana_min": 30,
     "recordatorio_min": 60,
-    "cierre_min": 30,
-    "escalar_minimo": 3
+    "cierre_min": 45,
+    "escalar_minimo": 3,
+    "total_minimo": 8
   },
   "x_referentes": {
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
@@ -773,7 +774,9 @@
       "peruhacking"
     ]
   },
-  "ciber": {},
+  "ciber": {
+    "infostealer_min_empleados": 3
+  },
   "scrapedo": {
     "_nota": "Búsqueda en Google (plan gratuito mensual: 1000 créditos; 10 por búsqueda). El saldo del mes se reparte por día para que alcance todo el mes. Los grupos de 'sitios' rotan: primero el que lleva más tiempo sin buscarse. LinkedIn busca incidentes, fraudes, ciberataques y sanciones en vez de palabras de queja.",
     "max_creditos_mes": 900,
@@ -795,7 +798,8 @@
     "picos-30min-2026-10-31",
     "eventos-2026-10-31",
     "google-linkedin-2026-10-31",
-    "linkedin-scotiabank-2026-10-31"
+    "linkedin-scotiabank-2026-10-31",
+    "avisos-calibracion-2026-11-02"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú.",
