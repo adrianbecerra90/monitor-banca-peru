@@ -130,13 +130,13 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 .tip b{display:block;margin-bottom:3px}.tip .sin-cuadro::before{display:none}.tip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
 .hist{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .hist label{font-size:12px;color:var(--ink2)}
-#cfg,#rep{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
-#cfg.on,#rep.on{display:flex}
-#cfg .caja,#rep .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
-#cfg header,#rep header{position:static;border-radius:12px 12px 0 0}
+#cfg,#rep,#camp{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
+#cfg.on,#rep.on,#camp.on{display:flex}
+#cfg .caja,#rep .caja,#camp .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#cfg header,#rep header,#camp header{position:static;border-radius:12px 12px 0 0}
 #cfg .tabs{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding:10px 16px;border-bottom:1px solid var(--line)}
-#cfg .cuerpo,#rep .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
-#cfg .pie,#rep .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+#cfg .cuerpo,#rep .cuerpo,#camp .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
+#cfg .pie,#rep .pie,#camp .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
 #cfg label.campo{display:grid;gap:4px;font-size:12px;color:var(--ink2);margin-bottom:10px}
 #cfg textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-height:38px;resize:vertical}
 #cfg input[type=text],#cfg input[type=number],#cfg select{width:100%}
@@ -144,7 +144,13 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 #cfg .rej{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
 #cfg .ayuda{font-size:12px;color:var(--muted);margin:0 0 12px}
 #cfg-msg,#rep-msg{font-size:13px;margin-right:auto}
-#rep .caja{width:min(760px,100%)}#rep .filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+#rep .caja,#camp .caja{width:min(760px,100%)}
+#camp-abrir{position:relative}.camp-n{position:absolute;top:-6px;right:-6px;min-width:18px;padding:0 5px;border-radius:9px;background:var(--neg);color:#fff;font-size:11px;line-height:18px}.camp-n[hidden]{display:none}
+#camp .filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}#camp .filtros button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.nt{border:1px solid var(--line);border-radius:8px;margin-bottom:8px}.nt>summary{list-style:none;cursor:pointer;padding:8px 10px;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline}
+.nt>summary::-webkit-details-marker{display:none}.nt .h{color:var(--muted);font-size:12px;white-space:nowrap}.nt .t{font-weight:600}.nt .k{font-size:11px;color:var(--muted)}
+.nt .nuevo{border-left:3px solid var(--acc)}.nt .txt{padding:0 12px 10px;font-size:13px;line-height:1.5;border-top:1px solid var(--line);padding-top:8px}.nt .fallo{color:var(--neg);font-size:12px}
+.nt-dia{font-size:12px;color:var(--muted);margin:12px 0 6px;font-weight:600}.nt-dia::first-letter{text-transform:uppercase}#rep .filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 #rep-txt{font-size:13.5px;line-height:1.5}#rep-txt .li{padding-left:14px;text-indent:-10px}#rep-txt .sep{height:8px}#rep-corto{white-space:pre-wrap;font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:10px}
 .exp{display:grid;gap:8px}.exp .fila{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.exp label{font-size:12px;color:var(--ink2)}
 body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{display:none!important}
@@ -167,6 +173,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <a id="csv" href="#"><button>Exportar CSV</button></a>
     <span class="sub" id="yo"></span>
     <button id="pausa-global" class="solo-admin" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
+    <button id="camp-abrir" title="Notificaciones enviadas a Teams y al celular" aria-label="Notificaciones enviadas">🔔<span class="camp-n" id="camp-n" hidden></span></button>
     <button id="rep-abrir" title="Generar un reporte a pedido">📝 Reporte</button>
     <button id="cfg-abrir" title="Configuración">⚙ Configuración</button>
     <button class="pri solo-admin" id="refresh">Consultar ahora</button>
@@ -306,6 +313,21 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
       <div data-vistas="sistema" class="card"><h2>Clasificación IA</h2><div class="src" id="ia-card"></div></div>
       <div data-vistas="sistema" class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
     </div>
+  </div>
+</div>
+
+<div id="camp" role="dialog" aria-modal="true" aria-label="Notificaciones enviadas">
+  <div class="caja">
+    <header><h1>🔔 Notificaciones enviadas</h1><button id="camp-cerrar" aria-label="Cerrar">✕</button></header>
+    <div class="cuerpo">
+      <div class="filtros" id="camp-filtros">
+        <button data-f="" class="on">Todas</button><button data-f="avisos">Quejas y caídas</button>
+        <button data-f="Ciberseguridad">Ciberseguridad</button><button data-f="Reporte">Reportes</button>
+        <select id="camp-dias" aria-label="Periodo"><option value="1">Últimas 24 h</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="90">Últimos 90 días</option></select>
+      </div>
+      <div id="camp-lista" class="sub">Cargando…</div>
+    </div>
+    <div class="pie"><span class="sub" id="camp-msg">Lo mismo que llegó a Teams y al celular. Pulsa una notificación para ver el texto completo.</span><button id="camp-cancelar">Cerrar</button></div>
   </div>
 </div>
 
@@ -1228,6 +1250,34 @@ $('#rep-enviar').onclick=async()=>{if(!REP||!confirm('¿Enviar este reporte a Te
   const r=await fetch('/api/reporte/enviar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(REP)}).then(r=>r.json()).catch(e=>({error:String(e)}));
   $('#rep-msg').textContent=r.error?'⚠ '+r.error:'✓ Enviado a Teams y al celular.'};
 $('#rep-cerrar').onclick=$('#rep-cancelar').onclick=()=>$('#rep').classList.remove('on');
+// Campana: historial de lo enviado a Teams y al celular (mismo texto, en espejo). Las no vistas se cuentan en el globo.
+const NIV_COLOR={'Crítico':'🔴','Grave':'🟠','Medio':'🟡','Informativo':'🔵'};
+let CAMP=[],CAMP_F='';
+function campVisto(){try{return localStorage.getItem('monitor.campana.visto')||''}catch(e){return ''}}
+async function campCargar(){try{const d=await fetch('/api/notificaciones?dias='+$('#camp-dias').value).then(r=>r.json());CAMP=d.notificaciones||[]}catch(e){return}
+  // sin visita previa en este navegador, cuenta las de las últimas 24 h
+  const visto=campVisto()||new Date(Date.now()-864e5).toISOString(),n=CAMP.filter(x=>x.fecha>visto).length,b=$('#camp-n');
+  b.textContent=n>99?'99+':n;b.hidden=!n;
+  if($('#camp').classList.contains('on'))campPintar()}
+function campPintar(){const visto=$('#camp').dataset.visto||'';
+  const lista=CAMP.filter(x=>!CAMP_F||(CAMP_F==='avisos'?!['Reporte','Ciberseguridad','Prueba','Pausa'].includes(x.tipo):x.tipo===CAMP_F));
+  if(!lista.length){$('#camp-lista').innerHTML='<div class="sub">No hay notificaciones en este periodo.</div>';return}
+  let dia='',h='';
+  for(const x of lista){const f=new Date(x.fecha),d=f.toLocaleDateString('es-PE',{weekday:'long',day:'2-digit',month:'long',timeZone:'America/Lima'});
+    if(d!==dia){dia=d;h+=`<div class="nt-dia">${esc(d)}</div>`}
+    const hora=f.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Lima'});
+    h+=`<details class="nt"><summary class="${x.fecha>visto?'nuevo':''}"><span class="h">${hora}</span><span><span class="t">${NIV_COLOR[x.nivel]||'⚪'} ${esc(x.titulo)}</span><br><span class="k">${esc(x.tipo||'Aviso')}${x.nivel?' · '+esc(x.nivel):''}</span></span>${x.enviados?'':'<span class="fallo">No se entregó</span>'}</summary>
+      <div class="txt">${x.texto?repHTML(x.texto).replace(/https:\/\/[^\s<"]+/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`):'<span class="sub">Enviada antes de que se guardara el texto completo.</span>'}${x.errores?`<div class="fallo">⚠ ${esc(x.errores)}</div>`:''}</div></details>`}
+  $('#camp-lista').innerHTML=h}
+$('#camp-abrir').onclick=async()=>{$('#camp').dataset.visto=campVisto()||new Date(Date.now()-864e5).toISOString();$('#camp').classList.add('on');await campCargar();campPintar();
+  try{localStorage.setItem('monitor.campana.visto',new Date().toISOString())}catch(e){}$('#camp-n').hidden=true};
+$('#camp-filtros').onclick=e=>{const b=e.target.closest('button');if(!b)return;CAMP_F=b.dataset.f;
+  $('#camp-filtros').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));campPintar()};
+$('#camp-dias').onchange=()=>campCargar().then(campPintar);
+$('#camp-cerrar').onclick=$('#camp-cancelar').onclick=()=>$('#camp').classList.remove('on');
+$('#camp').onclick=e=>{if(e.target.id==='camp')$('#camp').classList.remove('on')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#camp').classList.remove('on')});
+campCargar();setInterval(campCargar,60000);
 $('#rep').onclick=e=>{if(e.target.id==='rep')$('#rep').classList.remove('on')};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#rep').classList.remove('on')});
 $('#cfg-abrir').onclick=abrirConfig;

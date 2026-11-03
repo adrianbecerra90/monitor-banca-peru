@@ -2778,6 +2778,7 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
     if teams and not destinos:
         errores.append("Teams: la URL no parece de Workflows de Teams")
         _log_aviso("Teams", titulo, False, f"URL no reconocida (dominio {urllib.parse.urlparse(teams).hostname})")
+    _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores)
     if not enviados:
         raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
     if tipo not in (None, "Reporte", "Prueba", "Pausa"):  # el reporte siguiente menciona los avisos inmediatos enviados
@@ -2788,6 +2789,36 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
                 con.execute("DELETE FROM avisos_enviados WHERE fecha < ?", (iso(ahora() - timedelta(days=30)),))
         except sqlite3.Error as e:
             print(f"  Registro de aviso fallido ({e})", flush=True)
+
+
+def _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores):
+    """Historial de todo lo enviado (avisos, reportes, pruebas), con el texto completo y si llegó: lo muestra la
+    campana del panel. Se guarda 90 días."""
+    try:
+        with _db_lock, db() as con:
+            _tabla_notificaciones(con)
+            con.execute("INSERT INTO notificaciones (fecha, tipo, nivel, titulo, texto, enviados, errores) VALUES (?,?,?,?,?,?,?)",
+                        (iso(ahora()), tipo or "", nivel or "", titulo[:200], mensaje[:8000], enviados, "; ".join(errores)[:500]))
+            con.execute("DELETE FROM notificaciones WHERE fecha < ?", (iso(ahora() - timedelta(days=90)),))
+    except sqlite3.Error as e:
+        print(f"  Historial de notificaciones: {e}", flush=True)
+
+
+def _tabla_notificaciones(con):
+    con.execute("CREATE TABLE IF NOT EXISTS notificaciones (fecha TEXT, tipo TEXT, nivel TEXT, titulo TEXT, texto TEXT, "
+                "enviados INTEGER, errores TEXT)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_notificaciones_fecha ON notificaciones (fecha)")
+    if not con.execute("SELECT 1 FROM notificaciones LIMIT 1").fetchone():  # la primera vez trae lo ya registrado (sin texto)
+        con.execute("CREATE TABLE IF NOT EXISTS avisos_enviados (fecha TEXT, tipo TEXT, nivel TEXT, titulo TEXT)")
+        con.execute("INSERT INTO notificaciones SELECT fecha, tipo, nivel, titulo, '', 1, '' FROM avisos_enviados")
+
+
+def notificaciones_enviadas(dias=7, limite=300):
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        filas = con.execute("SELECT fecha, tipo, nivel, titulo, texto, enviados, errores FROM notificaciones WHERE fecha >= ? "
+                            "ORDER BY fecha DESC LIMIT ?", (iso(ahora() - timedelta(days=dias)), limite)).fetchall()
+    return {"notificaciones": [dict(r) for r in filas]}
 
 
 # Dos medidas que no se mezclan: quejas (riesgo operacional) y críticas sin incidente (riesgo reputacional)
@@ -7266,6 +7297,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(consultar(qs))
         if u.path == "/api/archivo":
             return self._send(listar_archivo())
+        if u.path == "/api/notificaciones":  # campana del panel: lo enviado a Teams y al celular
+            return self._send(notificaciones_enviadas(max(1, min(int(qs.get("dias", ["7"])[0]), 90))))
         if u.path == "/api/archivo/exportar":
             mes, formato = qs.get("mes", ["todo"])[0], qs.get("formato", ["csv"])[0]
             if formato not in ("csv", "json"):
