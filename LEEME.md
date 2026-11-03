@@ -98,8 +98,11 @@ todo el histórico se reclasifica con las reglas nuevas.
 - **Cada pico o caída es un evento por entidad**, con avisos solo cuando algo cambia:
   - *apertura* (Teams y celular) al detectarse el pico o la caída;
   - *escalamiento* (Teams y celular, al instante) si sube de nivel o se duplican los usuarios (y son 3+ más);
-  - *recordatorio* (solo Teams) cada 60 min si sigue igual, con la duración y lo acumulado;
-  - *cierre* (Teams y celular) tras 30 min sin pico: duración, total de quejas y usuarios, máximo y nivel alcanzado.
+  - *recordatorio* (Teams y celular) cada 60 min si siguen llegando quejas, con la duración y lo acumulado;
+  - *cierre* (Teams y celular) tras 45 min sin quejas nuevas, o con el comunicado de restablecimiento de la entidad:
+    duración (de la primera a la última queja), total de quejas y usuarios, máximo y nivel alcanzado.
+
+  Celular y Teams reciben el mismo texto (espejo), avisos y reportes.
 
   El aviso de caída y el pico de la misma entidad son el mismo evento: no llegan por duplicado. Ajustes en
   `notificaciones`: `pico_ventana_min`, `recordatorio_min`, `cierre_min`, `escalar_minimo`.

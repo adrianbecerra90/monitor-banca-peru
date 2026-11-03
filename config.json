@@ -718,7 +718,7 @@
     "reserva_diaria_pct": 25
   },
   "notificaciones": {
-    "_nota": "Avisos a Teams y al celular cuando los usuarios distintos con quejas (o críticas) de los últimos 'pico_ventana_min' minutos superan promedio + 2σ de tramos iguales (día/noche, últimos 'dias_base' días, solo fuentes disponibles). Cada pico o caída es un evento por entidad: apertura, escalamiento (sube de nivel o se duplican los usuarios), recordatorio solo en Teams cada 'recordatorio_min' y cierre tras 'cierre_min' sin pico.",
+    "_nota": "Avisos a Teams y al celular cuando los usuarios distintos con quejas (o críticas) de los últimos 'pico_ventana_min' minutos superan promedio + 2σ de tramos iguales (día/noche, últimos 'dias_base' días, solo fuentes disponibles). Cada pico o caída es un evento por entidad: apertura, escalamiento (sube de nivel o se duplican los usuarios), recordatorio cada 'recordatorio_min' si siguen llegando quejas y cierre tras 'cierre_min' sin quejas nuevas o con el comunicado de restablecimiento. Celular y Teams reciben lo mismo.",
     "activas": true,
     "dias_base": 7,
     "minimo": 3,

@@ -2733,15 +2733,12 @@ def _url_panel():
     return (os.environ.get("PANEL_URL") or CONFIG.get("notificaciones", {}).get("enlace") or URL_PANEL).rstrip("/") + "/"
 
 
-def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None,
-                        corto=None, solo_teams=False):
+def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None):
     """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
-    tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). `corto`: versión breve para el
-    celular (ntfy); Teams recibe siempre el mensaje completo. `solo_teams`: no suena en el celular (recordatorios), salvo
-    que Teams no esté configurado."""
+    tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). Celular y Teams reciben lo mismo
+    (espejo, a pedido del analista); al celular sin los asteriscos del Markdown, que ntfy no interpreta."""
     enviados, errores = 0, []
     pie = f"\n\nMás información: {_url_panel()}"  # pie fijo en todos los avisos
-    corto = f"{corto.rstrip()}{pie}" if corto else None
     mensaje = f"{mensaje.rstrip()}{pie}"
     if nivel in NIVELES:
         prioridad = NIVELES[nivel][1] if prioridad in ("high", "default") else prioridad
@@ -2750,8 +2747,6 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
         etiquetas = ",".join(x for x in (etiquetas, TIPOS_AVISO.get(tipo, ""),
                                          "nivel-" + normalizar(nivel or "").replace(" ", "-") if nivel else "") if x)
     tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
-    if solo_teams and _urls_teams():
-        tema = ""
     if re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema):
         servidor = os.environ.get("NOTIFY_NTFY_SERVER", "https://ntfy.sh").rstrip("/")
         titulo_n = (f"[{nivel.upper()}] " if nivel else "") + titulo
@@ -2761,7 +2756,7 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
             h["Click"] = url
         try:
             http_get(f"{servidor}/{tema}", h, data=((etiqueta_txt + "\n") if etiqueta_txt else "").encode("utf-8")
-                     + (corto or mensaje).encode("utf-8"), timeout=30)
+                     + re.sub(r"\*\*?([^*\n]+)\*\*?", r"\1", mensaje).encode("utf-8"), timeout=30)
             enviados += 1
             _log_aviso("ntfy", titulo, True)
         except Exception as e:
@@ -2877,7 +2872,7 @@ def _valorar_evento(b, clase, ventana):
 # ---------------- Eventos por entidad ----------------
 # Un pico o una caída de una entidad es un evento abierto; se avisa solo cuando algo cambia:
 #   apertura (Teams y celular) → escalamiento (al instante si sube de nivel o se duplican los usuarios)
-#   → recordatorio (solo Teams, cada 'recordatorio_min' si sigue igual) → cierre (Teams y celular, tras 'cierre_min'
+#   → recordatorio (cada 'recordatorio_min' si siguen llegando quejas) → cierre (Teams y celular, tras 'cierre_min'
 #   sin pico), con la duración y lo acumulado. Se guardan en el disco para que un reinicio no repita la apertura.
 _EVENTOS = {"abiertos": {}, "cerrados": {}, "lock": threading.RLock()}  # cerrados: por si luego llega el restablecimiento
 RANGO_NIVEL = {"Medio": 1, "Grave": 2, "Crítico": 3}
@@ -2976,7 +2971,7 @@ def _texto_duracion(primera, ultima):
 
 
 def _seguir_eventos(medida):
-    """Recordatorio (solo Teams) de los eventos que siguen activos y cierre de los que ya no reciben quejas.
+    """Recordatorio de los eventos que siguen activos y cierre de los que ya no reciben quejas.
     Un evento sigue activo mientras lleguen quejas de usuarios (no basta con que el conteo baje del umbral: una caída
     de horas tiene tramos con menos quejas); se cierra tras 'cierre_min' sin quejas nuevas o con el comunicado de
     restablecimiento de la entidad (_cerrar_por_restablecimiento)."""
@@ -3004,9 +2999,8 @@ def _seguir_eventos(medida):
                      f"usuarios. Sin {nombre} nuevas desde las {fin:%H:%M}.\nLa entidad no confirmó el restablecimiento. "
                      f"Total: {n} {nombre}{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
                      f"{ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
-            relevante = RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5
-            _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", solo_teams=not relevante,
-                           prioridad="default", etiquetas="white_check_mark")
+            _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", prioridad="default",
+                           etiquetas="white_check_mark")
         elif t - ev["ultimo_aviso"] >= recordar and t - actividad <= 15 * 60:  # solo si siguen llegando quejas
             with _EVENTOS["lock"]:
                 if clave in _EVENTOS["abiertos"]:
@@ -3017,12 +3011,12 @@ def _seguir_eventos(medida):
                      f"{n} {nombre} de {usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
                      f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
             _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
-                           ev["nivel"], solo_teams=True)
+                           ev["nivel"])
 
 
 def _cerrar_por_restablecimiento(b, item):
     """La entidad comunica que el servicio ya está restablecido: cierra el evento abierto con ese dato (es la mejor
-    hora de fin). Si no había evento, avisa solo en Teams: pudo haber una falla que no se detectó."""
+    hora de fin). Si no había evento, avisa igual: pudo haber una falla que no se detectó."""
     clave = f"quejas|{b}"
     with _EVENTOS["lock"]:
         ev = _EVENTOS["abiertos"].pop(clave, None)
@@ -3042,20 +3036,20 @@ def _cerrar_por_restablecimiento(b, item):
                  f"distintas{' (' + ', '.join(fuentes) + ')' if fuentes else ''}. Nivel máximo: {ev['nivel_max']}.\n"
                  f"«{cita}»")
         _avisar_evento(f"Restablecido · {b}", texto, "Cierre de evento", "Informativo", prioridad="default",
-                       etiquetas="white_check_mark", solo_teams=not (RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5))
+                       etiquetas="white_check_mark")
         return
     sombra = {"medida": "quejas", "entidad": b, "inicio": time.time()}
     n, usuarios, _, _, _ = _acumulado_evento(sombra, desde=ahora() - timedelta(hours=6))
     texto = (f"{b} comunica a las {hora:%H:%M} que restableció un servicio; no se había abierto un evento "
              f"({usuarios} usuarios con quejas en las últimas 6 h).\n«{cita}»")
-    _avisar_evento(f"Restablecimiento comunicado · {b}", texto, "Cierre de evento", "Informativo", solo_teams=True,
+    _avisar_evento(f"Restablecimiento comunicado · {b}", texto, "Cierre de evento", "Informativo",
                    prioridad="low", etiquetas="information_source")
 
 
-def _avisar_evento(titulo, texto, tipo, nivel, solo_teams=False, **kw):
+def _avisar_evento(titulo, texto, tipo, nivel, **kw):
     try:
         enviar_notificacion(titulo, texto, url=CONFIG.get("notificaciones", {}).get("enlace") or None, tipo=tipo,
-                            nivel=nivel, solo_teams=solo_teams, **kw)
+                            nivel=nivel, **kw)
         print(f"[{datetime.now():%H:%M:%S}] Notificación enviada: {titulo} · {texto}", flush=True)
     except Exception as e:
         print(f"  Notificación fallida ({type(e).__name__}: {e})", flush=True)
@@ -3738,8 +3732,8 @@ def reporte_a_pedido(d, enviar=False):
                    else f"desde {desde.astimezone(LIMA):%d/%m %H:%M}") + f" hasta {hasta:%d/%m %H:%M}")
     if enviar:
         enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
-                            url=CONFIG.get("notificaciones", {}).get("enlace") or None, corto=corto)
-    return {"titulo": titulo, "texto": texto, "corto": corto, "nivel": nivel, "enviado": enviar, "desde": iso(desde)}
+                            url=CONFIG.get("notificaciones", {}).get("enlace") or None)
+    return {"titulo": titulo, "texto": texto, "corto": None, "nivel": nivel, "enviado": enviar, "desde": iso(desde)}
 
 
 def trabajador_reportes():
@@ -3781,7 +3775,7 @@ def trabajador_reportes():
                     if atrasado:
                         texto += f"\n\n(Programado para las {t:%H:%M}; sale ahora porque el servidor no estaba disponible.)"
                     enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
-                                        nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None, corto=corto)
+                                        nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None)
                     with _db_lock, db() as con:
                         con.execute("INSERT OR REPLACE INTO reportes_enviados (clave, enviado, hasta) VALUES (?, ?, ?)",
                                     (clave, iso(ahora()), iso(hasta)))
