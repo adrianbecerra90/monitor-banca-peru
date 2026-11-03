@@ -232,7 +232,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
 
   <div data-vistas="casos" class="card" id="sec-casos">
     <h2>📁 Casos <span class="sub" id="casos-n" style="font-weight:400;text-transform:none;letter-spacing:0"></span></h2>
-    <div class="sub" style="margin-bottom:8px">Cada evento es un caso con número; todos sus avisos quedan vinculados. Los de quejas se cierran solos (sin quejas nuevas o con el comunicado de la entidad); los de ciberseguridad siguen abiertos hasta que los cierres.</div>
+    <div class="sub" style="margin-bottom:8px">Cada evento es un caso con número; todos sus avisos quedan vinculados. Los de quejas se cierran solos (sin quejas nuevas o con el comunicado de la entidad); los de ciberseguridad siguen abiertos hasta que los cierres o pasan 30 días sin novedades (se cierran solos, sin aviso, y se reabren si llega una alerta nueva).</div>
     <div class="casos-f" id="casos-f"><button data-e="abierto" class="on">Abiertos</button><button data-e="cerrado">Cerrados</button><button data-e="">Todos</button>
       <select id="casos-ent" aria-label="Entidad"><option value="">Todas las entidades</option></select>
       <select id="casos-dias" aria-label="Periodo"><option value="30">Últimos 30 días</option><option value="90" selected>Últimos 90 días</option><option value="365">Último año</option></select></div>

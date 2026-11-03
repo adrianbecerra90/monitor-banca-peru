@@ -3164,6 +3164,42 @@ def caso_abierto(clave):
     return r[0] if r else None
 
 
+INACTIVIDAD = "Cerrado por inactividad"
+
+
+def cerrar_casos_inactivos():
+    """Ciberseguridad: un caso sin novedades en 'casos_inactividad_dias' (30) se cierra solo, sin avisar a nadie. Si
+    luego llega una alerta nueva de la misma entidad y clase, se reabre (caso_reabrir_inactivo)."""
+    dias = CONFIG.get("ciber", {}).get("casos_inactividad_dias", 30)
+    corte = iso(ahora() - timedelta(days=dias))
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        _tabla_notificaciones(con)
+        viejos = [r[0] for r in con.execute(
+            "SELECT c.id FROM casos c WHERE c.estado = 'abierto' AND c.clave LIKE 'ciber|%' AND "
+            "COALESCE((SELECT MAX(n.fecha) FROM notificaciones n WHERE n.caso = c.id), c.apertura) < ?", (corte,))]
+        for id_ in viejos:
+            con.execute("UPDATE casos SET estado = 'cerrado', cierre = ?, cierre_motivo = ?, actualizado = ? WHERE id = ?",
+                        (iso(ahora()), f"{INACTIVIDAD} ({dias} días sin novedades)", iso(ahora()), id_))
+    if viejos:
+        print(f"Casos cerrados por inactividad: {', '.join(viejos)}", flush=True)
+
+
+def caso_reabrir_inactivo(clave):
+    """Una novedad (alerta nueva) reabre el último caso de la misma clave que se había cerrado por inactividad.
+    Los que cerró el analista no se reabren solos: la novedad abre un caso nuevo."""
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        r = con.execute("SELECT id, notas FROM casos WHERE clave = ? AND estado = 'cerrado' AND cierre_motivo LIKE ? "
+                        "ORDER BY cierre DESC LIMIT 1", (clave, INACTIVIDAD + "%")).fetchone()
+        if not r:
+            return None
+        nota = f"Reabierto el {ahora().astimezone(LIMA):%d/%m/%Y %H:%M} por una alerta nueva (estaba cerrado por inactividad)."
+        con.execute("UPDATE casos SET estado = 'abierto', cierre = NULL, cierre_motivo = NULL, notas = ?, actualizado = ? "
+                    "WHERE id = ?", (((r[1] + "\n") if r[1] else "") + nota, iso(ahora()), r[0]))
+    return r[0]
+
+
 def caso_nivel(id_, nivel):
     if not id_ or nivel not in RANGO_NIVEL:
         return
@@ -4293,6 +4329,10 @@ def trabajador_notificaciones():
         except Exception as e:
             print(f"  Notificaciones: {type(e).__name__}: {e}", flush=True)
         try:
+            cerrar_casos_inactivos()
+        except Exception as e:
+            print(f"  Casos inactivos: {type(e).__name__}: {e}", flush=True)
+        try:
             if _hay_canal_aviso():
                 resumen_semanal_avisos()
         except Exception as e:
@@ -4572,7 +4612,7 @@ def _avisar_ciber(alertas, cfg):
         # mismo caso mientras siga abierto (sin plazo: un incidente puede durar meses; lo cierra el analista)
         clase = a.get("sector") if a.get("sector") in ("Infostealers", "Dominio que imita") else "Incidente"
         clave_c, nivel_c = f"ciber|{quien}|{clase}", _nivel_ciber(a)
-        caso = caso_abierto(clave_c) or caso_abrir(quien, f"Ciberseguridad · {clase}", clave_c, nivel_c)
+        caso = caso_abierto(clave_c) or caso_reabrir_inactivo(clave_c) or caso_abrir(quien, f"Ciberseguridad · {clase}", clave_c, nivel_c)
         caso_nivel(caso, nivel_c)
         try:
             enviar_notificacion(f"Ciberseguridad: {quien}"[:120],

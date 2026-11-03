@@ -775,7 +775,8 @@
     ]
   },
   "ciber": {
-    "infostealer_min_empleados": 3
+    "infostealer_min_empleados": 3,
+    "casos_inactividad_dias": 30
   },
   "scrapedo": {
     "_nota": "Búsqueda en Google (plan gratuito mensual: 1000 créditos; 10 por búsqueda). El saldo del mes se reparte por día para que alcance todo el mes. Los grupos de 'sitios' rotan: primero el que lleva más tiempo sin buscarse. LinkedIn busca incidentes, fraudes, ciberataques y sanciones en vez de palabras de queja.",
