@@ -3053,8 +3053,6 @@ def _cerrar_por_restablecimiento(b, item):
 
 
 def _avisar_evento(titulo, texto, tipo, nivel, solo_teams=False, **kw):
-    """El celular recibe solo la primera línea (lo esencial); Teams, el detalle completo."""
-    kw.setdefault("corto", texto.split("\n")[0])
     try:
         enviar_notificacion(titulo, texto, url=CONFIG.get("notificaciones", {}).get("enlace") or None, tipo=tipo,
                             nivel=nivel, solo_teams=solo_teams, **kw)
@@ -3114,7 +3112,7 @@ def avisar_graves(nuevos):
             cuerpo = f"{resumen[0].upper() + resumen[1:]}" + (f" (en el aviso anterior: {antes})" if fase == "crece" and antes else "") \
                 + ".\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
-                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high", corto=cuerpo.split("\n")[0],
+                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
                                     tipo="Queja crítica" if critico else "Queja grave", nivel=nivel,
                                     etiquetas="rotating_light" if critico else "warning",
                                     url=n.get("url") or cfg.get("enlace") or None)
@@ -4067,8 +4065,7 @@ def _avisar_ciber(alertas, cfg):
             enviar_notificacion(f"Ciberseguridad: {quien}"[:120],
                                 f"{(tipo.group(1).strip() + ' · ') if tipo else ''}{a['sector']} · vía {a['cuenta']}"
                                 f"{' · entidad monitoreada' if a['entidades'] else ''}\n{resumen}",
-                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=_nivel_ciber(a),
-                                corto=resumen[:220])
+                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=_nivel_ciber(a))
             with _db_lock, db() as con:
                 con.execute("UPDATE alertas_ciber SET notificada = 1 WHERE id = ?", (a["id"],))
         except Exception as e:
