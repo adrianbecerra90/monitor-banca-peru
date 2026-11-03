@@ -2854,7 +2854,7 @@ def _valorar_evento(b, clase, ventana):
     n_aut, n_fue = len(autores), len(fuentes)
     minimo = cfg.get("caidas_para_grave" if clase == "caida" else "graves_para_grave", 3)
     critico_n = cfg.get("caidas_para_critico" if clase == "caida" else "graves_para_critico", 6)
-    partes = [f"{n_aut} usuario{'s' if n_aut != 1 else ''} distinto{'s' if n_aut != 1 else ''}"] if n_aut else []
+    partes = [f"{n_aut} persona{'s' if n_aut != 1 else ''} distinta{'s' if n_aut != 1 else ''}"] if n_aut else []
     if n_fue > 1:
         partes.append(f"{n_fue} fuentes ({', '.join(sorted(fuentes))})")
     if medios:
@@ -2998,12 +2998,12 @@ def _seguir_eventos(medida):
             if not usuarios:  # abierto solo por prensa o por la entidad, sin quejas de usuarios: no hay nada que cerrar
                 print(f"[{datetime.now():%H:%M:%S}] Evento cerrado sin aviso (sin quejas de usuarios): {quien}", flush=True)
                 continue
-            fin = datetime.fromtimestamp(actividad, LIMA)
+            fin = (ultima or datetime.fromtimestamp(actividad, timezone.utc)).astimezone(LIMA)
             titulo = f"Sin quejas nuevas · {quien}"
-            texto = (f"Sin {nombre} nuevas desde las {fin:%H:%M} ({cfg.get('cierre_min', 45)} min); la entidad no "
-                     f"confirmó el restablecimiento.\nEvento: {_texto_duracion(primera, ultima)}. Total: {n} {nombre} de "
-                     f"{usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
-                     f"{ev['max_usuarios']} en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
+            texto = (f"{_texto_duracion(primera, ultima)[0].upper() + _texto_duracion(primera, ultima)[1:]}, {usuarios} "
+                     f"personas. Sin {nombre} nuevas desde las {fin:%H:%M}.\nLa entidad no confirmó el restablecimiento. "
+                     f"Total: {n} {nombre}{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
+                     f"{ev['max_usuarios']} personas en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
             relevante = RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5
             _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", solo_teams=not relevante,
                            prioridad="default", etiquetas="white_check_mark")
@@ -3014,8 +3014,8 @@ def _seguir_eventos(medida):
                     _guardar_eventos()
             titulo = f"Sigue · {quien}: {nombre}"
             texto = (f"Evento abierto: {_texto_duracion(primera, ultima) or 'sin quejas de usuarios aún'}. Acumulado: "
-                     f"{n} {nombre} de {usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
-                     f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
+                     f"{n} {nombre} de {usuarios} personas distintas{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
+                     f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} personas en {cfg.get('pico_ventana_min', 30)} min.")
             _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
                            ev["nivel"], solo_teams=True)
 
@@ -3038,8 +3038,8 @@ def _cerrar_por_restablecimiento(b, item):
             if primera and hora > primera else "sin quejas de usuarios registradas"
         nota = (f" (el monitor lo había dado por cerrado a las {datetime.fromtimestamp(ev['cerrado'], LIMA):%H:%M} "
                 f"por falta de quejas nuevas)" if ev.get("cerrado") else "")
-        texto = (f"{b} confirma el restablecimiento a las {hora:%H:%M}: {dur}{nota}.\nTotal: {n} quejas de {usuarios} usuarios "
-                 f"distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}. Nivel máximo: {ev['nivel_max']}.\n"
+        texto = (f"{b} confirma el restablecimiento a las {hora:%H:%M}: {dur}{nota}.\nTotal: {n} quejas de {usuarios} personas "
+                 f"distintas{' (' + ', '.join(fuentes) + ')' if fuentes else ''}. Nivel máximo: {ev['nivel_max']}.\n"
                  f"«{cita}»")
         _avisar_evento(f"Restablecido · {b}", texto, "Cierre de evento", "Informativo", prioridad="default",
                        etiquetas="white_check_mark", solo_teams=not (RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5))
@@ -3053,6 +3053,8 @@ def _cerrar_por_restablecimiento(b, item):
 
 
 def _avisar_evento(titulo, texto, tipo, nivel, solo_teams=False, **kw):
+    """El celular recibe solo la primera línea (lo esencial); Teams, el detalle completo."""
+    kw.setdefault("corto", texto.split("\n")[0])
     try:
         enviar_notificacion(titulo, texto, url=CONFIG.get("notificaciones", {}).get("enlace") or None, tipo=tipo,
                             nivel=nivel, solo_teams=solo_teams, **kw)
@@ -3109,10 +3111,10 @@ def avisar_graves(nuevos):
                                                     else "falla confirmada por la entidad")
             titulo = {"sube": "Escala a ", "crece": "Crece · "}.get(fase, "") + f"{nivel.upper() if critico else nivel} · {b}: {cats}"
             antes = _EVENTOS["abiertos"].get(f"quejas|{b}", {}).get("usuarios_antes")
-            cuerpo = f"Valoración: {resumen}" + (f" (en el aviso anterior: {antes})" if fase == "crece" and antes else "") \
+            cuerpo = f"{resumen[0].upper() + resumen[1:]}" + (f" (en el aviso anterior: {antes})" if fase == "crece" and antes else "") \
                 + ".\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
-                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
+                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high", corto=cuerpo.split("\n")[0],
                                     tipo="Queja crítica" if critico else "Queja grave", nivel=nivel,
                                     etiquetas="rotating_light" if critico else "warning",
                                     url=n.get("url") or cfg.get("enlace") or None)
@@ -3197,11 +3199,11 @@ def _revisar_pico(cfg, medida):
         escala = {"sube": "Escala · ", "crece": "Crece · "}.get(fase, "")
         if medida == "quejas":
             titulo, tipo = f"{escala}Pico de quejas: {quien}", "Pico de quejas"
-            texto = (f"Quejas: {n} usuarios distintos ({c['casos']} publicaciones) en los últimos {minutos} min sobre "
+            texto = (f"Quejas: {n} personas distintas ({c['casos']} publicaciones) en los últimos {minutos} min sobre "
                      f"{quien}{' (' + foco + ')' if foco else ''}.\nMenciones: {c['total']} en total en el mismo lapso.\n" + normal)
         else:
             titulo, tipo = f"{escala}Pico de menciones críticas: {quien}", "Pico de menciones críticas"
-            texto = (f"Menciones críticas: {n} usuarios distintos en los últimos {minutos} min sobre {quien} (de {c['total']} "
+            texto = (f"Menciones críticas: {n} personas distintas en los últimos {minutos} min sobre {quien} (de {c['total']} "
                      f"menciones): malestar reputacional, no una falla reportada.\nQuejas: {c['quejas']} en el mismo lapso.\n" + normal)
         ev = _EVENTOS["abiertos"].get(f"{medida}|{k}", {})
         if fase == "crece":
@@ -4065,7 +4067,8 @@ def _avisar_ciber(alertas, cfg):
             enviar_notificacion(f"Ciberseguridad: {quien}"[:120],
                                 f"{(tipo.group(1).strip() + ' · ') if tipo else ''}{a['sector']} · vía {a['cuenta']}"
                                 f"{' · entidad monitoreada' if a['entidades'] else ''}\n{resumen}",
-                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=_nivel_ciber(a))
+                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=_nivel_ciber(a),
+                                corto=resumen[:220])
             with _db_lock, db() as con:
                 con.execute("UPDATE alertas_ciber SET notificada = 1 WHERE id = ?", (a["id"],))
         except Exception as e:
