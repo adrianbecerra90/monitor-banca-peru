@@ -2757,7 +2757,7 @@ def utilidad_referentes(dias=30):
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
            "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
 TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico de quejas": "pico-de-quejas", "Pico de menciones críticas": "pico-de-menciones-criticas",
-               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas", "Cierre de evento": "cierre-de-evento",
+               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas", "Cierre de evento": "cierre-de-evento", "Mantenimiento": "mantenimiento",
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
 
 
@@ -2843,17 +2843,39 @@ def _tabla_notificaciones(con):
     con.execute("CREATE TABLE IF NOT EXISTS notificaciones (fecha TEXT, tipo TEXT, nivel TEXT, titulo TEXT, texto TEXT, "
                 "enviados INTEGER, errores TEXT)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_notificaciones_fecha ON notificaciones (fecha)")
+    columnas = {r[1] for r in con.execute("PRAGMA table_info(notificaciones)")}
+    for col, tipo_col in (("util", "INTEGER"), ("valorado_por", "TEXT"), ("valorado", "TEXT")):
+        if col not in columnas:
+            con.execute(f"ALTER TABLE notificaciones ADD COLUMN {col} {tipo_col}")
     if not con.execute("SELECT 1 FROM notificaciones LIMIT 1").fetchone():  # la primera vez trae lo ya registrado (sin texto)
         con.execute("CREATE TABLE IF NOT EXISTS avisos_enviados (fecha TEXT, tipo TEXT, nivel TEXT, titulo TEXT)")
-        con.execute("INSERT INTO notificaciones SELECT fecha, tipo, nivel, titulo, '', 1, '' FROM avisos_enviados")
+        con.execute("INSERT INTO notificaciones (fecha, tipo, nivel, titulo, texto, enviados, errores) "
+                    "SELECT fecha, tipo, nivel, titulo, '', 1, '' FROM avisos_enviados")
 
 
 def notificaciones_enviadas(dias=7, limite=300):
     with _db_lock, db() as con:
         _tabla_notificaciones(con)
-        filas = con.execute("SELECT fecha, tipo, nivel, titulo, texto, enviados, errores FROM notificaciones WHERE fecha >= ? "
-                            "ORDER BY fecha DESC LIMIT ?", (iso(ahora() - timedelta(days=dias)), limite)).fetchall()
-    return {"notificaciones": [dict(r) for r in filas]}
+        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, valorado_por "
+                            "FROM notificaciones WHERE fecha >= ? ORDER BY fecha DESC LIMIT ?",
+                            (iso(ahora() - timedelta(days=dias)), limite)).fetchall()
+    lista = [dict(r) for r in filas]
+    valoradas = [x for x in lista if x["util"] is not None and x["tipo"] not in ("Reporte", "Prueba", "Pausa")]
+    return {"notificaciones": lista,
+            "valoracion": {"valoradas": len(valoradas), "utiles": sum(1 for x in valoradas if x["util"]),
+                           "por_tipo": {t: {"utiles": sum(1 for x in valoradas if x["tipo"] == t and x["util"]),
+                                            "valoradas": sum(1 for x in valoradas if x["tipo"] == t)}
+                                        for t in sorted({x["tipo"] for x in valoradas})}}}
+
+
+def valorar_notificacion(id_, util, usuario):
+    """El analista marca si la notificación le sirvió: con eso se mide qué avisos agregan valor y se recalibra."""
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        n = con.execute("UPDATE notificaciones SET util = ?, valorado_por = ?, valorado = ? WHERE rowid = ?",
+                        (None if util is None else int(bool(util)), usuario, iso(ahora()), int(id_))).rowcount
+    if not n:
+        raise ValueError("Notificación no encontrada")
 
 
 # Dos medidas que no se mezclan: quejas (riesgo operacional) y críticas sin incidente (riesgo reputacional)
@@ -3112,6 +3134,20 @@ def _cerrar_por_restablecimiento(b, item):
                    prioridad="low", etiquetas="information_source")
 
 
+_MANT_AVISADO = {}
+
+
+def _avisar_mantenimiento(b, item):
+    if time.time() - _MANT_AVISADO.get(b, 0) < 12 * 3600:
+        return
+    _MANT_AVISADO[b] = time.time()
+    hora = datetime.fromisoformat(item.get("fecha") or iso(ahora())).astimezone(LIMA)
+    cita = re.sub(r"\s+", " ", item.get("texto") or "")[:300]
+    _avisar_evento(f"Mantenimiento programado · {b}", f"{b} anuncia un mantenimiento ({hora:%H:%M}). No es una falla: "
+                   f"si durante el mantenimiento hay quejas de usuarios, se avisará como siempre.\n«{cita}»",
+                   "Mantenimiento", "Informativo", prioridad="low", etiquetas="wrench")
+
+
 def _avisar_evento(titulo, texto, tipo, nivel, **kw):
     try:
         enviar_notificacion(titulo, texto, url=CONFIG.get("notificaciones", {}).get("enlace") or None, tipo=tipo,
@@ -3139,6 +3175,12 @@ def avisar_graves(nuevos):
         if n.get("tipo") == "oficial" and AVISO_RESTABLECIDO.search(t_norm) and not (n.get("texto") or "").lstrip().startswith("@"):
             for b in n.get("bancos") or []:
                 _cerrar_por_restablecimiento(b, n)
+            continue
+        if n.get("tipo") == "oficial" and MANTENIMIENTO.search(t_norm) and not (n.get("texto") or "").lstrip().startswith("@"):
+            # un mantenimiento anunciado no es una falla: se informa (una vez) y no abre un evento; si durante el
+            # mantenimiento se quejan los usuarios, eso sí se valora como siempre
+            for b in n.get("bancos") or []:
+                _avisar_mantenimiento(b, n)
             continue
         oficial = n.get("tipo") == "oficial" and AVISO_OFICIAL_CAIDA.search(t_norm)
         # "@cliente Hola, lamentamos…" es la respuesta a una persona; sin @ al inicio es un comunicado general
@@ -7530,6 +7572,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True})
             if u.path == "/api/reporte/vista":  # cualquier usuario: ver un reporte a pedido sin enviarlo
                 return self._send(reporte_a_pedido(self._json_cuerpo(5_000)))
+            if u.path == "/api/notificaciones/valorar":  # cualquier usuario: 👍 útil / 👎 no aportó
+                d = self._json_cuerpo()
+                valorar_notificacion(d.get("id"), d.get("util"), self.yo["usuario"])
+                return self._send({"ok": True})
             if u.path == "/api/chat":  # cualquier usuario: solo lee la base
                 d = self._json_cuerpo(20_000)
                 return self._send(chat_monitor(d.get("pregunta"), self.yo["usuario"], d.get("filtros"), d.get("historial")))
