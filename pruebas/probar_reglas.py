@@ -36,6 +36,12 @@ for c in casos["ciber"]:
     r = None if ev is None else sorted(ev["entidades"])
     if r != (None if c["espera"] is None else sorted(c["espera"])):
         fallos.append(f"ciber · «{c['texto'][:70]}» → {ev}, se esperaba {c['espera']}")
+for c in casos.get("prensa", []):  # una nota de prensa avisa solo si describe una falla del servicio
+    if srv._prensa_es_falla(c["texto"]) != c["espera"]:
+        fallos.append(f"prensa · «{c['texto'][:70]}» → {not c['espera']}, se esperaba {c['espera']}")
+for c in casos.get("nivel_ciber", []):  # circulares genéricas de cuentas comunitarias: Medio
+    if srv._nivel_ciber(c) != c["espera"]:
+        fallos.append(f"nivel ciber · «{c['texto'][:70]}» → {srv._nivel_ciber(c)}, se esperaba {c['espera']}")
 # Regla de interrupción y de patrones del reporte (casos sintéticos: cuándo es una caída y cuándo son casos aislados)
 from datetime import datetime, timedelta, timezone
 H = datetime(2026, 11, 3, 20, 30, tzinfo=timezone.utc)
@@ -75,7 +81,8 @@ if (srv.evaluar_patron("Yape", fraudes, "Fraude / seguridad", "Fraudes") or {}).
 for x, ref, espera in [(2, 1, "="), (4, 1, "↑"), (96, 80, "="), (96, 60, "↑"), (5, 20, "↓")]:
     if srv._flecha(x, ref) != espera:
         fallos.append(f"flecha · {x} frente a {ref} → {srv._flecha(x, ref)}, se esperaba {espera}")
-total = len(casos["entidades"]) + len(casos["cita"]) + len(casos["ciber"]) + len(interrupciones) + 1 + 5
+total = len(casos["entidades"]) + len(casos["cita"]) + len(casos["ciber"]) + len(casos.get("prensa", [])) + \
+    len(casos.get("nivel_ciber", [])) + len(interrupciones) + 1 + 5
 print(f"Casos fijos: {total - len(fallos)}/{total} correctos")
 for f in fallos:
     print("  ✗", f)

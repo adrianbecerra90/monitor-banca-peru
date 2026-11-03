@@ -222,5 +222,57 @@
       "espera": null,
       "origen": "convocatoria laboral"
     }
+  ],
+  "prensa": [
+    {
+      "texto": "Caída de Reniec complica trámites bancarios: estas operaciones suspendió el Banco de la Nación - Expreso",
+      "espera": true,
+      "origen": "Noticias, 02/11/2026"
+    },
+    {
+      "texto": "BCP reporta caída en su app: usuarios no pueden hacer transferencias",
+      "espera": true
+    },
+    {
+      "texto": "Interbank: fallas en la banca móvil afectan pagos con tarjeta",
+      "espera": true
+    },
+    {
+      "texto": "Acciones del BCP registran fuerte caída en la BVL",
+      "espera": false
+    },
+    {
+      "texto": "Caída del dólar: tipo de cambio cierra en S/ 3,60 según BCP",
+      "espera": false
+    },
+    {
+      "texto": "Utilidades de Scotiabank Perú caen 12% en el tercer trimestre",
+      "espera": false
+    },
+    {
+      "texto": "Caída de la morosidad en créditos de consumo, según SBS",
+      "espera": false
+    }
+  ],
+  "nivel_ciber": [
+    {
+      "cuenta": "@peruhacking",
+      "texto": "CIRCULAR DE ALERTA TEMPRANA DE CIBERSEGURIDAD N° 027-2026-SOC Nivel de Severidad: CRÍTICO Dirigido a: Equipos de Seguridad, Operaciones de Cajeros @bbva_peru",
+      "entidades": [
+        "BBVA Perú"
+      ],
+      "sector": "Sistema financiero",
+      "espera": "Medio",
+      "origen": "X, 02/11/2026: circular sin detalle"
+    },
+    {
+      "cuenta": "@peruhacking",
+      "texto": "Filtración de base de datos de clientes de BBVA Perú publicada en foro",
+      "entidades": [
+        "BBVA Perú"
+      ],
+      "sector": "Sistema financiero",
+      "espera": "Crítico"
+    }
   ]
 }

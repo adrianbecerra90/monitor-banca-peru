@@ -1521,6 +1521,41 @@ def x_apify(rango=None):
 AVISO_OFICIAL_CAIDA = re.compile(r"\b(intermitencia|inconvenientes? (con|en) (nuestr|la app|el app|la banca|los canales)|"
                                  r"estamos (trabajando|presentando)|restablec\w*|fuera de servicio|mantenimiento programado|"
                                  r"no (esta|estan) disponibles?)\b")
+# Prensa: una nota basta para un aviso Grave, pero solo si habla de una falla del servicio de la entidad (no de la
+# "caída" de la bolsa, del dólar o de las utilidades), es de hoy y no se avisó ya la misma nota
+PRENSA_FALLA = re.compile(r"\b(caid[ao]s?|se cay[oó]|cayo|falla[sn]?|fallo|intermitencia|no funciona\w*|suspend\w*|"
+                          r"interrump\w*|interrupcion\w*|inoperativ\w*|colaps\w*|problemas? tecnicos?|afectad[oa]s?|"
+                          r"inconvenientes?|fuera de servicio|no (se )?pued\w+ (operar|pagar|transferir|retirar|ingresar))\b")
+PRENSA_SERVICIO = re.compile(r"\b(app|aplicativo|aplicacion|banca (movil|por internet|digital|en linea)|web|plataforma|"
+                             r"sistemas?|servicios?|canales?|cajeros?|agentes?|agencias?|transferencias?|pagos?|cobros?|"
+                             r"operaciones|tramites|tarjetas?|cuentas?|retiros?|depositos?|yape|plin|billetera)\b")
+PRENSA_MERCADO = re.compile(r"\b(bolsa|acciones|bvl|dolar|tipo de cambio|cotizacion\w*|precios?|utilidad\w*|ganancias?|"
+                            r"inflacion|tasas? de interes|morosidad|ranking|clasificacion de riesgo|rating|"
+                            r"caida de (la |las |los )?(demanda|ventas|creditos|colocaciones|depositos|tasas))\b")
+
+
+def _prensa_es_falla(texto):
+    """Una nota describe una falla del servicio: nombra la falla y el servicio afectado, y no es de mercado."""
+    t = normalizar(texto)
+    if PRENSA_MERCADO.search(t) and not re.search(r"\b(app|aplicativo|cajeros?|transferencias?|banca movil)\b", t):
+        return False
+    return bool(PRENSA_FALLA.search(t) and PRENSA_SERVICIO.search(t))
+
+
+def _prensa_ya_avisada(texto):
+    """La misma nota (o la misma noticia replicada en otro medio) ya se avisó en los últimos 3 días."""
+    clave = re.sub(r"[^a-z0-9 ]", "", normalizar(re.split(r" - |\s\|\s", texto or "")[0]))[:90].strip()
+    if not clave:
+        return False
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS prensa_avisada (clave TEXT PRIMARY KEY, fecha TEXT)")
+        con.execute("DELETE FROM prensa_avisada WHERE fecha < ?", (iso(ahora() - timedelta(days=3)),))
+        if con.execute("SELECT 1 FROM prensa_avisada WHERE clave = ?", (clave,)).fetchone():
+            return True
+        con.execute("INSERT INTO prensa_avisada VALUES (?, ?)", (clave, iso(ahora())))
+    return False
+
+
 # La entidad comunica que ya está resuelto: cierra el evento (no es un aviso de falla)
 AVISO_RESTABLECIDO = re.compile(r"\b(restablecid[oa]s?|ha sido restablecid|(funcionando|operando|opera|funciona) con normalidad|"
                                 r"(ya|nuevamente) (se encuentra[n]? |esta[n]? )?(operativ|disponible|funcionando)|solucionad[oa]s?)")
@@ -3111,6 +3146,15 @@ def avisar_graves(nuevos):
         cats_foco = set(n.get("categorias") or []) & set(FOCO)
         caida = n.get("es_queja") and "App / canales caídos" in cats_foco
         grave = n.get("es_queja") and (n.get("severidad") or 0) >= 2 and cats_foco and not caida
+        medio = n.get("tipo") == "noticia" or n.get("fuente") == "Noticias"
+        if medio and (caida or grave):
+            # controles de prensa: solo hoy (no notas viejas que reaparecen), una falla del servicio (no la "caída"
+            # de un precio), que no mencione un año pasado y que la misma nota no se haya avisado ya
+            anio = ahora().astimezone(LIMA).year
+            viejo = any(int(a) < anio for a in re.findall(r"\b(20[12]\d)\b", n.get("texto") or ""))
+            if n.get("fecha", "") < iso(ahora() - timedelta(hours=cfg.get("prensa_horas", 12))) or viejo or \
+                    not _prensa_es_falla(n.get("texto") or "") or _prensa_ya_avisada(n.get("texto") or ""):
+                continue
         if not (grave or oficial or caida):
             continue
         clase = "caida" if (caida or oficial) else "grave"
@@ -4064,10 +4108,18 @@ def _registrar_alertas(nuevas, al_panel=False):
     return para_avisar
 
 
+EVIDENCIA_CIBER = re.compile(r"ransomware|filtr|hacke|breach|leak|vulnerad|ataque|extorsion|phishing|suplant|fraude|"
+                             r"estafa|infect|credencial|malware|troyano|vulnerab|base de datos|dump|robo de|acceso no "
+                             r"autorizado|skimm|clonad|dominio")
+
+
 def _nivel_ciber(a):
     """Crítico: filtración/ransomware/hackeo de una entidad monitoreada; Grave: phishing o empleados infectados de una
-    monitoreada, o incidente en otra entidad del SF; Medio: lo demás (proveedores, actores vigilados, conteos)."""
+    monitoreada, o incidente en otra entidad del SF; Medio: lo demás (proveedores, actores vigilados, conteos) y las
+    circulares o alertas genéricas de cuentas comunitarias que nombran a una entidad sin describir un incidente."""
     t = normalizar(a.get("texto", ""))
+    if str(a.get("cuenta", "")).startswith("@") and not EVIDENCIA_CIBER.search(t):
+        return "Medio"
     if a.get("entidades") and a.get("sector") not in ("Dominio que imita", "Infostealers", "Actor vigilado") and \
             re.search(r"ransomware|filtr|hacke|breach|leak|data breach|vulnerad|ataque|extorsion", t):
         return "Crítico"
