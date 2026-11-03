@@ -2854,7 +2854,7 @@ def _valorar_evento(b, clase, ventana):
     n_aut, n_fue = len(autores), len(fuentes)
     minimo = cfg.get("caidas_para_grave" if clase == "caida" else "graves_para_grave", 3)
     critico_n = cfg.get("caidas_para_critico" if clase == "caida" else "graves_para_critico", 6)
-    partes = [f"{n_aut} persona{'s' if n_aut != 1 else ''} distinta{'s' if n_aut != 1 else ''}"] if n_aut else []
+    partes = [f"{n_aut} usuario{'s' if n_aut != 1 else ''} distinto{'s' if n_aut != 1 else ''}"] if n_aut else []
     if n_fue > 1:
         partes.append(f"{n_fue} fuentes ({', '.join(sorted(fuentes))})")
     if medios:
@@ -3001,9 +3001,9 @@ def _seguir_eventos(medida):
             fin = (ultima or datetime.fromtimestamp(actividad, timezone.utc)).astimezone(LIMA)
             titulo = f"Sin quejas nuevas · {quien}"
             texto = (f"{_texto_duracion(primera, ultima)[0].upper() + _texto_duracion(primera, ultima)[1:]}, {usuarios} "
-                     f"personas. Sin {nombre} nuevas desde las {fin:%H:%M}.\nLa entidad no confirmó el restablecimiento. "
+                     f"usuarios. Sin {nombre} nuevas desde las {fin:%H:%M}.\nLa entidad no confirmó el restablecimiento. "
                      f"Total: {n} {nombre}{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
-                     f"{ev['max_usuarios']} personas en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
+                     f"{ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
             relevante = RANGO_NIVEL.get(ev["nivel_max"], 0) >= 2 or usuarios >= 5
             _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", solo_teams=not relevante,
                            prioridad="default", etiquetas="white_check_mark")
@@ -3014,8 +3014,8 @@ def _seguir_eventos(medida):
                     _guardar_eventos()
             titulo = f"Sigue · {quien}: {nombre}"
             texto = (f"Evento abierto: {_texto_duracion(primera, ultima) or 'sin quejas de usuarios aún'}. Acumulado: "
-                     f"{n} {nombre} de {usuarios} personas distintas{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
-                     f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} personas en {cfg.get('pico_ventana_min', 30)} min.")
+                     f"{n} {nombre} de {usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
+                     f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
             _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
                            ev["nivel"], solo_teams=True)
 
@@ -3038,7 +3038,7 @@ def _cerrar_por_restablecimiento(b, item):
             if primera and hora > primera else "sin quejas de usuarios registradas"
         nota = (f" (el monitor lo había dado por cerrado a las {datetime.fromtimestamp(ev['cerrado'], LIMA):%H:%M} "
                 f"por falta de quejas nuevas)" if ev.get("cerrado") else "")
-        texto = (f"{b} confirma el restablecimiento a las {hora:%H:%M}: {dur}{nota}.\nTotal: {n} quejas de {usuarios} personas "
+        texto = (f"{b} confirma el restablecimiento a las {hora:%H:%M}: {dur}{nota}.\nTotal: {n} quejas de {usuarios} usuarios "
                  f"distintas{' (' + ', '.join(fuentes) + ')' if fuentes else ''}. Nivel máximo: {ev['nivel_max']}.\n"
                  f"«{cita}»")
         _avisar_evento(f"Restablecido · {b}", texto, "Cierre de evento", "Informativo", prioridad="default",
@@ -3197,11 +3197,11 @@ def _revisar_pico(cfg, medida):
         escala = {"sube": "Escala · ", "crece": "Crece · "}.get(fase, "")
         if medida == "quejas":
             titulo, tipo = f"{escala}Pico de quejas: {quien}", "Pico de quejas"
-            texto = (f"Quejas: {n} personas distintas ({c['casos']} publicaciones) en los últimos {minutos} min sobre "
+            texto = (f"Quejas: {n} usuarios distintos ({c['casos']} publicaciones) en los últimos {minutos} min sobre "
                      f"{quien}{' (' + foco + ')' if foco else ''}.\nMenciones: {c['total']} en total en el mismo lapso.\n" + normal)
         else:
             titulo, tipo = f"{escala}Pico de menciones críticas: {quien}", "Pico de menciones críticas"
-            texto = (f"Menciones críticas: {n} personas distintas en los últimos {minutos} min sobre {quien} (de {c['total']} "
+            texto = (f"Menciones críticas: {n} usuarios distintos en los últimos {minutos} min sobre {quien} (de {c['total']} "
                      f"menciones): malestar reputacional, no una falla reportada.\nQuejas: {c['quejas']} en el mismo lapso.\n" + normal)
         ev = _EVENTOS["abiertos"].get(f"{medida}|{k}", {})
         if fase == "crece":
@@ -3389,13 +3389,13 @@ def _comparacion(x, ant, normal):
 
 
 def _cifra(nombre, x, ant, normal):
-    """Una línea por tema: "- **Fraudes:** 4 personas, más de lo habitual… ." Uno o dos casos no se comparan con 0 o 1."""
+    """Una línea por tema: "- **Fraudes:** 4 usuarios, más de lo habitual… ." Uno o dos casos no se comparan con 0 o 1."""
     if not x and normal <= 1 and ant <= 1:
         return f"- **{nombre}:** sin casos."
-    personas = f"{x} persona{'s' if x != 1 else ''}"
+    usuarios = f"{x} usuario{'s' if x != 1 else ''}"
     if x < 3 and normal < 3:
-        return f"- **{nombre}:** {personas}, {'caso aislado' if x == 1 else 'casos aislados'}."
-    return f"- **{nombre}:** {personas}, {_comparacion(x, ant, normal)}."
+        return f"- **{nombre}:** {usuarios}, {'caso aislado' if x == 1 else 'casos aislados'}."
+    return f"- **{nombre}:** {usuarios}, {_comparacion(x, ant, normal)}."
 
 
 def evaluar_interrupcion(b, filas, hasta):
@@ -3434,7 +3434,7 @@ def evaluar_interrupcion(b, filas, hasta):
     inicio = min(f for f, _ in marcas).astimezone(LIMA) if marcas else None
     ultima = max(f for f, _ in marcas) if marcas else None
     activa = bool(ultima and hasta - ultima <= timedelta(minutes=30))
-    evid = [f"{usuarios} persona{'s' if usuarios != 1 else ''}"] if usuarios else []
+    evid = [f"{usuarios} usuario{'s' if usuarios != 1 else ''}"] if usuarios else []
     if comunicado and not inicio:
         inicio = datetime.fromisoformat(comunicado["fecha"]).astimezone(LIMA)
     if comunicado:
@@ -3453,7 +3453,7 @@ def evaluar_interrupcion(b, filas, hasta):
         return {"nivel": "Normal", "texto": f"mantenimiento o falla de un tercero anunciada por la entidad ({', '.join(evid)}).",
                 "resumen": "mantenimiento anunciado", "usuarios": usuarios}
     if rafaga >= 3:
-        return {"nivel": "Grave", "texto": f"interrupción probable: {rafaga} personas en una misma hora"
+        return {"nivel": "Grave", "texto": f"interrupción probable: {rafaga} usuarios en una misma hora"
                                            f"{' desde las ' + inicio.strftime('%H:%M') if inicio else ''}. {estado.capitalize()}.",
                 "resumen": "interrupción probable", "usuarios": usuarios}
     return {"nivel": "aislado", "texto": f"{usuarios} caso{'s' if usuarios != 1 else ''} aislado{'s' if usuarios != 1 else ''}",
@@ -3474,7 +3474,7 @@ def evaluar_patron(b, filas, cat, nombre):
     n = len(usuarios)
     if n < 3:
         return None
-    detalle = f"{n} personas"
+    detalle = f"{n} usuarios"
     if cat == "Fraude / seguridad":
         for r in usuarios.values():
             t = normalizar(r["texto"] or "")
@@ -3630,7 +3630,7 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
                     for b in r["_bancos"]:
                         cuenta.setdefault(b, set()).add(r["_autor"])
             top = sorted(cuenta.items(), key=lambda x: -len(x[1]))[:3]
-            nombres = [f"{b} ({len(u)} persona{'s' if len(u) != 1 else ''})" for b, u in top]
+            nombres = [f"{b} ({len(u)} usuario{'s' if len(u) != 1 else ''})" for b, u in top]
             lineas = ["- Casos aislados, sin un evento en ninguna entidad. Las más mencionadas: " +
                       (", ".join(nombres[:-1]) + " y " + nombres[-1] if len(nombres) > 1 else nombres[0]) + "."]
         bloques[tema] = lineas
@@ -3666,9 +3666,9 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
         (f"; {tarde} {'llegó' if tarde == 1 else 'llegaron'} con retraso" if tarde else "")
     x = actual["Quejas"]
     if not x:
-        linea_q = "Ninguna persona se quejó en el periodo."
+        linea_q = "Ningún usuario se quejó en el periodo."
     else:
-        linea_q = f"{x} persona{'s' if x != 1 else ''} se {'quejaron' if x != 1 else 'quejó'} ({pub})"
+        linea_q = f"{x} usuario{'s' if x != 1 else ''} se {'quejaron' if x != 1 else 'quejó'} ({pub})"
         linea_q += f": {_comparacion(x, ant['Quejas'], normal['Quejas'])}." if x >= 3 or normal["Quejas"] >= 3 else "."
     nombres_tema = {"Interrupciones": "Caídas e interrupciones"}
     lineas = [cab, "", "**Resumen**", frase, "", "**Quejas de usuarios**", linea_q, "", "**Por tema**"]
@@ -3705,7 +3705,7 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     lineas.append("")
     if inactivas:
         lineas.append(f"*Sin cobertura en este periodo: {', '.join(inactivas)}.*")
-    lineas.append("*Se cuentan personas distintas, no publicaciones. «Lo habitual» es la mediana de las mismas horas en "
+    lineas.append("*Se cuentan usuarios distintos, no publicaciones. «Lo habitual» es la mediana de las mismas horas en "
                   "los últimos 7 días; «el reporte anterior», ajustado a la misma duración y horario.*")
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M}{' · ' + banco if banco else ''}"
     corto = re.sub(r"[*]", "", "\n".join([cab, frase, linea_q]))  # el celular no muestra Markdown
