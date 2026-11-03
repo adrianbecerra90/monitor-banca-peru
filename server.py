@@ -2757,7 +2757,7 @@ def utilidad_referentes(dias=30):
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
            "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
 TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico de quejas": "pico-de-quejas", "Pico de menciones críticas": "pico-de-menciones-criticas",
-               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas", "Cierre de evento": "cierre-de-evento", "Mantenimiento": "mantenimiento",
+               "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas", "Cierre de evento": "cierre-de-evento", "Mantenimiento": "mantenimiento", "Resumen de avisos": "resumen-de-avisos",
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
 
 
@@ -2816,7 +2816,7 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
     _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores)
     if not enviados:
         raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
-    if tipo not in (None, "Reporte", "Prueba", "Pausa"):  # el reporte siguiente menciona los avisos inmediatos enviados
+    if tipo not in (None, "Reporte", "Prueba", "Pausa", "Resumen de avisos"):  # el reporte siguiente menciona los avisos inmediatos enviados
         try:
             with _db_lock, db() as con:
                 con.execute("CREATE TABLE IF NOT EXISTS avisos_enviados (fecha TEXT, tipo TEXT, nivel TEXT, titulo TEXT)")
@@ -2844,7 +2844,7 @@ def _tabla_notificaciones(con):
                 "enviados INTEGER, errores TEXT)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_notificaciones_fecha ON notificaciones (fecha)")
     columnas = {r[1] for r in con.execute("PRAGMA table_info(notificaciones)")}
-    for col, tipo_col in (("util", "INTEGER"), ("valorado_por", "TEXT"), ("valorado", "TEXT")):
+    for col, tipo_col in (("util", "INTEGER"), ("valorado_por", "TEXT"), ("valorado", "TEXT"), ("motivo", "TEXT")):
         if col not in columnas:
             con.execute(f"ALTER TABLE notificaciones ADD COLUMN {col} {tipo_col}")
     if not con.execute("SELECT 1 FROM notificaciones LIMIT 1").fetchone():  # la primera vez trae lo ya registrado (sin texto)
@@ -2856,26 +2856,155 @@ def _tabla_notificaciones(con):
 def notificaciones_enviadas(dias=7, limite=300):
     with _db_lock, db() as con:
         _tabla_notificaciones(con)
-        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, valorado_por "
+        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, motivo, valorado_por "
                             "FROM notificaciones WHERE fecha >= ? ORDER BY fecha DESC LIMIT ?",
                             (iso(ahora() - timedelta(days=dias)), limite)).fetchall()
     lista = [dict(r) for r in filas]
-    valoradas = [x for x in lista if x["util"] is not None and x["tipo"] not in ("Reporte", "Prueba", "Pausa")]
-    return {"notificaciones": lista,
+    valoradas = [x for x in lista if x["util"] is not None and x["tipo"] not in NO_VALORABLES]
+    return {"notificaciones": lista, "motivos": MOTIVOS_VALORACION, "propuestas": propuestas_ajuste(),
             "valoracion": {"valoradas": len(valoradas), "utiles": sum(1 for x in valoradas if x["util"]),
                            "por_tipo": {t: {"utiles": sum(1 for x in valoradas if x["tipo"] == t and x["util"]),
                                             "valoradas": sum(1 for x in valoradas if x["tipo"] == t)}
                                         for t in sorted({x["tipo"] for x in valoradas})}}}
 
 
-def valorar_notificacion(id_, util, usuario):
-    """El analista marca si la notificación le sirvió: con eso se mide qué avisos agregan valor y se recalibra."""
+# ---------------- Valoración de los avisos por el analista ----------------
+# Cada aviso se marca 👍 útil o 👎 no aportó (con el motivo). Con eso: precisión por tipo, resumen semanal y propuestas
+# de ajuste que el analista aprueba en el panel. Las reglas no se recalibran solas: bajar un umbral por error podría
+# silenciar justo la caída real.
+MOTIVOS_VALORACION = {"no_incidente": "No era un incidente", "nivel_alto": "Nivel muy alto", "repetido": "Repetido",
+                      "tarde": "Llegó tarde", "nivel_bajo": "Nivel muy bajo"}
+NO_VALORABLES = ("Reporte", "Prueba", "Pausa", "Resumen de avisos")
+# Qué se puede ajustar por tipo de aviso cuando no aporta: (ruta en la configuración, valor por defecto, paso, texto)
+AJUSTES_POR_TIPO = {
+    "Pico de quejas": (("notificaciones", "minimo"), 3, 1, "subir el mínimo de usuarios de un pico"),
+    "Pico de menciones críticas": (("notificaciones", "minimo"), 3, 1, "subir el mínimo de usuarios de un pico"),
+    "Queja grave": (("notificaciones", "graves_para_grave"), 3, 1, "subir los usuarios necesarios para un aviso Grave"),
+    "Queja crítica": (("notificaciones", "graves_para_critico"), 6, 1, "subir los usuarios necesarios para un aviso Crítico"),
+    "Cierre de evento": (("notificaciones", "cierre_solo_relevantes"), False, True,
+                         "avisar el cierre solo de eventos Grave o Crítico"),
+    "Mantenimiento": (("notificaciones", "avisar_mantenimiento"), True, False,
+                      "dejar de avisar los mantenimientos programados (quedan en el panel y el reporte)"),
+    "Ciberseguridad": (("ciber", "infostealer_min_empleados"), 3, 2,
+                       "exigir más empleados nuevos infectados para avisar al instante un infostealer"),
+}
+
+
+def valorar_notificacion(id_, util, usuario, motivo=None):
+    """El analista marca si la notificación le sirvió y, si no, por qué."""
+    if motivo not in (None, "") and motivo not in MOTIVOS_VALORACION:
+        raise ValueError("Motivo no válido")
     with _db_lock, db() as con:
         _tabla_notificaciones(con)
-        n = con.execute("UPDATE notificaciones SET util = ?, valorado_por = ?, valorado = ? WHERE rowid = ?",
-                        (None if util is None else int(bool(util)), usuario, iso(ahora()), int(id_))).rowcount
+        n = con.execute("UPDATE notificaciones SET util = ?, motivo = ?, valorado_por = ?, valorado = ? WHERE rowid = ?",
+                        (None if util is None else int(bool(util)), motivo or None, usuario, iso(ahora()), int(id_))).rowcount
     if not n:
         raise ValueError("Notificación no encontrada")
+
+
+def _valoraciones(dias, solo_tras_ajuste=False):
+    """Valoraciones por tipo. solo_tras_ajuste: cuenta solo los avisos enviados después del último ajuste aplicado a
+    ese tipo (si no, las mismas valoraciones viejas volverían a proponer otro ajuste encima del anterior)."""
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        con.execute("CREATE TABLE IF NOT EXISTS ajustes_avisos (tipo TEXT, ruta TEXT, antes TEXT, despues TEXT, fecha TEXT, usuario TEXT)")
+        filas = [dict(r) for r in con.execute(
+            "SELECT tipo, util, motivo, fecha FROM notificaciones WHERE fecha >= ? AND util IS NOT NULL",
+            (iso(ahora() - timedelta(days=dias)),))]
+        ultimo = dict(con.execute("SELECT tipo, MAX(fecha) FROM ajustes_avisos GROUP BY tipo").fetchall()) if solo_tras_ajuste else {}
+    por_tipo = {}
+    for f in filas:
+        if f["tipo"] in NO_VALORABLES or f["fecha"] <= ultimo.get(f["tipo"], ""):
+            continue
+        t = por_tipo.setdefault(f["tipo"] or "Aviso", {"valoradas": 0, "utiles": 0, "motivos": {}})
+        t["valoradas"] += 1
+        t["utiles"] += f["util"]
+        if f["motivo"]:
+            t["motivos"][f["motivo"]] = t["motivos"].get(f["motivo"], 0) + 1
+    return por_tipo
+
+
+def _valor_config(ruta, defecto):
+    d = CONFIG
+    for k in ruta[:-1]:
+        d = d.get(k, {})
+    return d.get(ruta[-1], defecto)
+
+
+def propuestas_ajuste(dias=30):
+    """Ajustes propuestos con los datos del analista: un tipo de aviso con 10+ valoraciones y menos de 50 % útil.
+    Si el motivo principal es "nivel muy bajo" no se propone silenciar nada."""
+    cfg = CONFIG.get("notificaciones", {})
+    minimo, umbral = cfg.get("propuestas_min_valoradas", 10), cfg.get("propuestas_umbral_util", 0.5)
+    out = []
+    for tipo, v in sorted(_valoraciones(dias, solo_tras_ajuste=True).items()):
+        if v["valoradas"] < minimo or v["utiles"] / v["valoradas"] >= umbral or tipo not in AJUSTES_POR_TIPO:
+            continue
+        principal = max(v["motivos"], key=v["motivos"].get) if v["motivos"] else None
+        if principal == "nivel_bajo":
+            continue
+        ruta, defecto, paso, que = AJUSTES_POR_TIPO[tipo]
+        actual = _valor_config(ruta, defecto)
+        nuevo = paso if isinstance(paso, bool) else actual + paso
+        if nuevo == actual:
+            continue
+        motivo_txt = f"; motivo más marcado: {MOTIVOS_VALORACION[principal].lower()}" if principal else ""
+        out.append({"id": f"{tipo}|{'.'.join(ruta)}|{nuevo}", "tipo": tipo, "ruta": list(ruta), "actual": actual, "nuevo": nuevo,
+                    "texto": f"{tipo}: {v['utiles']} de {v['valoradas']} útiles en {dias} días{motivo_txt}. "
+                             f"Propuesta: {que}" + ("" if isinstance(paso, bool) else f" (de {actual} a {nuevo})") + "."})
+    return out
+
+
+def aplicar_propuesta(id_, usuario):
+    p = next((x for x in propuestas_ajuste() if x["id"] == id_), None)
+    if not p:
+        raise ValueError("La propuesta ya no aplica (cambiaron las valoraciones o ya se aplicó)")
+    d = CONFIG
+    for k in p["ruta"][:-1]:
+        d = d.setdefault(k, {})
+    d[p["ruta"][-1]] = p["nuevo"]
+    guardar_config(json.loads(json.dumps(CONFIG)))  # las reglas leen CONFIG en cada revisión: no hace falta reiniciar
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO ajustes_avisos VALUES (?, ?, ?, ?, ?, ?)",
+                    (p["tipo"], ".".join(p["ruta"]), json.dumps(p["actual"]), json.dumps(p["nuevo"]), iso(ahora()), usuario))
+    registrar(usuario, f"aplicó ajuste de avisos: {p['texto']}", "")
+    return p
+
+
+def resumen_semanal_avisos():
+    """Lunes desde las 09:00 (Lima): lo enviado la semana anterior por tipo, cuánto sirvió según el analista y las
+    propuestas de ajuste. Se envía una vez por semana, en espejo, si hubo avisos."""
+    t = ahora().astimezone(LIMA)
+    if t.weekday() != 0 or t.hour < 9:
+        return
+    semana = t.strftime("%G-W%V")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS resumenes_avisos (semana TEXT PRIMARY KEY, enviado TEXT)")
+        if con.execute("SELECT 1 FROM resumenes_avisos WHERE semana = ?", (semana,)).fetchone():
+            return
+        _tabla_notificaciones(con)
+        enviados = con.execute("SELECT tipo, COUNT(*) FROM notificaciones WHERE fecha >= ? AND tipo NOT IN (?,?,?,?) "
+                               "GROUP BY tipo ORDER BY 2 DESC", (iso(ahora() - timedelta(days=7)), *NO_VALORABLES)).fetchall()
+        con.execute("INSERT INTO resumenes_avisos VALUES (?, ?)", (semana, iso(ahora())))
+    if not enviados:
+        return
+    val = _valoraciones(7)
+    lineas = [f"**Avisos enviados en los últimos 7 días:** {sum(n for _, n in enviados)}", ""]
+    for tipo, n in enviados:
+        v = val.get(tipo)
+        if v:
+            mot = ", ".join(f"{MOTIVOS_VALORACION[m].lower()} {c}" for m, c in sorted(v["motivos"].items(), key=lambda x: -x[1]))
+            lineas.append(f"- **{tipo}:** {n} enviados; valorados {v['valoradas']}, útiles {v['utiles']} "
+                          f"({round(100 * v['utiles'] / v['valoradas'])} %){' · no aportaron: ' + mot if mot else ''}.")
+        else:
+            lineas.append(f"- **{tipo}:** {n} enviados; sin valorar.")
+    props = propuestas_ajuste()
+    lineas += ["", "**Propuestas de ajuste** (se aprueban en el panel, en la campana 🔔)"] + [f"- {p['texto']}" for p in props] \
+        if props else ["", "Sin propuestas de ajuste: ningún tipo de aviso tiene 10+ valoraciones con menos de 50 % útil."]
+    if not val:
+        lineas += ["", "Marca 👍 o 👎 en la campana del panel para medir qué avisos aportan."]
+    enviar_notificacion("Resumen semanal de avisos", "\n".join(lineas), prioridad="low", etiquetas="bar_chart",
+                        tipo="Resumen de avisos", nivel="Informativo")
 
 
 # Dos medidas que no se mezclan: quejas (riesgo operacional) y críticas sin incidente (riesgo reputacional)
@@ -3078,7 +3207,8 @@ def _seguir_eventos(medida):
                 _EVENTOS["abiertos"].pop(clave, None)
                 _EVENTOS["cerrados"][clave] = {**ev, "cerrado": t}
                 _guardar_eventos()
-            if not usuarios:  # abierto solo por prensa o por la entidad, sin quejas de usuarios: no hay nada que cerrar
+            if not usuarios or (cfg.get("cierre_solo_relevantes") and RANGO_NIVEL.get(ev["nivel_max"], 0) < 2):
+                # sin quejas de usuarios no hay nada que cerrar; y si el analista lo pidió, solo cierres Grave o Crítico
                 print(f"[{datetime.now():%H:%M:%S}] Evento cerrado sin aviso (sin quejas de usuarios): {quien}", flush=True)
                 continue
             fin = (ultima or datetime.fromtimestamp(actividad, timezone.utc)).astimezone(LIMA)
@@ -3138,7 +3268,7 @@ _MANT_AVISADO = {}
 
 
 def _avisar_mantenimiento(b, item):
-    if time.time() - _MANT_AVISADO.get(b, 0) < 12 * 3600:
+    if not CONFIG.get("notificaciones", {}).get("avisar_mantenimiento", True) or time.time() - _MANT_AVISADO.get(b, 0) < 12 * 3600:
         return
     _MANT_AVISADO[b] = time.time()
     hora = datetime.fromisoformat(item.get("fecha") or iso(ahora())).astimezone(LIMA)
@@ -3908,6 +4038,11 @@ def trabajador_notificaciones():
             revisar_umbral_notificar()
         except Exception as e:
             print(f"  Notificaciones: {type(e).__name__}: {e}", flush=True)
+        try:
+            if _hay_canal_aviso():
+                resumen_semanal_avisos()
+        except Exception as e:
+            print(f"  Resumen semanal de avisos: {type(e).__name__}: {e}", flush=True)
         time.sleep(300)
 
 
@@ -7574,13 +7709,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(reporte_a_pedido(self._json_cuerpo(5_000)))
             if u.path == "/api/notificaciones/valorar":  # cualquier usuario: 👍 útil / 👎 no aportó
                 d = self._json_cuerpo()
-                valorar_notificacion(d.get("id"), d.get("util"), self.yo["usuario"])
+                valorar_notificacion(d.get("id"), d.get("util"), self.yo["usuario"], d.get("motivo"))
                 return self._send({"ok": True})
             if u.path == "/api/chat":  # cualquier usuario: solo lee la base
                 d = self._json_cuerpo(20_000)
                 return self._send(chat_monitor(d.get("pregunta"), self.yo["usuario"], d.get("filtros"), d.get("historial")))
             if self.yo["rol"] != "admin":  # el resto de acciones son solo para administradores
                 return self._send({"error": "Tu cuenta es de solo lectura"}, code=403)
+            if u.path == "/api/notificaciones/propuesta":  # administradores: aprueban un ajuste propuesto
+                return self._send({"ok": True, "aplicada": aplicar_propuesta(str(self._json_cuerpo().get("id", "")), self.yo["usuario"])})
             if u.path == "/api/reporte/enviar":  # administradores: lo envía a Teams y al celular
                 try:
                     r = reporte_a_pedido(self._json_cuerpo(5_000), enviar=True)
