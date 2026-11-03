@@ -3377,23 +3377,25 @@ def _referencias(desde, hasta, banco=None):
 
 
 def _comparacion(x, ant, normal):
-    """La comparación en palabras (sin flechas): primero contra lo normal de ese horario, luego contra el reporte
+    """La comparación en lenguaje natural (sin flechas): primero contra lo habitual a esa hora, luego contra el reporte
     anterior. La regla es la de _flecha: solo cuenta como distinto si la diferencia es clara."""
-    def frente(ref, que):
-        d = _flecha(x, ref)
-        return f"{'por encima de' if d == '↑' else 'por debajo de' if d == '↓' else 'dentro de'} {que} ({ref})"
+    d = _flecha(x, normal)
+    habitual = {"↑": "más de lo habitual a esta hora", "↓": "menos de lo habitual a esta hora"}.get(
+        d, "lo habitual a esta hora") + f" (suelen ser {normal})"
     d_ant = _flecha(x, ant)
-    anterior = {"↑": "más que en", "↓": "menos que en"}.get(d_ant, "similar a") + (" el" if d_ant != "=" else "l") + \
-        f" reporte anterior ({ant})"
-    return f"{frente(normal, 'lo normal para este horario')}; {anterior}"
+    anterior = {"↑": "más que en el reporte anterior", "↓": "menos que en el reporte anterior"}.get(
+        d_ant, "parecido al reporte anterior") + f" ({ant})"
+    return f"{habitual} y {anterior}"
 
 
-def _cifra(nombre, x, ant, normal, unidad="usuarios"):
+def _cifra(nombre, x, ant, normal):
+    """Una línea por tema: "- **Fraudes:** 4 personas, más de lo habitual… ." Uno o dos casos no se comparan con 0 o 1."""
     if not x and normal <= 1 and ant <= 1:
-        return f"**{nombre}:** sin casos."
-    if x < 3 and normal < 3:  # uno o dos casos: compararlos con 0 o 1 no dice nada
-        return f"**{nombre}:** {x} {unidad if x != 1 else unidad.rstrip('s')}."
-    return f"**{nombre}:** {x} {unidad if x != 1 else unidad.rstrip('s')} — {_comparacion(x, ant, normal)}."
+        return f"- **{nombre}:** sin casos."
+    personas = f"{x} persona{'s' if x != 1 else ''}"
+    if x < 3 and normal < 3:
+        return f"- **{nombre}:** {personas}, {'caso aislado' if x == 1 else 'casos aislados'}."
+    return f"- **{nombre}:** {personas}, {_comparacion(x, ant, normal)}."
 
 
 def evaluar_interrupcion(b, filas, hasta):
@@ -3432,7 +3434,7 @@ def evaluar_interrupcion(b, filas, hasta):
     inicio = min(f for f, _ in marcas).astimezone(LIMA) if marcas else None
     ultima = max(f for f, _ in marcas) if marcas else None
     activa = bool(ultima and hasta - ultima <= timedelta(minutes=30))
-    evid = [f"{usuarios} usuario{'s' if usuarios != 1 else ''}"] if usuarios else []
+    evid = [f"{usuarios} persona{'s' if usuarios != 1 else ''}"] if usuarios else []
     if comunicado and not inicio:
         inicio = datetime.fromisoformat(comunicado["fecha"]).astimezone(LIMA)
     if comunicado:
@@ -3451,7 +3453,7 @@ def evaluar_interrupcion(b, filas, hasta):
         return {"nivel": "Normal", "texto": f"mantenimiento o falla de un tercero anunciada por la entidad ({', '.join(evid)}).",
                 "resumen": "mantenimiento anunciado", "usuarios": usuarios}
     if rafaga >= 3:
-        return {"nivel": "Grave", "texto": f"interrupción probable: {rafaga} usuarios en una misma hora"
+        return {"nivel": "Grave", "texto": f"interrupción probable: {rafaga} personas en una misma hora"
                                            f"{' desde las ' + inicio.strftime('%H:%M') if inicio else ''}. {estado.capitalize()}.",
                 "resumen": "interrupción probable", "usuarios": usuarios}
     return {"nivel": "aislado", "texto": f"{usuarios} caso{'s' if usuarios != 1 else ''} aislado{'s' if usuarios != 1 else ''}",
@@ -3472,7 +3474,7 @@ def evaluar_patron(b, filas, cat, nombre):
     n = len(usuarios)
     if n < 3:
         return None
-    detalle = f"{n} usuarios"
+    detalle = f"{n} personas"
     if cat == "Fraude / seguridad":
         for r in usuarios.values():
             t = normalizar(r["texto"] or "")
@@ -3579,7 +3581,7 @@ def _recomendacion(b, tema, texto, registrar):
         if registrar and not previa:
             con.execute("INSERT INTO recomendaciones VALUES (?, ?, ?)", (b, tema, iso(ahora())))
     if previa:
-        return f"{b}: sigue vigente (recomendación emitida a las {datetime.fromisoformat(previa).astimezone(LIMA):%H:%M})."
+        return f"{b}: se mantiene lo recomendado a las {datetime.fromisoformat(previa).astimezone(LIMA):%H:%M} ({texto[0].lower() + texto[1:].split(';')[0].rstrip('.')})."
     return f"{b}: {texto}"
 
 
@@ -3628,7 +3630,9 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
                     for b in r["_bancos"]:
                         cuenta.setdefault(b, set()).add(r["_autor"])
             top = sorted(cuenta.items(), key=lambda x: -len(x[1]))[:3]
-            lineas = ["- Casos aislados, sin un evento por entidad. Más mencionadas: " + ", ".join(f"{b} {len(u)}" for b, u in top) + "."]
+            nombres = [f"{b} ({len(u)} persona{'s' if len(u) != 1 else ''})" for b, u in top]
+            lineas = ["- Casos aislados, sin un evento en ninguna entidad. Las más mencionadas: " +
+                      (", ".join(nombres[:-1]) + " y " + nombres[-1] if len(nombres) > 1 else nombres[0]) + "."]
         bloques[tema] = lineas
     ciber = eventos_ciber(desde, hasta, banco)
     hallazgos += [(e["nivel"], "Ciberseguridad", e["entidad"], e["resumen"]) for e in ciber if e["nivel"] != "Normal"]
@@ -3641,54 +3645,68 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     fmt_l = lambda d: d.astimezone(LIMA).strftime("%a %d/%m %H:%M").replace("Mon", "lun").replace("Tue", "mar") \
         .replace("Wed", "mié").replace("Thu", "jue").replace("Fri", "vie").replace("Sat", "sáb").replace("Sun", "dom")
     horas = (hasta - desde).total_seconds() / 3600
-    fin = fmt_l(hasta) if desde.astimezone(LIMA).date() != hasta.astimezone(LIMA).date() else f"{hasta.astimezone(LIMA):%H:%M}"
-    cab = f"{NIVEL_COLOR[nivel]} **{nivel.upper()}** · {fmt_l(desde)} → {fin} ({horas:.1f} h)".replace(".0 h", " h")
+    dia = fmt_l(desde).split(" ")
+    rango = (f"{dia[0]} {dia[1]}, de {desde.astimezone(LIMA):%H:%M} a {hasta.astimezone(LIMA):%H:%M}"
+             if desde.astimezone(LIMA).date() == hasta.astimezone(LIMA).date() else f"{fmt_l(desde)} a {fmt_l(hasta)}")
+    cab = f"{NIVEL_COLOR[nivel]} **{nivel.upper()}** · Reporte del {rango} ({horas:.1f} h)".replace(".0 h", " h")
+    # Resumen: lo más importante en una o dos oraciones
     if hallazgos:
         principal = hallazgos[0]
-        frase = f"**{principal[2]}:** {principal[3]}."
+        frase = f"{principal[2]}: {principal[3]}."
         otros = [f"{h[2]} ({h[3].split(' (')[0]})" for h in hallazgos[1:3] if NIVEL_ORDEN[h[0]] >= 1]
         if otros:
-            frase += " Además: " + "; ".join(otros) + "."
+            frase += " También: " + "; ".join(otros) + "."
     elif _flecha(actual["Quejas"], normal["Quejas"]) == "↑":
-        frase = "Sin incidentes puntuales; quejas por encima de lo normal, repartidas entre entidades."
+        frase = ("No hubo incidentes puntuales. Hubo más quejas que lo habitual, pero repartidas entre varias "
+                 "entidades, sin un evento concreto.")
     else:
-        frase = "Sin incidentes relevantes; las quejas están dentro de lo habitual."
+        frase = "No hubo incidentes relevantes y las quejas estuvieron dentro de lo habitual."
+    frase = frase[0].upper() + frase[1:]
     pub = f"{actual['_n']} publicaci{'ón' if actual['_n'] == 1 else 'ones'}" + \
-        (f", {tarde} {'llegó' if tarde == 1 else 'llegaron'} tarde" if tarde else "")
-    linea_q = _cifra("Quejas", actual["Quejas"], ant["Quejas"], normal["Quejas"], f"usuarios ({pub})")
+        (f"; {tarde} {'llegó' if tarde == 1 else 'llegaron'} con retraso" if tarde else "")
+    x = actual["Quejas"]
+    if not x:
+        linea_q = "Ninguna persona se quejó en el periodo."
+    else:
+        linea_q = f"{x} persona{'s' if x != 1 else ''} se {'quejaron' if x != 1 else 'quejó'} ({pub})"
+        linea_q += f": {_comparacion(x, ant['Quejas'], normal['Quejas'])}." if x >= 3 or normal["Quejas"] >= 3 else "."
     nombres_tema = {"Interrupciones": "Caídas e interrupciones"}
-    lineas = [cab, frase, "", linea_q, ""]
+    lineas = [cab, "", "**Resumen**", frase, "", "**Quejas de usuarios**", linea_q, "", "**Por tema**"]
     for tema, _ in TEMAS_REPORTE:
         cifra = _cifra(nombres_tema.get(tema, tema), actual[tema], ant[tema], normal[tema])
         if bloques[tema]:
-            lineas += [cifra] + bloques[tema]
+            lineas += [cifra] + ["  " + l for l in bloques[tema]]
+        elif "sin casos" in cifra or "aislad" in cifra:
+            lineas.append(cifra)
         else:
-            lineas.append(cifra if "sin casos" in cifra else cifra + " Sin patrón por entidad: casos aislados.")
-    lineas.append("")
+            lineas.append(cifra[:-1] + "; ninguna entidad concentra casos.")
+    lineas += ["", "**Ciberseguridad**"]
     if ciber:
-        lineas.append("**Ciberseguridad**")
-        # los eventos con novedades van completos; los que siguen en curso sin novedades, en una sola línea
+        # los eventos con novedades van completos; los que siguen abiertos sin novedades, en una sola línea
         inc = [e for e in ciber if e["clase"] == "incidente" and e["estado"] != "en curso"][:6]
         expo = [e for e in ciber if e["clase"] != "incidente"][:3]
         lineas += [f"- {e['texto']}" for e in inc + expo]
         en_curso = [e["entidad"] for e in ciber if e["clase"] == "incidente" and e["estado"] == "en curso"]
+        if not inc and not expo:
+            lineas.append("Sin novedades en este periodo.")
         if en_curso:
-            lineas.append(f"- Sin novedades en este periodo (eventos de los últimos 7 días): {', '.join(en_curso)}.")
+            lineas.append(f"Siguen abiertos, sin cambios, los eventos de los últimos 7 días de: {', '.join(en_curso)}.")
     else:
-        lineas.append("**Ciberseguridad:** sin eventos nuevos ni actualizaciones.")
+        lineas.append("Sin eventos nuevos ni actualizaciones.")
     if avisos:
-        lineas += ["", "**Avisos inmediatos enviados:** " + "; ".join(
-            f"{datetime.fromisoformat(a['fecha']).astimezone(LIMA):%H:%M} {a['titulo']}" for a in avisos[-4:])]
+        lineas += ["", "**Avisos enviados en el periodo**"]
+        lineas += [f"- {datetime.fromisoformat(a['fecha']).astimezone(LIMA):%H:%M} · {a['titulo']}" for a in avisos[-6:]]
     recs = [(h[2], h[1]) for h in hallazgos if NIVEL_ORDEN[h[0]] >= 2]
     if recs:
-        lineas += ["", "**Recomendaciones**"]
+        lineas += ["", "**Qué hacer**"]
         lineas += ["- " + _recomendacion(b, tema, RECOMENDACION[tema](b), registrar) for b, tema in dict.fromkeys(recs)]
     disp = fuentes_disponibles()
     inactivas = [n for n in FUENTES if n not in disp or n in MOTIVO_INACTIVA]
+    lineas.append("")
     if inactivas:
-        lineas += ["", f"*Sin cobertura en este periodo: {', '.join(inactivas)}.*"]
-    lineas.append("*Cifras en usuarios distintos. Normal: mediana de las mismas horas en los últimos 7 días. Reporte "
-                  "anterior: ajustado a la misma duración y horario.*")
+        lineas.append(f"*Sin cobertura en este periodo: {', '.join(inactivas)}.*")
+    lineas.append("*Se cuentan personas distintas, no publicaciones. «Lo habitual» es la mediana de las mismas horas en "
+                  "los últimos 7 días; «el reporte anterior», ajustado a la misma duración y horario.*")
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M}{' · ' + banco if banco else ''}"
     corto = re.sub(r"[*]", "", "\n".join([cab, frase, linea_q]))  # el celular no muestra Markdown
     return titulo, "\n".join(lineas), NIVEL_AVISO[nivel], corto
