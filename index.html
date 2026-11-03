@@ -48,7 +48,19 @@ button{cursor:pointer}button.pri{background:var(--acc);border-color:var(--acc);c
 .fmini div{display:flex;gap:6px;align-items:baseline;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--line)}.fmini div:last-child{border-bottom:0}
 .fmini .d{flex:none}.fmini b{min-width:112px;font-weight:600}.fmini .sub{margin-left:auto;text-align:right}
 body[data-vista="monitoreo"] [data-vistas]:not([data-vistas~="monitoreo"]),body[data-vista="analisis"] [data-vistas]:not([data-vistas~="analisis"]),
-body[data-vista="ciber"] [data-vistas]:not([data-vistas~="ciber"]),body[data-vista="sistema"] [data-vistas]:not([data-vistas~="sistema"]){display:none}
+body[data-vista="ciber"] [data-vistas]:not([data-vistas~="ciber"]),body[data-vista="sistema"] [data-vistas]:not([data-vistas~="sistema"]),
+body[data-vista="casos"] [data-vistas]:not([data-vistas~="casos"]){display:none}
+body[data-vista="casos"] .grid{display:none}
+.casos-f{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.casos-f button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.tcasos{width:100%;border-collapse:collapse;font-size:13px}.tcasos th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:6px;border-bottom:1px solid var(--line)}
+.tcasos td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}.tcasos tr.fila{cursor:pointer}.tcasos tr.fila:hover{background:var(--chip)}
+.chip-caso{display:inline-block;font-size:11px;padding:1px 6px;border-radius:9px;background:var(--chip);border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+.est-abierto{color:var(--neg);font-weight:600}.est-cerrado{color:var(--muted)}
+#caso{z-index:60}#caso .ficha{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;font-size:13px;margin-bottom:12px}#caso .ficha b{color:var(--muted);font-weight:600}
+#caso .tl{border-left:2px solid var(--line);margin-left:6px;padding-left:12px}#caso .tl .ev{position:relative;margin-bottom:10px}
+#caso .tl .ev::before{content:"";position:absolute;left:-18px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--acc)}
+#caso .tl .ev .txt{font-size:12.5px;line-height:1.45;margin-top:4px;color:var(--ink2)}
+#caso .gest{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}#caso textarea{width:100%;min-height:70px}
 body[data-vista="sistema"] .grid{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 body[data-vista="sistema"] .grid .col{display:contents}
 #ciber-resumen .alerta{cursor:pointer}
@@ -130,13 +142,13 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 .tip b{display:block;margin-bottom:3px}.tip .sin-cuadro::before{display:none}.tip span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
 .hist{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .hist label{font-size:12px;color:var(--ink2)}
-#cfg,#rep,#camp{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
-#cfg.on,#rep.on,#camp.on{display:flex}
-#cfg .caja,#rep .caja,#camp .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
-#cfg header,#rep header,#camp header{position:static;border-radius:12px 12px 0 0}
+#cfg,#rep,#camp,#caso{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 16px}
+#cfg.on,#rep.on,#camp.on,#caso.on{display:flex}
+#cfg .caja,#rep .caja,#camp .caja,#caso .caja{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:min(980px,100%);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#cfg header,#rep header,#camp header,#caso header{position:static;border-radius:12px 12px 0 0}
 #cfg .tabs{display:flex;flex-direction:column;align-items:flex-start;gap:0;padding:10px 16px;border-bottom:1px solid var(--line)}
-#cfg .cuerpo,#rep .cuerpo,#camp .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
-#cfg .pie,#rep .pie,#camp .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+#cfg .cuerpo,#rep .cuerpo,#camp .cuerpo,#caso .cuerpo{padding:16px;max-height:calc(100vh - 220px);overflow:auto}
+#cfg .pie,#rep .pie,#camp .pie,#caso .pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
 #cfg label.campo{display:grid;gap:4px;font-size:12px;color:var(--ink2);margin-bottom:10px}
 #cfg textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-height:38px;resize:vertical}
 #cfg input[type=text],#cfg input[type=number],#cfg select{width:100%}
@@ -144,7 +156,7 @@ mark{background:color-mix(in srgb,var(--warn) 45%,transparent);color:inherit}
 #cfg .rej{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
 #cfg .ayuda{font-size:12px;color:var(--muted);margin:0 0 12px}
 #cfg-msg,#rep-msg{font-size:13px;margin-right:auto}
-#rep .caja,#camp .caja{width:min(760px,100%)}
+#rep .caja,#camp .caja,#caso .caja{width:min(760px,100%)}
 #camp-abrir{position:relative}.camp-n{position:absolute;top:-6px;right:-6px;min-width:18px;padding:0 5px;border-radius:9px;background:var(--neg);color:#fff;font-size:11px;line-height:18px}.camp-n[hidden]{display:none}
 #camp .filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}#camp .filtros button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 .nt{border:1px solid var(--line);border-radius:8px;margin-bottom:8px}.nt>summary{list-style:none;cursor:pointer;padding:8px 10px;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline}
@@ -187,7 +199,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
   <div id="aviso-pausa"></div>
   <div id="picos"></div><div id="alerta-x"></div>
   <nav class="vistas" role="tablist" aria-label="Secciones del panel">
-    <button role="tab" data-vista="monitoreo">Monitoreo</button><button role="tab" data-vista="ciber">🛡️ Ciberseguridad <span class="badge" id="vista-ciber-n" hidden></span></button><button role="tab" data-vista="analisis">Análisis</button><button role="tab" data-vista="sistema">Sistema</button>
+    <button role="tab" data-vista="monitoreo">Monitoreo</button><button role="tab" data-vista="ciber">🛡️ Ciberseguridad <span class="badge" id="vista-ciber-n" hidden></span></button><button role="tab" data-vista="analisis">Análisis</button><button role="tab" data-vista="casos">📁 Casos <span class="badge" id="vista-casos-n" hidden></span></button><button role="tab" data-vista="sistema">Sistema</button>
   </nav>
   <div id="ciber-resumen" data-vistas="monitoreo analisis"></div>
 
@@ -216,6 +228,15 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <div class="card kpi"><div class="n" id="k-pos" style="color:var(--pos)">–</div><div class="l">Positivas</div></div>
     <div class="card kpi"><div class="n" id="k-net">–</div><div class="l">Sentimiento neto (% positivas − % negativas)</div><div class="sub" id="k-net-var" style="margin-top:2px"></div><div id="k-net-spark" style="margin-top:4px"></div></div>
     <div class="card kpi"><div class="n" id="k-quejas">–</div><div class="l">Quejas · <b id="k-graves" style="color:var(--neg)">–</b> graves</div></div>
+  </div>
+
+  <div data-vistas="casos" class="card" id="sec-casos">
+    <h2>📁 Casos <span class="sub" id="casos-n" style="font-weight:400;text-transform:none;letter-spacing:0"></span></h2>
+    <div class="sub" style="margin-bottom:8px">Cada evento es un caso con número; todos sus avisos quedan vinculados. Los de quejas se cierran solos (sin quejas nuevas o con el comunicado de la entidad); los de ciberseguridad siguen abiertos hasta que los cierres.</div>
+    <div class="casos-f" id="casos-f"><button data-e="abierto" class="on">Abiertos</button><button data-e="cerrado">Cerrados</button><button data-e="">Todos</button>
+      <select id="casos-ent" aria-label="Entidad"><option value="">Todas las entidades</option></select>
+      <select id="casos-dias" aria-label="Periodo"><option value="30">Últimos 30 días</option><option value="90" selected>Últimos 90 días</option><option value="365">Último año</option></select></div>
+    <div id="casos-lista" class="sub">Cargando…</div>
   </div>
 
   <div data-vistas="ciber" class="ciber-grid" id="sec-ciber">
@@ -315,6 +336,14 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
       <div data-vistas="sistema" class="card"><h2>Clasificación IA</h2><div class="src" id="ia-card"></div></div>
       <div data-vistas="sistema" class="card"><h2>Fuentes</h2><div class="src" id="fuentes"></div><div class="sub keys" id="claves" style="margin-top:10px"></div></div>
     </div>
+  </div>
+</div>
+
+<div id="caso" role="dialog" aria-modal="true" aria-label="Ficha del caso">
+  <div class="caja">
+    <header><h1 id="caso-tit">📁 Caso</h1><button id="caso-cerrar" aria-label="Cerrar">✕</button></header>
+    <div class="cuerpo" id="caso-cuerpo">Cargando…</div>
+    <div class="pie"><span id="caso-msg" class="sub"></span><a id="caso-txt" href="#"><button>Exportar texto</button></a><a id="caso-csv" href="#"><button>Exportar CSV</button></a><button id="caso-cancelar">Cerrar</button></div>
   </div>
 </div>
 
@@ -853,7 +882,7 @@ function marcarCiberVisto(){let cambio=false;CIBER_IDS.forEach(i=>{if(!CIBER_VIS
   if(!cambio)return;try{localStorage.setItem('monitor.ciber.vistos',JSON.stringify([...CIBER_VISTOS].slice(-1000)))}catch(e){}
   const bd=$('#vista-ciber-n');bd.hidden=true;$('#ciber-resumen').innerHTML=''}
 let VISTA='monitoreo';
-function abrirVista(v,guardar=true){if(!['monitoreo','ciber','analisis','sistema'].includes(v))v='monitoreo';VISTA=v;document.body.dataset.vista=v;
+function abrirVista(v,guardar=true){if(!['monitoreo','ciber','analisis','casos','sistema'].includes(v))v='monitoreo';VISTA=v;document.body.dataset.vista=v;
   document.querySelectorAll('.vistas [role=tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.vista===v?'true':'false'));
   if(guardar){try{localStorage.setItem('monitor.vista',v)}catch(e){}history.replaceState(null,'',v==='monitoreo'?location.pathname:'#'+v)}
   if(v==='ciber'&&typeof marcarCiberVisto==='function')marcarCiberVisto();
@@ -1252,6 +1281,55 @@ $('#rep-enviar').onclick=async()=>{if(!REP||!confirm('¿Enviar este reporte a Te
   const r=await fetch('/api/reporte/enviar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(REP)}).then(r=>r.json()).catch(e=>({error:String(e)}));
   $('#rep-msg').textContent=r.error?'⚠ '+r.error:'✓ Enviado a Teams y al celular.'};
 $('#rep-cerrar').onclick=$('#rep-cancelar').onclick=()=>$('#rep').classList.remove('on');
+// Casos: cada evento con número; sus avisos quedan vinculados (trazabilidad). Ficha con línea de tiempo y gestión.
+let CASOS_E='abierto',CASOS_G={};
+const fh=f=>f?new Date(f).toLocaleString('es-PE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Lima'}):'';
+async function cargarCasos(){const p=new URLSearchParams({estado:CASOS_E,dias:$('#casos-dias').value,entidad:$('#casos-ent').value});
+  let d;try{d=await fetch('/api/casos?'+p).then(r=>r.json())}catch(e){return}
+  CASOS_G=d.gestiones||{};const c=d.casos||[];
+  const ab=c.filter(x=>x.estado==='abierto').length,b=$('#vista-casos-n');if(CASOS_E==='abierto'){b.textContent=ab;b.hidden=!ab}
+  const s=$('#casos-ent');if(s.options.length<2)(ESTADO?.bancos||[]).forEach(x=>s.add(new Option(x,x)));
+  $('#casos-n').textContent=c.length?`· ${c.length}`:'';
+  if(!c.length){$('#casos-lista').innerHTML='<div class="sub">No hay casos con estos filtros.</div>';return}
+  $('#casos-lista').innerHTML=`<table class="tcasos"><thead><tr><th>Caso</th><th>Entidad · tema</th><th>Nivel</th><th>Inicio</th><th>Estado</th><th>Gestión</th><th>Avisos</th></tr></thead><tbody>${c.map(x=>`<tr class="fila" data-caso="${esc(x.id)}">
+    <td><b>${esc(x.id)}</b></td><td>${esc(x.entidad)}<br><span class="sub">${esc(x.tema)}</span></td><td>${NIV_COLOR[x.nivel_max]||''} ${esc(x.nivel_max||'')}</td>
+    <td>${fh(x.primera||x.apertura)}</td><td class="est-${x.estado}">${x.estado==='abierto'?'Abierto':'Cerrado'}${x.cierre?`<br><span class="sub">${fh(x.cierre)}</span>`:''}</td>
+    <td>${esc(CASOS_G[x.gestion||'']||'')}</td><td>${x.avisos}</td></tr>`).join('')}</tbody></table>`}
+$('#casos-f').onclick=e=>{const b=e.target.closest('button');if(!b)return;CASOS_E=b.dataset.e;$('#casos-f').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));cargarCasos()};
+$('#casos-ent').onchange=$('#casos-dias').onchange=cargarCasos;
+$('#casos-lista').onclick=e=>{const f=e.target.closest('tr.fila');if(f)abrirCaso(f.dataset.caso)};
+let CASO=null;
+async function abrirCaso(id){$('#caso').classList.add('on');$('#caso-cuerpo').innerHTML='Cargando…';$('#caso-msg').textContent='';
+  const r=await fetch('/api/caso?id='+encodeURIComponent(id));const d=await r.json();if(!r.ok){$('#caso-cuerpo').textContent='⚠ '+(d.error||'Error');return}
+  CASO=d.caso;const c=d.caso,adm=YO?.rol==='admin';
+  $('#caso-tit').textContent=`📁 ${c.id} · ${c.entidad}`;
+  $('#caso-txt').href='/api/caso/exportar?formato=txt&id='+encodeURIComponent(c.id);$('#caso-csv').href='/api/caso/exportar?formato=csv&id='+encodeURIComponent(c.id);
+  const dur=c.primera&&c.ultima?Math.round((new Date(c.cierre_motivo&&/restablec/i.test(c.cierre_motivo)?c.cierre:c.ultima)-new Date(c.primera))/6e4):null;
+  $('#caso-cuerpo').innerHTML=`<div class="ficha">
+    <b>Tema</b><span>${esc(c.tema)}</span><b>Nivel máximo</b><span>${NIV_COLOR[c.nivel_max]||''} ${esc(c.nivel_max||'')}</span>
+    <b>Estado</b><span class="est-${c.estado}">${c.estado==='abierto'?'Abierto':'Cerrado'}${c.cierre_motivo?' · '+esc(c.cierre_motivo):''}</span>
+    <b>Apertura</b><span>${fh(c.apertura)}${c.cierre?' · cierre '+fh(c.cierre):''}</span>
+    ${c.primera?`<b>Quejas</b><span>${c.quejas} quejas de ${c.usuarios} usuarios${c.fuentes?' ('+esc(c.fuentes)+')':''}, entre ${fh(c.primera)} y ${fh(c.ultima)}${dur!=null?` · duración ~${dur>=60?Math.floor(dur/60)+' h '+String(dur%60).padStart(2,'0')+' min':dur+' min'}`:''}</span>`:''}
+    ${c.actualizado_por?`<b>Última gestión</b><span>${esc(c.actualizado_por)} · ${fh(c.actualizado)}</span>`:''}</div>
+    <div class="gest"><b>Gestión</b> <select id="caso-gest" ${adm?'':'disabled'}>${Object.entries(d.gestiones).map(([k,v])=>`<option value="${k}" ${k===(c.gestion||'')?'selected':''}>${esc(v)}</option>`).join('')}</select>
+      ${adm?`<button id="caso-estado">${c.estado==='abierto'?'Cerrar caso':'Reabrir caso'}</button>`:''}</div>
+    <div><b>Notas del analista</b><textarea id="caso-notas" ${adm?'':'disabled'} placeholder="Qué se hizo, a quién se requirió, número de reporte…">${esc(c.notas||'')}</textarea>
+      ${adm?'<button class="pri" id="caso-guardar" style="margin-top:6px">Guardar gestión y notas</button>':''}</div>
+    <h3 style="margin:16px 0 8px;font-size:14px">Línea de tiempo · ${d.avisos.length} aviso${d.avisos.length===1?'':'s'}</h3>
+    <div class="tl">${d.avisos.map(a=>`<div class="ev"><b>${fh(a.fecha)}</b> · ${NIV_COLOR[a.nivel]||''} ${esc(a.titulo.replace(/^\[CASO-[0-9-]+\] /,''))}${a.enviados?'':' <span class="fallo" style="color:var(--neg)">· no se entregó</span>'}${a.util===1?' 👍':a.util===0?' 👎':''}
+      <div class="txt">${a.texto?repHTML(a.texto):''}</div></div>`).join('')||'<div class="sub">Sin avisos.</div>'}</div>`;
+  if(adm){
+    $('#caso-guardar').onclick=()=>gestionarCaso({gestion:$('#caso-gest').value,notas:$('#caso-notas').value});
+    $('#caso-estado').onclick=()=>gestionarCaso({estado:c.estado==='abierto'?'cerrado':'abierto',notas:$('#caso-notas').value})}}
+async function gestionarCaso(cambios){
+  if(cambios.gestion==='descartado'&&CASO.gestion!=='descartado'&&!confirm('¿Descartar como falso positivo? Los avisos del caso sin valorar contarán como 👎 «no era un incidente».'))return;
+  const r=await fetch('/api/caso/gestion',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({id:CASO.id,...cambios})}).then(r=>r.json()).catch(e=>({error:String(e)}));
+  if(r.error){$('#caso-msg').textContent='⚠ '+r.error;return}
+  await abrirCaso(CASO.id);$('#caso-msg').textContent='✓ Guardado.';cargarCasos()}
+$('#caso-cerrar').onclick=$('#caso-cancelar').onclick=()=>$('#caso').classList.remove('on');
+$('#caso').onclick=e=>{if(e.target.id==='caso')$('#caso').classList.remove('on')};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#caso').classList.remove('on')});
+cargarCasos();setInterval(cargarCasos,60000);
 // Campana: historial de lo enviado a Teams y al celular (mismo texto, en espejo). Las no vistas se cuentan en el globo.
 const NIV_COLOR={'Crítico':'🔴','Grave':'🟠','Medio':'🟡','Informativo':'🔵'};
 let CAMP=[],CAMP_F='',CAMP_VAL=null,CAMP_MOT={},CAMP_PROP=[];
@@ -1268,7 +1346,7 @@ function campPintar(){const visto=$('#camp').dataset.visto||'';
   for(const x of lista){const f=new Date(x.fecha),d=f.toLocaleDateString('es-PE',{weekday:'long',day:'2-digit',month:'long',timeZone:'America/Lima'});
     if(d!==dia){dia=d;h+=`<div class="nt-dia">${esc(d)}</div>`}
     const hora=f.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Lima'});
-    h+=`<details class="nt"><summary class="${x.fecha>visto?'nuevo':''}"><span class="h">${hora}</span><span><span class="t">${NIV_COLOR[x.nivel]||'⚪'} ${esc(x.titulo)}</span>${x.util===1?'<span class="marca" title="Marcada como útil">👍</span>':x.util===0?'<span class="marca" title="Marcada como que no aportó">👎</span>':''}<br><span class="k">${esc(x.tipo||'Aviso')}${x.nivel?' · '+esc(x.nivel):''}</span></span>${x.enviados?'<span class="ver">Ver detalle</span>':'<span class="fallo">No se entregó</span>'}</summary>
+    h+=`<details class="nt"><summary class="${x.fecha>visto?'nuevo':''}"><span class="h">${hora}</span><span><span class="t">${NIV_COLOR[x.nivel]||'⚪'} ${esc(x.titulo.replace(/^\[CASO-[0-9-]+\] /,''))}</span>${x.caso?` <span class="chip-caso" data-caso="${esc(x.caso)}" title="Abrir la ficha del caso">📁 ${esc(x.caso)}</span>`:''}${x.util===1?'<span class="marca" title="Marcada como útil">👍</span>':x.util===0?'<span class="marca" title="Marcada como que no aportó">👎</span>':''}<br><span class="k">${esc(x.tipo||'Aviso')}${x.nivel?' · '+esc(x.nivel):''}</span></span>${x.enviados?'<span class="ver">Ver detalle</span>':'<span class="fallo">No se entregó</span>'}</summary>
       <div class="txt">${x.texto?repHTML(x.texto).replace(/https:\/\/[^\s<"]+/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`):'<span class="sub">Enviada antes del 02/11, cuando aún no se guardaba el texto: solo queda el título. Desde ahora se guarda completo.</span>'}${x.errores?`<div class="fallo">⚠ ${esc(x.errores)}</div>`:''}
       ${x.id&&!['Reporte','Prueba','Pausa','Resumen de avisos'].includes(x.tipo)?`<div class="val">¿Te sirvió este aviso? <button data-v="1" data-id="${x.id}" class="${x.util===1?'on':''}">👍 Útil</button><button data-v="0" data-id="${x.id}" class="${x.util===0?'on':''}">👎 No aportó</button>${x.valorado_por?`<span>· marcado por ${esc(x.valorado_por)}</span>`:''}</div>
       ${x.util===0||x.util===1?`<div class="mot">${x.util===0?'¿Por qué?':'¿Algo que corregir?'} ${(x.util===0?['no_incidente','nivel_alto','repetido','tarde']:['nivel_bajo','tarde']).map(m=>`<button data-mot="${m}" data-id="${x.id}" class="${x.motivo===m?'on':''}">${esc(CAMP_MOT[m]||m)}</button>`).join('')}</div>`:''}`:''}</div></details>`}
@@ -1280,6 +1358,7 @@ $('#camp-filtros').onclick=e=>{const b=e.target.closest('button');if(!b)return;C
   $('#camp-filtros').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));campPintar()};
 $('#camp-dias').onchange=()=>campCargar().then(campPintar);
 $('#camp-lista').onclick=async e=>{
+  const ch=e.target.closest('.chip-caso');if(ch){e.preventDefault();abrirCaso(ch.dataset.caso);return}
   const pb=e.target.closest('button[data-prop]');
   if(pb){if(!confirm('¿Aplicar este ajuste? Cambia la configuración de los avisos desde ahora.'))return;
     const r=await fetch('/api/notificaciones/propuesta',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({id:pb.dataset.prop})}).then(r=>r.json()).catch(e=>({error:String(e)}));

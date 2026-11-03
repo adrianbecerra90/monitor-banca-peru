@@ -2768,11 +2768,14 @@ def _url_panel():
     return (os.environ.get("PANEL_URL") or CONFIG.get("notificaciones", {}).get("enlace") or URL_PANEL).rstrip("/") + "/"
 
 
-def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None):
+def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None,
+                        caso=None):
     """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
     tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). Celular y Teams reciben lo mismo
     (espejo, a pedido del analista); al celular sin los asteriscos del Markdown, que ntfy no interpreta."""
     enviados, errores = 0, []
+    if caso:  # todos los avisos de un mismo caso llevan su número (trazabilidad)
+        titulo = f"[{caso}] {titulo}"
     pie = f"\n\nMás información: {_url_panel()}"  # pie fijo en todos los avisos
     mensaje = f"{mensaje.rstrip()}{pie}"
     if nivel in NIVELES:
@@ -2813,7 +2816,7 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
     if teams and not destinos:
         errores.append("Teams: la URL no parece de Workflows de Teams")
         _log_aviso("Teams", titulo, False, f"URL no reconocida (dominio {urllib.parse.urlparse(teams).hostname})")
-    _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores)
+    _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores, caso)
     if not enviados:
         raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
     if tipo not in (None, "Reporte", "Prueba", "Pausa", "Resumen de avisos"):  # el reporte siguiente menciona los avisos inmediatos enviados
@@ -2826,14 +2829,14 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
             print(f"  Registro de aviso fallido ({e})", flush=True)
 
 
-def _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores):
+def _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores, caso=None):
     """Historial de todo lo enviado (avisos, reportes, pruebas), con el texto completo y si llegó: lo muestra la
     campana del panel. Se guarda 90 días."""
     try:
         with _db_lock, db() as con:
             _tabla_notificaciones(con)
-            con.execute("INSERT INTO notificaciones (fecha, tipo, nivel, titulo, texto, enviados, errores) VALUES (?,?,?,?,?,?,?)",
-                        (iso(ahora()), tipo or "", nivel or "", titulo[:200], mensaje[:8000], enviados, "; ".join(errores)[:500]))
+            con.execute("INSERT INTO notificaciones (fecha, tipo, nivel, titulo, texto, enviados, errores, caso) VALUES (?,?,?,?,?,?,?,?)",
+                        (iso(ahora()), tipo or "", nivel or "", titulo[:200], mensaje[:8000], enviados, "; ".join(errores)[:500], caso))
             con.execute("DELETE FROM notificaciones WHERE fecha < ?", (iso(ahora() - timedelta(days=90)),))
     except sqlite3.Error as e:
         print(f"  Historial de notificaciones: {e}", flush=True)
@@ -2844,7 +2847,8 @@ def _tabla_notificaciones(con):
                 "enviados INTEGER, errores TEXT)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_notificaciones_fecha ON notificaciones (fecha)")
     columnas = {r[1] for r in con.execute("PRAGMA table_info(notificaciones)")}
-    for col, tipo_col in (("util", "INTEGER"), ("valorado_por", "TEXT"), ("valorado", "TEXT"), ("motivo", "TEXT")):
+    for col, tipo_col in (("util", "INTEGER"), ("valorado_por", "TEXT"), ("valorado", "TEXT"), ("motivo", "TEXT"),
+                          ("caso", "TEXT")):
         if col not in columnas:
             con.execute(f"ALTER TABLE notificaciones ADD COLUMN {col} {tipo_col}")
     if not con.execute("SELECT 1 FROM notificaciones LIMIT 1").fetchone():  # la primera vez trae lo ya registrado (sin texto)
@@ -2856,7 +2860,7 @@ def _tabla_notificaciones(con):
 def notificaciones_enviadas(dias=7, limite=300):
     with _db_lock, db() as con:
         _tabla_notificaciones(con)
-        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, motivo, valorado_por "
+        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, motivo, valorado_por, caso "
                             "FROM notificaciones WHERE fecha >= ? ORDER BY fecha DESC LIMIT ?",
                             (iso(ahora() - timedelta(days=dias)), limite)).fetchall()
     lista = [dict(r) for r in filas]
@@ -3120,6 +3124,231 @@ def _cargar_eventos():
 _cargar_eventos()
 
 
+# ---------------- Casos: trazabilidad de los avisos ----------------
+# Cada evento (caída, pico, quejas graves de una entidad; o un hilo de ciberseguridad) es un caso con número. Todos sus
+# avisos llevan ese número y quedan vinculados: apertura, escalamientos, recordatorios, cierre y restablecimiento.
+# Los casos de quejas se cierran solos (sin quejas nuevas o con el comunicado de la entidad); los de ciberseguridad
+# siguen abiertos hasta que el analista los cierra (pueden durar meses). El analista anota y gestiona cada caso.
+GESTION_CASO = {"": "Sin gestión", "en_revision": "En revisión", "requerido": "Requerido a la entidad",
+                "reportable": "Reportable", "descartado": "Descartado (falso positivo)"}
+TEMA_ORIGEN = {"caida": "Caídas e interrupciones", "grave": "Quejas graves", "pico": "Pico de quejas"}
+
+
+def _tabla_casos(con):
+    con.execute("CREATE TABLE IF NOT EXISTS casos (id TEXT PRIMARY KEY, entidad TEXT, tema TEXT, clave TEXT, estado TEXT, "
+                "gestion TEXT DEFAULT '', nivel_max TEXT, apertura TEXT, cierre TEXT, cierre_motivo TEXT, primera TEXT, "
+                "ultima TEXT, usuarios INTEGER, quejas INTEGER, fuentes TEXT, notas TEXT DEFAULT '', actualizado TEXT, "
+                "actualizado_por TEXT, origen TEXT)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_casos_clave ON casos (clave, estado)")
+
+
+def caso_abrir(entidad, tema, clave, nivel, origen="automático", fecha=None):
+    """Nuevo caso con número legible por día: CASO-AAAAMMDD-NN (fecha de Lima)."""
+    f = fecha or ahora()
+    dia = f.astimezone(LIMA).strftime("%Y%m%d")
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        n = con.execute("SELECT COUNT(*) FROM casos WHERE id LIKE ?", (f"CASO-{dia}-%",)).fetchone()[0] + 1
+        id_ = f"CASO-{dia}-{n:02d}"
+        con.execute("INSERT INTO casos (id, entidad, tema, clave, estado, gestion, nivel_max, apertura, notas, origen, "
+                    "actualizado) VALUES (?, ?, ?, ?, 'abierto', '', ?, ?, '', ?, ?)",
+                    (id_, entidad, tema, clave, nivel, iso(f), origen, iso(ahora())))
+    return id_
+
+
+def caso_abierto(clave):
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        r = con.execute("SELECT id FROM casos WHERE clave = ? AND estado = 'abierto' ORDER BY apertura DESC LIMIT 1",
+                        (clave,)).fetchone()
+    return r[0] if r else None
+
+
+def caso_nivel(id_, nivel):
+    if not id_ or nivel not in RANGO_NIVEL:
+        return
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        r = con.execute("SELECT nivel_max FROM casos WHERE id = ?", (id_,)).fetchone()
+        if r and RANGO_NIVEL.get(nivel, 0) > RANGO_NIVEL.get(r[0], 0):
+            con.execute("UPDATE casos SET nivel_max = ?, actualizado = ? WHERE id = ?", (nivel, iso(ahora()), id_))
+
+
+def caso_cerrar(id_, motivo, fin=None, n=None, usuarios=None, fuentes=None, primera=None, ultima=None, nivel_max=None):
+    if not id_:
+        return
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        con.execute("UPDATE casos SET estado = 'cerrado', cierre = ?, cierre_motivo = ?, quejas = COALESCE(?, quejas), "
+                    "usuarios = COALESCE(?, usuarios), fuentes = COALESCE(?, fuentes), primera = COALESCE(?, primera), "
+                    "ultima = COALESCE(?, ultima), nivel_max = COALESCE(?, nivel_max), actualizado = ? WHERE id = ?",
+                    (iso(fin or ahora()), motivo, n, usuarios, ", ".join(fuentes) if fuentes else None,
+                     iso(primera) if primera else None, iso(ultima) if ultima else None, nivel_max, iso(ahora()), id_))
+
+
+def casos_lista(estado="", dias=90, entidad=""):
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        _tabla_notificaciones(con)
+        filas = [dict(r) for r in con.execute(
+            "SELECT c.*, (SELECT COUNT(*) FROM notificaciones n WHERE n.caso = c.id) AS avisos FROM casos c "
+            "WHERE (c.estado = 'abierto' OR c.apertura >= ?) AND (? = '' OR c.estado = ?) AND (? = '' OR c.entidad = ?) "
+            "ORDER BY c.estado = 'abierto' DESC, c.apertura DESC LIMIT 500",
+            (iso(ahora() - timedelta(days=dias)), estado, estado, entidad, entidad))]
+    return {"casos": filas, "gestiones": GESTION_CASO}
+
+
+def caso_detalle(id_):
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        _tabla_notificaciones(con)
+        c = con.execute("SELECT * FROM casos WHERE id = ?", (id_,)).fetchone()
+        if not c:
+            raise ValueError("Caso no encontrado")
+        avisos = [dict(r) for r in con.execute(
+            "SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, motivo FROM notificaciones "
+            "WHERE caso = ? ORDER BY fecha", (id_,))]
+    return {"caso": dict(c), "avisos": avisos, "gestiones": GESTION_CASO}
+
+
+def caso_gestionar(id_, d, usuario):
+    """El analista anota, cambia la gestión o cierra / reabre. Descartar como falso positivo cuenta como 👎 («no era
+    un incidente») en los avisos del caso que no se habían valorado: alimenta las propuestas de ajuste."""
+    gestion = d.get("gestion")
+    if gestion is not None and gestion not in GESTION_CASO:
+        raise ValueError("Gestión no válida")
+    estado = d.get("estado")
+    if estado not in (None, "abierto", "cerrado"):
+        raise ValueError("Estado no válido")
+    notas = d.get("notas")
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        c = con.execute("SELECT estado FROM casos WHERE id = ?", (id_,)).fetchone()
+        if not c:
+            raise ValueError("Caso no encontrado")
+        if gestion is not None:
+            con.execute("UPDATE casos SET gestion = ? WHERE id = ?", (gestion, id_))
+        if notas is not None:
+            con.execute("UPDATE casos SET notas = ? WHERE id = ?", (str(notas)[:5000], id_))
+        if estado == "cerrado" and c[0] != "cerrado":
+            con.execute("UPDATE casos SET estado = 'cerrado', cierre = ?, cierre_motivo = ? WHERE id = ?",
+                        (iso(ahora()), f"Cerrado por {usuario}", id_))
+        elif estado == "abierto" and c[0] != "abierto":
+            con.execute("UPDATE casos SET estado = 'abierto', cierre = NULL, cierre_motivo = NULL WHERE id = ?", (id_,))
+        con.execute("UPDATE casos SET actualizado = ?, actualizado_por = ? WHERE id = ?", (iso(ahora()), usuario, id_))
+        if gestion == "descartado":
+            _tabla_notificaciones(con)
+            con.execute("UPDATE notificaciones SET util = 0, motivo = 'no_incidente', valorado_por = ?, valorado = ? "
+                        "WHERE caso = ? AND util IS NULL", (usuario, iso(ahora()), id_))
+    registrar(usuario, f"gestionó el caso {id_}: " + ", ".join(
+        x for x in (f"gestión {GESTION_CASO.get(gestion)}" if gestion is not None else "",
+                    f"estado {estado}" if estado else "", "notas" if notas is not None else "") if x), "")
+
+
+def caso_exportar(id_, formato="txt"):
+    d = caso_detalle(id_)
+    c, avisos = d["caso"], d["avisos"]
+    h = lambda f: datetime.fromisoformat(f).astimezone(LIMA).strftime("%d/%m/%Y %H:%M") if f else ""
+    if formato == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["caso", "entidad", "tema", "fecha_lima", "tipo", "nivel", "titulo", "texto", "entregado", "util", "motivo"])
+        for a in avisos:
+            w.writerow([c["id"], c["entidad"], c["tema"], h(a["fecha"]), a["tipo"], a["nivel"], a["titulo"], a["texto"],
+                        "sí" if a["enviados"] else "no", {1: "sí", 0: "no"}.get(a["util"], ""), a["motivo"] or ""])
+        return "﻿" + buf.getvalue(), "text/csv; charset=utf-8"
+    lineas = [f"{c['id']} · {c['entidad']} · {c['tema']}", f"Estado: {c['estado']}" + (f" ({c['cierre_motivo']})" if c["cierre_motivo"] else ""),
+              f"Gestión: {GESTION_CASO.get(c['gestion'] or '', '')}", f"Nivel máximo: {c['nivel_max'] or ''}",
+              f"Apertura del caso: {h(c['apertura'])}" + (f" · Cierre: {h(c['cierre'])}" if c["cierre"] else "")]
+    if c["primera"]:
+        lineas.append(f"Quejas de usuarios: {c['quejas']} quejas de {c['usuarios']} usuarios ({c['fuentes'] or ''}), "
+                      f"entre {h(c['primera'])} y {h(c['ultima'])}")
+    if c["notas"]:
+        lineas += ["", "Notas del analista:", c["notas"]]
+    lineas += ["", f"Avisos del caso ({len(avisos)}):"]
+    for a in avisos:
+        lineas += ["", f"— {h(a['fecha'])} · {a['nivel']} · {a['titulo']}", re.sub(r"[*]", "", a["texto"] or "")]
+    return "\n".join(lineas), "text/plain; charset=utf-8"
+
+
+def casos_del_periodo(desde, hasta, banco=None):
+    """Para el reporte: casos abiertos en el periodo, cerrados en el periodo y los que siguen abiertos."""
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        filas = [dict(r) for r in con.execute(
+            "SELECT * FROM casos WHERE (apertura < ? AND (estado = 'abierto' OR cierre >= ?)) ORDER BY apertura",
+            (iso(hasta), iso(desde)))]
+    return [f for f in filas if not banco or f["entidad"] == banco]
+
+
+def casos_desde_historial():
+    """Una vez: agrupa en casos los avisos enviados antes de que existieran (por entidad y cercanía, 12 h entre avisos;
+    ciberseguridad por entidad y clase). Los de quejas quedan cerrados con sus cifras; los de ciberseguridad, abiertos."""
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        _tabla_casos(con)
+        # solo lo enviado antes del primer arranque con casos (lo posterior sin caso, como un mantenimiento, queda así)
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        con.execute("INSERT OR IGNORE INTO marcas VALUES ('casos_desde', ?)", (iso(ahora()),))
+        desde = con.execute("SELECT valor FROM marcas WHERE clave = 'casos_desde'").fetchone()[0]
+        filas = [dict(r) for r in con.execute(
+            "SELECT rowid AS id, fecha, tipo, nivel, titulo, texto FROM notificaciones WHERE caso IS NULL AND fecha < ? "
+            "AND tipo NOT IN (?, ?, ?, ?, 'Mantenimiento') ORDER BY fecha", (desde, *NO_VALORABLES))]
+    if not filas:
+        return
+    pat = (r"^Pico de (?:quejas|menciones críticas): (.+)$", r"^(?:Normalizado|Restablecido|Sin quejas nuevas|Sigue) · ([^:]+)",
+           r"^(?:Escala a |Crece · )?(?:Grave|CRÍTICO|Crítico|Medio) · ([^:]+):", r"^Ciberseguridad: (.+)$")
+    grupos, ultimo = [], {}
+    for f in filas:
+        ent = next((m.group(1).strip() for p_ in pat for m in [re.search(p_, f["titulo"])] if m), None)
+        if not ent:
+            continue
+        ent = "Todas" if ent == "todas las entidades" else ent
+        if f["tipo"] == "Ciberseguridad":
+            clase = "Infostealers" if (f["texto"] or "").startswith("Infostealers") else \
+                "Dominio que imita" if "Dominio que imita" in (f["texto"] or "") else "Incidente"
+            clave = f"ciber|{ent}|{clase}"
+        else:
+            clave = f"quejas|{'Total' if ent == 'Todas' else ent}"
+        g = ultimo.get(clave)
+        if g and (clave.startswith("ciber|") or datetime.fromisoformat(f["fecha"]) - datetime.fromisoformat(g["filas"][-1]["fecha"]) <= timedelta(hours=12)):
+            g["filas"].append(f)
+        else:
+            g = {"clave": clave, "entidad": ent, "filas": [f]}
+            grupos.append(g)
+            ultimo[clave] = g
+    for g in grupos:
+        fs = g["filas"]
+        nivel = max((x["nivel"] for x in fs), key=lambda n: RANGO_NIVEL.get(n, 0))
+        ciber = g["clave"].startswith("ciber|")
+        tema = f"Ciberseguridad · {g['clave'].split('|')[2]}" if ciber else \
+            ("Caídas e interrupciones" if any(re.search(r"caídos|comunicado|restablec", x["titulo"], re.I) for x in fs) else "Pico de quejas")
+        ini = datetime.fromisoformat(fs[0]["fecha"])
+        caso = caso_abrir(g["entidad"], tema, g["clave"], nivel, origen="historial", fecha=ini)
+        with _db_lock, db() as con:
+            con.executemany("UPDATE notificaciones SET caso = ? WHERE rowid = ?", [(caso, x["id"]) for x in fs])
+        if ciber:
+            continue
+        fin = datetime.fromisoformat(fs[-1]["fecha"])
+        with _db_lock, db() as con:
+            q = [dict(r) for r in con.execute("SELECT fecha, fuente, bancos, autor, meta FROM items WHERE oculto = 0 AND es_queja = 1 "
+                                              "AND fecha >= ? AND fecha <= ?", (iso(ini - timedelta(hours=2)), iso(fin)))]
+        q = [r for r in q if _es_de_usuario(json.loads(r["meta"] or "{}")) and
+             (g["entidad"] == "Todas" or g["entidad"] in json.loads(r["bancos"] or "[]"))]
+        fechas = sorted(datetime.fromisoformat(r["fecha"]) for r in q)
+        restab = any("comunicado oficial de falla" in x["titulo"] or x["titulo"].startswith("Restablecido") for x in fs)
+        caso_cerrar(caso, "Restablecimiento comunicado por la entidad (reconstruido del historial)" if restab
+                    else "Reconstruido del historial (avisos anteriores a los casos)", fin=fin, n=len(q),
+                    usuarios=len({(r["autor"] or "").lower() for r in q}), fuentes=sorted({r["fuente"] for r in q}),
+                    primera=fechas[0] if fechas else None, ultima=fechas[-1] if fechas else None)
+    print(f"Casos: {len(grupos)} creados a partir de los avisos anteriores", flush=True)
+
+
+def _caso_de_evento(clave):
+    with _EVENTOS["lock"]:
+        return (_EVENTOS["abiertos"].get(clave) or _EVENTOS["cerrados"].get(clave) or {}).get("caso")
+
+
 def _evento_registrar(medida, k, nivel, usuarios, origen):
     """Suma actividad al evento de la entidad y decide el aviso: 'apertura', 'sube' (de nivel), 'crece' (se duplican
     los usuarios) o None (sin novedad)."""
@@ -3128,9 +3357,14 @@ def _evento_registrar(medida, k, nivel, usuarios, origen):
     with _EVENTOS["lock"]:
         ev = _EVENTOS["abiertos"].get(clave)
         if not ev:
+            previo = _EVENTOS["cerrados"].get(clave) or {}
+            if previo.get("restablecido") and t - previo["restablecido"] < cfg.get("pico_ventana_min", 30) * 60:
+                return None  # la entidad acaba de confirmar el restablecimiento: las quejas de antes no abren otro caso
+            tema = TEMA_ORIGEN.get(origen, "Pico de quejas") if medida == "quejas" else "Pico de menciones críticas"
+            caso = caso_abrir("Todas" if k == "Total" else k, tema, clave, nivel)
             _EVENTOS["abiertos"][clave] = {"medida": medida, "entidad": k, "origen": origen, "inicio": t, "nivel": nivel,
                                            "nivel_max": nivel, "usuarios_aviso": usuarios, "max_usuarios": usuarios,
-                                           "ultimo_aviso": t, "ultima_actividad": t}
+                                           "ultimo_aviso": t, "ultima_actividad": t, "caso": caso}
             _guardar_eventos()
             return "apertura"
         ev["ultima_actividad"] = t
@@ -3146,6 +3380,7 @@ def _evento_registrar(medida, k, nivel, usuarios, origen):
             antes = ev["usuarios_aviso"]
             ev.update(nivel=nivel if sube else ev["nivel"], usuarios_aviso=usuarios, ultimo_aviso=t, usuarios_antes=antes)
             ev["nivel_max"] = ev["nivel"] if RANGO_NIVEL.get(ev["nivel"], 0) > RANGO_NIVEL.get(ev["nivel_max"], 0) else ev["nivel_max"]
+            caso_nivel(ev.get("caso"), ev["nivel"])
         _guardar_eventos()
         return fase
 
@@ -3207,6 +3442,8 @@ def _seguir_eventos(medida):
                 _EVENTOS["abiertos"].pop(clave, None)
                 _EVENTOS["cerrados"][clave] = {**ev, "cerrado": t}
                 _guardar_eventos()
+            caso_cerrar(ev.get("caso"), "Sin quejas nuevas de usuarios" if usuarios else "Sin quejas de usuarios (solo prensa o la entidad)",
+                        fin=ultima, n=n, usuarios=usuarios, fuentes=fuentes, primera=primera, ultima=ultima, nivel_max=ev["nivel_max"])
             if not usuarios or (cfg.get("cierre_solo_relevantes") and RANGO_NIVEL.get(ev["nivel_max"], 0) < 2):
                 # sin quejas de usuarios no hay nada que cerrar; y si el analista lo pidió, solo cierres Grave o Crítico
                 print(f"[{datetime.now():%H:%M:%S}] Evento cerrado sin aviso (sin quejas de usuarios): {quien}", flush=True)
@@ -3218,7 +3455,7 @@ def _seguir_eventos(medida):
                      f"Total: {n} {nombre}{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
                      f"{ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
             _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", prioridad="default",
-                           etiquetas="white_check_mark")
+                           etiquetas="white_check_mark", caso=ev.get("caso"))
         elif t - ev["ultimo_aviso"] >= recordar and t - actividad <= 15 * 60:  # solo si siguen llegando quejas
             with _EVENTOS["lock"]:
                 if clave in _EVENTOS["abiertos"]:
@@ -3229,7 +3466,7 @@ def _seguir_eventos(medida):
                      f"{n} {nombre} de {usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
                      f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
             _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
-                           ev["nivel"])
+                           ev["nivel"], caso=ev.get("caso"))
 
 
 def _cerrar_por_restablecimiento(b, item):
@@ -3239,8 +3476,14 @@ def _cerrar_por_restablecimiento(b, item):
     with _EVENTOS["lock"]:
         ev = _EVENTOS["abiertos"].pop(clave, None)
         previo = _EVENTOS["cerrados"].pop(clave, None)
-        if not ev and previo and time.time() - previo["cerrado"] < 12 * 3600:
+        if not ev and previo and previo.get("restablecido") and time.time() - previo["restablecido"] < 2 * 3600:
+            _EVENTOS["cerrados"][clave] = previo  # el mismo comunicado repetido (o respondido varias veces): ya se avisó
+            return
+        if not ev and previo and time.time() - previo["cerrado"] < 12 * 3600 and not previo.get("restablecido"):
             ev = previo  # se había dado por cerrado sin quejas nuevas: el comunicado fija la hora real de fin
+        # se recuerda el restablecimiento para no reabrir el caso con las quejas de antes del comunicado
+        _EVENTOS["cerrados"][clave] = {**(ev or previo or {"medida": "quejas", "entidad": b}), "cerrado": time.time(),
+                                       "restablecido": time.time()}
         _guardar_eventos()
     hora = datetime.fromisoformat(item.get("fecha") or iso(ahora())).astimezone(LIMA)
     cita = re.sub(r"\s+", " ", item.get("texto") or "")[:200]
@@ -3253,8 +3496,10 @@ def _cerrar_por_restablecimiento(b, item):
         texto = (f"{b} confirma el restablecimiento a las {hora:%H:%M}: {dur}{nota}.\nTotal: {n} quejas de {usuarios} usuarios "
                  f"distintas{' (' + ', '.join(fuentes) + ')' if fuentes else ''}. Nivel máximo: {ev['nivel_max']}.\n"
                  f"«{cita}»")
+        caso_cerrar(ev.get("caso"), "Restablecimiento comunicado por la entidad", fin=hora, n=n, usuarios=usuarios,
+                    fuentes=fuentes, primera=primera, nivel_max=ev["nivel_max"])
         _avisar_evento(f"Restablecido · {b}", texto, "Cierre de evento", "Informativo", prioridad="default",
-                       etiquetas="white_check_mark")
+                       etiquetas="white_check_mark", caso=ev.get("caso"))
         return
     sombra = {"medida": "quejas", "entidad": b, "inicio": time.time()}
     n, usuarios, _, _, _ = _acumulado_evento(sombra, desde=ahora() - timedelta(hours=6))
@@ -3353,7 +3598,7 @@ def avisar_graves(nuevos):
             cuerpo = f"{resumen[0].upper() + resumen[1:]}" + (f" (en el aviso anterior: {antes})" if fase == "crece" and antes else "") \
                 + ".\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
-                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high",
+                enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high", caso=_caso_de_evento(f"quejas|{b}"),
                                     tipo="Queja crítica" if critico else "Queja grave", nivel=nivel,
                                     etiquetas="rotating_light" if critico else "warning",
                                     url=n.get("url") or cfg.get("enlace") or None)
@@ -3449,7 +3694,7 @@ def _revisar_pico(cfg, medida):
             texto += f"\nEn el aviso anterior eran {ev.get('usuarios_antes')} usuarios."
         # el nivel del aviso es el del evento (una caída ya valorada Grave no baja a Medio por venir del pico)
         nivel_ev = ev.get("nivel") if RANGO_NIVEL.get(ev.get("nivel"), 0) > RANGO_NIVEL.get(nivel_p, 0) else nivel_p
-        _avisar_evento(titulo, texto, tipo, nivel_ev)
+        _avisar_evento(titulo, texto, tipo, nivel_ev, caso=ev.get("caso"))
         enviadas.append({"clave": k, "medida": medida, "n": n, "umbral": round(umbral, 1), "fase": fase})
     return enviadas
 
@@ -3937,6 +4182,15 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
     if avisos:
         lineas += ["", "**Avisos enviados en el periodo**"]
         lineas += [f"- {datetime.fromisoformat(a['fecha']).astimezone(LIMA):%H:%M} · {a['titulo']}" for a in avisos[-6:]]
+    casos = casos_del_periodo(desde, hasta, banco)
+    if casos:
+        hl = lambda f: datetime.fromisoformat(f).astimezone(LIMA).strftime("%d/%m %H:%M")
+        lineas += ["", "**Casos del periodo**"]
+        for c in casos[-8:]:
+            estado = (f"cerrado ({(c['cierre_motivo'] or '').lower()})" if c["estado"] == "cerrado" else "abierto")
+            gestion = f" · {GESTION_CASO[c['gestion']].lower()}" if c.get("gestion") else ""
+            lineas.append(f"- {c['id']} · {c['entidad']} · {c['tema']} · {c['nivel_max'] or ''} · desde {hl(c['apertura'])}"
+                          f" · {estado}{gestion}.")
     recs = [(h[2], h[1]) for h in hallazgos if NIVEL_ORDEN[h[0]] >= 2]
     if recs:
         lineas += ["", "**Qué hacer**"]
@@ -4315,11 +4569,16 @@ def _avisar_ciber(alertas, cfg):
         quien = ", ".join(a["entidades"]) or a["organizacion"] or a["sector"]
         tipo = re.search(r"\|\s*([^|]{3,40}?)\s*\|", a["texto"])
         resumen = re.sub(r"\s+", " ", a["texto"])[:300]
+        # mismo caso mientras siga abierto (sin plazo: un incidente puede durar meses; lo cierra el analista)
+        clase = a.get("sector") if a.get("sector") in ("Infostealers", "Dominio que imita") else "Incidente"
+        clave_c, nivel_c = f"ciber|{quien}|{clase}", _nivel_ciber(a)
+        caso = caso_abierto(clave_c) or caso_abrir(quien, f"Ciberseguridad · {clase}", clave_c, nivel_c)
+        caso_nivel(caso, nivel_c)
         try:
             enviar_notificacion(f"Ciberseguridad: {quien}"[:120],
                                 f"{(tipo.group(1).strip() + ' · ') if tipo else ''}{a['sector']} · vía {a['cuenta']}"
                                 f"{' · entidad monitoreada' if a['entidades'] else ''}\n{resumen}",
-                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=_nivel_ciber(a))
+                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=nivel_c, caso=caso)
             with _db_lock, db() as con:
                 con.execute("UPDATE alertas_ciber SET notificada = 1 WHERE id = ?", (a["id"],))
         except Exception as e:
@@ -7526,6 +7785,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(consultar(qs))
         if u.path == "/api/archivo":
             return self._send(listar_archivo())
+        if u.path == "/api/casos":
+            return self._send(casos_lista(qs.get("estado", [""])[0], max(1, min(int(qs.get("dias", ["90"])[0]), 3650)),
+                                          qs.get("entidad", [""])[0]))
+        if u.path == "/api/caso":
+            return self._send(caso_detalle(qs.get("id", [""])[0]))
+        if u.path == "/api/caso/exportar":
+            id_, formato = qs.get("id", [""])[0], qs.get("formato", ["txt"])[0]
+            if formato not in ("txt", "csv"):
+                raise ValueError("formato debe ser txt o csv")
+            cuerpo, ctype = caso_exportar(id_, formato)
+            return self._send(cuerpo.encode("utf-8"), ctype,
+                              extra={"Content-Disposition": f"attachment; filename={re.sub(r'[^A-Za-z0-9-]', '', id_)}.{formato}"})
         if u.path == "/api/notificaciones":  # campana del panel: lo enviado a Teams y al celular
             return self._send(notificaciones_enviadas(max(1, min(int(qs.get("dias", ["7"])[0]), 90))))
         if u.path == "/api/archivo/exportar":
@@ -7716,6 +7987,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(chat_monitor(d.get("pregunta"), self.yo["usuario"], d.get("filtros"), d.get("historial")))
             if self.yo["rol"] != "admin":  # el resto de acciones son solo para administradores
                 return self._send({"error": "Tu cuenta es de solo lectura"}, code=403)
+            if u.path == "/api/caso/gestion":  # administradores: notas, gestión, cerrar o reabrir
+                d = self._json_cuerpo(20_000)
+                caso_gestionar(str(d.get("id", "")), d, self.yo["usuario"])
+                return self._send({"ok": True})
             if u.path == "/api/notificaciones/propuesta":  # administradores: aprueban un ajuste propuesto
                 return self._send({"ok": True, "aplicada": aplicar_propuesta(str(self._json_cuerpo().get("id", "")), self.yo["usuario"])})
             if u.path == "/api/reporte/enviar":  # administradores: lo envía a Teams y al celular
@@ -7898,6 +8173,10 @@ def main():
     init_cuentas()
     depurar_alertas_ciber()
     migraciones_de_datos()
+    try:
+        casos_desde_historial()
+    except Exception as e:
+        print(f"  Casos desde el historial: {type(e).__name__}: {e}", flush=True)
     with _db_lock, db() as con:  # "última actualización" de cada fuente, aunque se haya reiniciado
         for fuente, ultima in con.execute("SELECT fuente, MAX(capturado) FROM items GROUP BY fuente"):
             if fuente in ESTADO["fuentes"] and ultima:
