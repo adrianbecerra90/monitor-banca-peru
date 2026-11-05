@@ -168,6 +168,9 @@ MIGRACIONES_REGLAS = {
     # 05/11/2026: entidades de mucho volumen: sin 12 comentarios negativos en 30 min no hay aviso
     "minimo-comentarios-2026-11-05": {"notificaciones": {"minimo_comentarios_30min": {
         "BCP": 12, "Interbank": 12, "Scotiabank Perú": 12, "Yape": 12, "Plin": 12}}},
+    # 05/11/2026: el analista baja el mínimo a 8
+    "minimo-comentarios-8-2026-11-05": {"notificaciones": {"minimo_comentarios_30min": {
+        "BCP": 8, "Interbank": 8, "Scotiabank Perú": 8, "Yape": 8, "Plin": 8}}},
     # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
 }

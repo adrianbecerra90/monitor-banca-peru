@@ -738,11 +738,11 @@
     "escalar_minimo": 3,
     "total_minimo": 8,
     "minimo_comentarios_30min": {
-      "BCP": 12,
-      "Interbank": 12,
-      "Scotiabank Perú": 12,
-      "Yape": 12,
-      "Plin": 12
+      "BCP": 8,
+      "Interbank": 8,
+      "Scotiabank Perú": 8,
+      "Yape": 8,
+      "Plin": 8
     }
   },
   "x_referentes": {
@@ -808,7 +808,8 @@
     "google-linkedin-2026-10-31",
     "linkedin-scotiabank-2026-10-31",
     "avisos-calibracion-2026-11-02",
-    "minimo-comentarios-2026-11-05"
+    "minimo-comentarios-2026-11-05",
+    "minimo-comentarios-8-2026-11-05"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú.",

@@ -104,7 +104,7 @@ todo el histórico se reclasifica con las reglas nuevas.
 
   Celular y Teams reciben el mismo texto (espejo), avisos y reportes.
 - **Mínimo por entidad** (`notificaciones.minimo_comentarios_30min`): BCP, Interbank, Scotiabank Perú, Yape y Plin no abren
-  un evento con menos de 12 comentarios negativos de usuarios en 30 min. No aplica a un comunicado de la entidad ni a la prensa.
+  un evento con menos de 8 comentarios negativos de usuarios en 30 min. No aplica a un comunicado de la entidad ni a la prensa.
 - **BCRP** es solo el Banco Central de Reserva del Perú: «Banco Central» a secas exige contexto de Perú y lo de otro país (p. ej. Paraguay) se descarta.
 
   El aviso de caída y el pico de la misma entidad son el mismo evento: no llegan por duplicado. Ajustes en
