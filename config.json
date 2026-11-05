@@ -736,7 +736,14 @@
     "recordatorio_min": 60,
     "cierre_min": 45,
     "escalar_minimo": 3,
-    "total_minimo": 8
+    "total_minimo": 8,
+    "minimo_comentarios_30min": {
+      "BCP": 12,
+      "Interbank": 12,
+      "Scotiabank Perú": 12,
+      "Yape": 12,
+      "Plin": 12
+    }
   },
   "x_referentes": {
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
@@ -800,7 +807,8 @@
     "eventos-2026-10-31",
     "google-linkedin-2026-10-31",
     "linkedin-scotiabank-2026-10-31",
-    "avisos-calibracion-2026-11-02"
+    "avisos-calibracion-2026-11-02",
+    "minimo-comentarios-2026-11-05"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú.",

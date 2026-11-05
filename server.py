@@ -165,6 +165,9 @@ MIGRACIONES_REGLAS = {
     # 02/11/2026 (auditoría de avisos): el evento se cierra tras 45 min sin quejas (antes 30, sin pico) y el pico de
     # "todas las entidades" exige 8 usuarios (3 repartidos entre entidades distintas eran ruido)
     "avisos-calibracion-2026-11-02": {"notificaciones": {"cierre_min": 45, "total_minimo": 8}},
+    # 05/11/2026: entidades de mucho volumen: sin 12 comentarios negativos en 30 min no hay aviso
+    "minimo-comentarios-2026-11-05": {"notificaciones": {"minimo_comentarios_30min": {
+        "BCP": 12, "Interbank": 12, "Scotiabank Perú": 12, "Yape": 12, "Plin": 12}}},
     # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
 }
@@ -557,6 +560,28 @@ _ctx_excluir = [normalizar(c) for c in CONFIG.get("contexto_excluir", [])]
 HOMONIMOS = re.compile(r"\bplim+[\s-]*pli[mn]\w*|\bpayas\w*([\s-]+plin\w*)+|\bplin+[\s-]*pl[ioa]+n+\w*|\bplin+[\s-]+plin+\w*")
 
 
+# BCRP: solo el Banco Central de Reserva del Perú. En la crisis de Ueno Bank hay quien
+# escribe "BCRP" por el Banco Central del Paraguay. Velarde o el nombre completo prueban que es el del Perú
+BCRP_PROPIO = re.compile(r"banco central de reserva(?! de el salvador| del salvador)|bcrp\.gob\.pe|bcrpoficial|\bvelarde\b|"
+                         r"banco central (del? )?peru\b|banco central peruano")
+BCRP_SIGLA = re.compile(r"(?<![a-z0-9])bcrp(?![a-z0-9])")
+BCRP_AJENO = re.compile(r"paraguay\w*|\bueno\b|\bguarani\w*|santiago pena|\basuncion\b|🇵🇾|el salvador")
+
+
+# "Banco Central" a secas (ya exige contexto de Perú): vale salvo que se hable del banco central de otro país
+BANCO_CENTRAL_OTRO = re.compile(r"banco central (de |del |de la |de los )(?!reserva|peru)|banco central (europeo|chileno|argentino|"
+                                r"boliviano|brasileno|colombiano|mexicano|ecuatoriano|venezolano)|\b(chile\w*|argentin\w*|brasil\w*|"
+                                r"bolivia\w*|colombia\w*|mexic\w*|venezuel\w*|estados unidos|eeuu|reserva federal|fed)\b")
+
+
+def _es_bcrp(t):
+    if BCRP_PROPIO.search(t):
+        return True
+    if BCRP_SIGLA.search(t):
+        return not BCRP_AJENO.search(t)
+    return not (BCRP_AJENO.search(t) or BANCO_CENTRAL_OTRO.search(t))
+
+
 def detectar_bancos(texto, es_peru=False):
     """Entidades mencionadas. Los alias ambiguos (p.ej. 'BBVA' o 'SBS' a secas) solo
     cuentan si la fuente es peruana o el texto tiene contexto de Perú."""
@@ -569,7 +594,8 @@ def detectar_bancos(texto, es_peru=False):
     for b, seguros, dudosos, propio in _bancos_re:
         ok_ctx = peru or bool(propio and not excluido and propio.search(t))
         if any(p.search(t) for p in seguros) or (ok_ctx and any(p.search(t) for p in dudosos)):
-            out.append(b)
+            if b != "BCRP" or _es_bcrp(t):
+                out.append(b)
     return out
 
 
@@ -655,6 +681,10 @@ def _fila(it):
         return None  # como lo corrige el analista: no es relevante
     bancos = detectar_bancos(it["texto"] + " " + it.get("contexto", ""), it.get("peru", False))
     for b in it.get("bancos_fijos", []):
+        if b == "BCRP" and it.get("tipo", "") not in ("oficial", "post_oficial") and \
+                BCRP_AJENO.search(normalizar(it["texto"] + " " + it.get("contexto", ""))) and \
+                not BCRP_PROPIO.search(normalizar(it["texto"] + " " + it.get("contexto", ""))):
+            continue  # comentario en un video o hilo sobre el banco central de otro país
         if b and b not in bancos:
             bancos.append(b)
     if not bancos:
@@ -3385,6 +3415,19 @@ def _caso_de_evento(clave):
         return (_EVENTOS["abiertos"].get(clave) or _EVENTOS["cerrados"].get(clave) or {}).get("caso")
 
 
+def _bajo_minimo_comentarios(b):
+    """Entidades con 'minimo_comentarios_30min': no se abre un evento hasta llegar a ese número de comentarios negativos
+    de usuarios en 30 min (publicaciones, sin prensa ni cuentas oficiales)."""
+    minimo = CONFIG.get("notificaciones", {}).get("minimo_comentarios_30min", {}).get(b)
+    if not minimo:
+        return False
+    with _db_lock, db() as con:
+        filas = con.execute("SELECT bancos, meta FROM items WHERE oculto = 0 AND (sentimiento = 'negativo' OR es_queja = 1) "
+                            "AND fecha >= ? AND fecha <= ?", (iso(ahora() - timedelta(minutes=30)), iso(ahora()))).fetchall()
+    n = sum(1 for r in filas if b in json.loads(r["bancos"] or "[]") and _es_de_usuario(json.loads(r["meta"] or "{}")))
+    return n < minimo
+
+
 def _evento_registrar(medida, k, nivel, usuarios, origen):
     """Suma actividad al evento de la entidad y decide el aviso: 'apertura', 'sube' (de nivel), 'crece' (se duplican
     los usuarios) o None (sin novedad)."""
@@ -3621,6 +3664,10 @@ def avisar_graves(nuevos):
                 nivel, resumen, n_aut = _valorar_evento(b, clase, ventana)
                 if not nivel:
                     continue
+                # el mínimo de comentarios no aplica a lo que no son comentarios: comunicado de la entidad o prensa
+                sin_comentarios = any(v["oficial"] == "comunicado" or v["medio"] for v in _GRAVES["vistos"][(clase, b)])
+                if f"quejas|{b}" not in _EVENTOS["abiertos"] and not sin_comentarios and _bajo_minimo_comentarios(b):
+                    continue
                 fase = _evento_registrar("quejas", b, nivel, n_aut, clase)
                 if not fase:
                     continue
@@ -3703,6 +3750,8 @@ def _revisar_pico(cfg, medida):
         if muestras < 24 * 60 // minutos or n <= umbral or n < minimo:
             continue
         explicado = True
+        if f"{medida}|{k}" not in _EVENTOS["abiertos"] and _bajo_minimo_comentarios(k):
+            continue
         if medida == "quejas":
             nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
         else:
@@ -4496,10 +4545,32 @@ def revisar_referentes_x():
     return para_avisar
 
 
+def _guardar_marcas_migracion(hechas):
+    try:
+        with open(RUTA_CONFIG, encoding="utf-8") as f:
+            disco = json.load(f)
+        disco["_migraciones"] = hechas
+        tmp = RUTA_CONFIG + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(disco, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, RUTA_CONFIG)
+    except (OSError, ValueError) as e:
+        print(f"  Migración: no se pudo guardar la marca ({e})", flush=True)
+
+
 def migraciones_de_datos():
     """Cambios de criterio que requieren volver a clasificar lo ya guardado; cada uno se aplica una sola vez (la marca
     queda en el config del disco). No toca lo corregido por el analista."""
     hechas = CONFIG.setdefault("_migraciones", [])
+    if "bcrp-solo-peru-2026-11-05" not in hechas:  # la IA vuelve a leer lo reciente del BCRP con la regla nueva
+        with _db_lock, db() as con:
+            con.execute("""UPDATE items SET ia_sentimiento=NULL, ia_queja=NULL, ia_severidad=NULL, ia_categorias=NULL,
+                           ia_relevante=NULL, ia_motivo=NULL, ia_atribuible=NULL
+                           WHERE bancos LIKE '%BCRP%' AND fecha >= ? AND meta NOT LIKE '%"tipo": "post_oficial"%'
+                           AND meta NOT LIKE '%"tipo": "oficial"%' AND COALESCE(corregido, 0) = 0""",
+                        (iso(ahora() - timedelta(days=14)),))
+        hechas.append("bcrp-solo-peru-2026-11-05")
+        _guardar_marcas_migracion(hechas)
     if "queja-concreta-2026-10-29" in hechas:
         return
     # 29/10/2026: "queja" pasa a exigir un problema concreto; opiniones, insultos y rumores son críticas. Se vuelve a
@@ -4512,16 +4583,7 @@ def migraciones_de_datos():
                            AND meta NOT LIKE '%"tipo": "alerta_ciber"%' AND COALESCE(corregido, 0) = 0""",
                         (iso(ahora() - timedelta(days=7)),)).rowcount
     hechas.append("queja-concreta-2026-10-29")
-    try:
-        with open(RUTA_CONFIG, encoding="utf-8") as f:
-            disco = json.load(f)
-        disco["_migraciones"] = hechas
-        tmp = RUTA_CONFIG + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(disco, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, RUTA_CONFIG)
-    except (OSError, ValueError) as e:
-        print(f"  Migración: no se pudo guardar la marca ({e})", flush=True)
+    _guardar_marcas_migracion(hechas)
     print(f"  Criterio de queja actualizado: {n} publicaciones de 7 días vuelven a la cola de la IA", flush=True)
 
 
@@ -5233,6 +5295,8 @@ def cargar_historico(desde, hasta, fuentes):
 
 IA_PROMPT = """Eres analista de reputación y riesgo del sistema financiero peruano (bancos, billeteras, seguros, AFP,
 BCRP y SBS). Clasifica cada publicación de redes sociales o noticia sobre estas entidades monitoreadas: {entidades}.
+BCRP es únicamente el Banco Central de Reserva del Perú: lo que trata del banco central de otro país (p. ej. el Banco
+Central del Paraguay y la crisis de Ueno Bank, aunque lo escriban "BCRP" o "BCP") lleva "relevante": false.
 TODAS son relevantes aunque no sean bancos (p. ej. una aseguradora o el BCRP): nunca marques "relevante": false por
 el tipo de entidad.
 Un incidente de ciberseguridad que afecta a una entidad monitoreada (filtración o exposición de datos, ransomware,

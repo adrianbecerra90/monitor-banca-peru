@@ -170,6 +170,64 @@
         "SBS"
       ],
       "origen": "@ginoequidad 24/10"
+    },
+    {
+      "texto": "Porque el Presidente del BCRP era ex Presidente de UENO? Porque tuvo que renunciar el Presidente?",
+      "espera": [],
+      "origen": "X, 05/11/2026: Paraguay"
+    },
+    {
+      "texto": "El problema es que el banco central de Paraguay colapsó, imagínate si sucedía en Perú",
+      "espera": [],
+      "origen": "X, 05/11/2026"
+    },
+    {
+      "texto": "Banco Central de Paraguay interviene Ueno Bank",
+      "es_peru": true,
+      "espera": []
+    },
+    {
+      "texto": "El Banco Central Europeo sube tasas",
+      "es_peru": true,
+      "espera": []
+    },
+    {
+      "texto": "El Banco Central de Reserva de El Salvador publicó su informe",
+      "espera": []
+    },
+    {
+      "texto": "El Banco Central de Reserva del Perú evalúa exigir más requisitos de ciberseguridad",
+      "espera": [
+        "BCRP"
+      ]
+    },
+    {
+      "texto": "El BCRP mantiene su tasa de referencia",
+      "espera": [
+        "BCRP"
+      ]
+    },
+    {
+      "texto": "Velarde: el BCRP descarta contagio de la crisis de Ueno en Paraguay",
+      "espera": [
+        "BCRP"
+      ]
+    },
+    {
+      "texto": "Tipo de cambio hoy en Perú: el dólar cerró a S/ 3,45 según el Banco Central",
+      "espera": [
+        "BCRP"
+      ]
+    },
+    {
+      "texto": "Copiar el exitoso modelo peruano de banco central independiente",
+      "espera": [
+        "BCRP"
+      ]
+    },
+    {
+      "texto": "Tipo de cambio pesos chilenos y soles en Perú según el Banco Central de Chile",
+      "espera": []
     }
   ],
   "cita": [
