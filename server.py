@@ -553,7 +553,9 @@ for _b, _cfg in BANCOS.items():
 # el nombre de una entidad no prueba por sí mismo que se hable de Perú ("SBS" es también una TV coreana y una unidad
 # militar ucraniana): no cuenta como contexto peruano para su propio alias ambiguo
 _ctx_peru = [normalizar(c) for c in CONFIG.get("contexto_peru", []) if normalizar(c) != "sbs"]
-_ctx_excluir = [normalizar(c) for c in CONFIG.get("contexto_excluir", [])]
+# Desde el inicio de la palabra: "paraguay" cubre "paraguaya", pero "ueno" ya no coincide con "bueno" ni "sueños"
+_ctx_excluir = [re.compile(("(?<![a-z0-9])" if c[:1].isalnum() else "") + re.escape(c))
+                for c in (normalizar(x) for x in CONFIG.get("contexto_excluir", [])) if c]
 
 
 # "Plin" que no es la billetera: el payaso Plin Plin y las onomatopeyas ("plin plin plon", "plin plan")
@@ -588,8 +590,8 @@ def detectar_bancos(texto, es_peru=False):
     t = HOMONIMOS.sub(" ", normalizar(texto))
     # nombrar a Perú gana a la exclusión ("Pibank aterriza en Perú… operaba en España y Colombia")
     peru = bool(CONTEXTO_PE.search(t)) or \
-        ((es_peru or any(c in t for c in _ctx_peru)) and not any(c in t for c in _ctx_excluir))
-    excluido = any(c in t for c in _ctx_excluir)
+        ((es_peru or any(c in t for c in _ctx_peru)) and not any(c.search(t) for c in _ctx_excluir))
+    excluido = any(c.search(t) for c in _ctx_excluir)
     out = []
     for b, seguros, dudosos, propio in _bancos_re:
         ok_ctx = peru or bool(propio and not excluido and propio.search(t))
@@ -4065,11 +4067,12 @@ def evaluar_patron(b, filas, cat, nombre):
 def eventos_ciber(desde, hasta, banco=None):
     """Ciberseguridad por EVENTOS, no por conteo: las alertas de la misma entidad en 7 días son un evento.
     Estado: NUEVO (primera alerta en el periodo), actualización (evento previo con alertas nuevas), en curso
-    (sin novedades, pero de menos de 7 días). Confirmación: prensa; si no, no confirmado con sus fuentes."""
+    (sin novedades, pero de menos de 7 días). Confirmación: prensa; si no, no confirmado con sus fuentes.
+    Los 7 días se miden por la fecha de la alerta: una vieja capturada de nuevo (p. ej. al migrar de servidor) no es un evento."""
     with _db_lock, db() as con:
         _tabla_ciber(con)
         filas = [dict(r) for r in con.execute(
-            "SELECT cuenta, texto, url, entidades, organizacion, sector, capturado FROM alertas_ciber WHERE capturado >= ? "
+            "SELECT cuenta, texto, url, entidades, organizacion, sector, capturado FROM alertas_ciber WHERE fecha >= ? "
             "AND capturado < ? ORDER BY capturado", (iso(desde - timedelta(days=7)), iso(hasta)))]
         prensa = [dict(r) for r in con.execute(
             "SELECT bancos, texto FROM items WHERE oculto = 0 AND fecha >= ? AND fecha < ? AND categorias LIKE "
@@ -4253,17 +4256,14 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
             lineas.append(cifra[:-1] + "; ninguna entidad concentra casos.")
     lineas += ["", "**Ciberseguridad**"]
     if ciber:
-        # los eventos con novedades van completos; los que siguen abiertos sin novedades, en una sola línea
+        # solo los eventos con novedades
         inc = [e for e in ciber if e["clase"] == "incidente" and e["estado"] != "en curso"][:6]
         expo = [e for e in ciber if e["clase"] != "incidente"][:3]
         lineas += [f"- {e['texto']}" for e in inc + expo]
-        en_curso = [e["entidad"] for e in ciber if e["clase"] == "incidente" and e["estado"] == "en curso"]
-        if not inc and not expo:
+        if not inc and not expo:  # lo que sigue abierto de verdad está en "Casos del periodo"
             lineas.append("Sin novedades en este periodo.")
-        if en_curso:
-            lineas.append(f"Siguen abiertos, sin cambios, los eventos de los últimos 7 días de: {', '.join(en_curso)}.")
     else:
-        lineas.append("Sin eventos nuevos ni actualizaciones.")
+        lineas.append("Sin novedades en este periodo.")
     if avisos:
         lineas += ["", "**Avisos enviados en el periodo**"]
         lineas += [f"- {datetime.fromisoformat(a['fecha']).astimezone(LIMA):%H:%M} · {a['titulo']}" for a in avisos[-6:]]

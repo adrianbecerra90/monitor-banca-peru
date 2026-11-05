@@ -228,6 +228,32 @@
     {
       "texto": "Tipo de cambio pesos chilenos y soles en Perú según el Banco Central de Chile",
       "espera": []
+    },
+    {
+      "texto": "Buenos días, en mi cuenta BCP me falta plata",
+      "es_peru": true,
+      "espera": [
+        "BCP"
+      ],
+      "origen": "X: «ueno» coincidía con «buenos»"
+    },
+    {
+      "texto": "Avanza hacia tus sueños con tu App BBVA",
+      "es_peru": true,
+      "espera": [
+        "BBVA Perú"
+      ],
+      "origen": "«ueno» coincidía con «sueños»"
+    },
+    {
+      "texto": "Ueno Bank y el BCP: congelan los ahorros",
+      "es_peru": true,
+      "espera": []
+    },
+    {
+      "texto": "La banca paraguaya y el BCP",
+      "es_peru": true,
+      "espera": []
     }
   ],
   "cita": [
