@@ -363,7 +363,8 @@
         "BBVA Perú"
       ],
       "sector": "Sistema financiero",
-      "espera": "Crítico"
+      "espera": "Grave",
+      "origen": "matriz 07/11: filtración de clientes, una fuente → Grave"
     }
   ]
 }

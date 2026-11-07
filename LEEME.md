@@ -103,6 +103,17 @@ todo el histórico se reclasifica con las reglas nuevas.
     duración (de la primera a la última queja), total de quejas y usuarios, máximo y nivel alcanzado.
 
   Celular y Teams reciben el mismo texto (espejo), avisos y reportes.
+- **Interrupciones · matriz impacto × certeza** (se evalúa cada 5 min; detección con 30 min, duración con 60 min,
+  porque X llega con ~11 min de retraso en la mediana): impacto alto, medio-alto, medio o bajo según el servicio (crítico:
+  app, transferencias, pagos, Yape/Plin; secundario: cajeros, agencias, web), el alcance (umbral de quejas de caída
+  por entidad = el mayor entre 4 y su ruido normal p99 + 3, recalculado a diario) y la duración (más de 60 min); un
+  tercero común (RENIEC, Visa…) o varias entidades a la vez es impacto alto. Certeza: confirmada (comunicado de la
+  entidad), corroborada (prensa con la falla en el titular o 2+ redes) o solo usuarios. Estados que se notifican:
+  Detectado → Confirmado → Escalado → En recuperación (solo Grave o Crítico) → Resuelto, y Reaparece (2 h).
+- **Ciberseguridad · matriz tipo × verificación:** ransomware o intrusión, filtración de clientes, filtración interna,
+  phishing, otra entidad; verificación confirmada, corroborada (2+ fuentes o prensa que nombra a la víctima), una
+  fuente con evidencia o rumor. Agravantes (+1 nivel): más de 100 mil registros, datos sensibles en lo expuesto, la
+  SBS como víctima. El caso se evalúa con todas sus alertas y solo se notifica si avanza de estado o sube de nivel.
 - **Colores:** 🔵 informativo y reportes programados · 🟢 leve · 🟡 medio · 🟠 grave · 🔴 crítico.
 - **Mínimo por entidad** (`notificaciones.minimo_comentarios_30min`): BCP, Interbank, Scotiabank Perú, Yape y Plin no abren
   un evento con menos de 8 comentarios negativos de usuarios en 30 min. No aplica a un comunicado de la entidad ni a la prensa.
