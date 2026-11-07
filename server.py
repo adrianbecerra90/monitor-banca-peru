@@ -3282,6 +3282,62 @@ def caso_detalle(id_):
     return {"caso": dict(c), "avisos": avisos, "gestiones": GESTION_CASO}
 
 
+# Reguladores y casas matrices que se etiquetan en casi toda alerta: no sirven para decir que dos alertas son lo mismo
+NO_IDENTIFICAN = {"sbs", "bcrp", "indecopi", "asbanc"}
+
+
+def _nombres_victima(a):
+    """Nombres con los que se reconoce a la víctima de una alerta: su organización y entidades (sin reguladores)."""
+    return {n for n in (normalizar(x).strip() for x in [a.get("organizacion") or ""] + list(a.get("entidades") or []))
+            if len(n) >= 4 and n not in NO_IDENTIFICAN}
+
+
+def caso_ciber_relacionado(a, clase):
+    """Un caso de ciberseguridad abierto de la misma clase que trata de la misma víctima, aunque las alertas la
+    atribuyan distinto (una cuenta etiqueta a @interbank por una filtración de Izipay, otra a Izipay): la víctima de la
+    alerta nueva aparece en las alertas del caso, o la del caso en la nueva."""
+    nuevos = _nombres_victima(a)
+    t_nueva = normalizar(a.get("texto") or "")
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        _tabla_notificaciones(con)
+        casos = [dict(r) for r in con.execute("SELECT id, entidad, clave FROM casos WHERE estado = 'abierto' AND clave LIKE ?",
+                                              (f"ciber|%|{clase}",))]
+        for c in casos:
+            textos = normalizar(" ".join(r[0] or "" for r in con.execute(
+                "SELECT texto FROM notificaciones WHERE caso = ?", (c["id"],))))
+            del_caso = {n for n in (normalizar(x).strip() for x in c["entidad"].split(",")) if len(n) >= 4 and n not in NO_IDENTIFICAN}
+            if any(re.search(r"(?<![a-z0-9])" + re.escape(n) + r"(?![a-z0-9])", textos) for n in nuevos) or \
+                    any(re.search(r"(?<![a-z0-9])" + re.escape(n) + r"(?![a-z0-9])", t_nueva) for n in del_caso):
+                return c["id"]
+    return None
+
+
+def caso_unir(origen, destino, usuario):
+    """Une dos casos que son el mismo evento: los avisos de 'origen' pasan a 'destino' y 'origen' queda cerrado con la
+    referencia (se conserva para la trazabilidad)."""
+    if origen == destino:
+        raise ValueError("Elige otro caso")
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        _tabla_notificaciones(con)
+        o = con.execute("SELECT * FROM casos WHERE id = ?", (origen,)).fetchone()
+        d = con.execute("SELECT * FROM casos WHERE id = ?", (destino,)).fetchone()
+        if not o or not d:
+            raise ValueError("Caso no encontrado")
+        nivel = max([o["nivel_max"], d["nivel_max"]], key=lambda n: RANGO_NIVEL.get(n, 0))
+        nombres = list(dict.fromkeys([x.strip() for x in (d["entidad"] + "," + o["entidad"]).split(",") if x.strip()]))
+        nota = f"{ahora().astimezone(LIMA):%d/%m/%Y %H:%M} · {usuario} unió {origen} ({o['entidad']}) a este caso."
+        con.execute("UPDATE notificaciones SET caso = ? WHERE caso = ?", (destino, origen))
+        con.execute("UPDATE casos SET entidad = ?, nivel_max = ?, apertura = MIN(apertura, ?), notas = ?, actualizado = ?, "
+                    "actualizado_por = ? WHERE id = ?",
+                    (", ".join(nombres), nivel, o["apertura"], ((d["notas"] + "\n") if d["notas"] else "") + nota,
+                     iso(ahora()), usuario, destino))
+        con.execute("UPDATE casos SET estado = 'cerrado', cierre = ?, cierre_motivo = ?, actualizado = ?, actualizado_por = ? "
+                    "WHERE id = ?", (iso(ahora()), f"Unido a {destino}", iso(ahora()), usuario, origen))
+    registrar(usuario, f"unió el caso {origen} a {destino}", "")
+
+
 def caso_gestionar(id_, d, usuario):
     """El analista anota, cambia la gestión o cierra / reabre. Descartar como falso positivo cuenta como 👎 («no era
     un incidente») en los avisos del caso que no se habían valorado: alimenta las propuestas de ajuste."""
@@ -4677,7 +4733,8 @@ def _avisar_ciber(alertas, cfg):
         # mismo caso mientras siga abierto (sin plazo: un incidente puede durar meses; lo cierra el analista)
         clase = a.get("sector") if a.get("sector") in ("Infostealers", "Dominio que imita") else "Incidente"
         clave_c, nivel_c = f"ciber|{quien}|{clase}", _nivel_ciber(a)
-        caso = caso_abierto(clave_c) or caso_reabrir_inactivo(clave_c) or caso_abrir(quien, f"Ciberseguridad · {clase}", clave_c, nivel_c)
+        caso = caso_abierto(clave_c) or caso_ciber_relacionado(a, clase) or caso_reabrir_inactivo(clave_c) or \
+            caso_abrir(quien, f"Ciberseguridad · {clase}", clave_c, nivel_c)
         caso_nivel(caso, nivel_c)
         try:
             enviar_notificacion(f"Ciberseguridad: {quien}"[:120],
@@ -8094,6 +8151,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(chat_monitor(d.get("pregunta"), self.yo["usuario"], d.get("filtros"), d.get("historial")))
             if self.yo["rol"] != "admin":  # el resto de acciones son solo para administradores
                 return self._send({"error": "Tu cuenta es de solo lectura"}, code=403)
+            if u.path == "/api/caso/unir":  # administradores: dos casos que son el mismo evento
+                d = self._json_cuerpo()
+                caso_unir(str(d.get("origen", "")), str(d.get("destino", "")), self.yo["usuario"])
+                return self._send({"ok": True})
             if u.path == "/api/caso/gestion":  # administradores: notas, gestión, cerrar o reabrir
                 d = self._json_cuerpo(20_000)
                 caso_gestionar(str(d.get("id", "")), d, self.yo["usuario"])

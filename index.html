@@ -1313,6 +1313,7 @@ async function abrirCaso(id){$('#caso').classList.add('on');$('#caso-cuerpo').in
     ${c.actualizado_por?`<b>Última gestión</b><span>${esc(c.actualizado_por)} · ${fh(c.actualizado)}</span>`:''}</div>
     <div class="gest"><b>Gestión</b> <select id="caso-gest" ${adm?'':'disabled'}>${Object.entries(d.gestiones).map(([k,v])=>`<option value="${k}" ${k===(c.gestion||'')?'selected':''}>${esc(v)}</option>`).join('')}</select>
       ${adm?`<button id="caso-estado">${c.estado==='abierto'?'Cerrar caso':'Reabrir caso'}</button>`:''}</div>
+    ${adm&&c.estado==='abierto'?`<div class="gest"><b>Es el mismo evento que</b> <select id="caso-otro"><option value="">elige un caso abierto…</option></select><button id="caso-unir">Unir aquí</button></div>`:''}
     <div><b>Notas del analista</b><textarea id="caso-notas" ${adm?'':'disabled'} placeholder="Qué se hizo, a quién se requirió, número de reporte…">${esc(c.notas||'')}</textarea>
       ${adm?'<button class="pri" id="caso-guardar" style="margin-top:6px">Guardar gestión y notas</button>':''}</div>
     <h3 style="margin:16px 0 8px;font-size:14px">Línea de tiempo · ${d.avisos.length} aviso${d.avisos.length===1?'':'s'}</h3>
@@ -1320,7 +1321,14 @@ async function abrirCaso(id){$('#caso').classList.add('on');$('#caso-cuerpo').in
       <div class="txt">${a.texto?repHTML(a.texto):''}</div></div>`).join('')||'<div class="sub">Sin avisos.</div>'}</div>`;
   if(adm){
     $('#caso-guardar').onclick=()=>gestionarCaso({gestion:$('#caso-gest').value,notas:$('#caso-notas').value});
-    $('#caso-estado').onclick=()=>gestionarCaso({estado:c.estado==='abierto'?'cerrado':'abierto',notas:$('#caso-notas').value})}}
+    $('#caso-estado').onclick=()=>gestionarCaso({estado:c.estado==='abierto'?'cerrado':'abierto',notas:$('#caso-notas').value});
+    if($('#caso-otro')){
+      fetch('/api/casos?estado=abierto&dias=3650').then(r=>r.json()).then(l=>(l.casos||[]).filter(x=>x.id!==c.id).forEach(x=>$('#caso-otro').add(new Option(`${x.id} · ${x.entidad} · ${x.tema}`,x.id))));
+      $('#caso-unir').onclick=async()=>{const o=$('#caso-otro').value;if(!o)return;
+        if(!confirm(`¿Unir ${o} a ${c.id}? Sus avisos pasan a este caso y ${o} queda cerrado como «Unido a ${c.id}».`))return;
+        const r=await fetch('/api/caso/unir',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({origen:o,destino:c.id})}).then(r=>r.json()).catch(e=>({error:String(e)}));
+        if(r.error){$('#caso-msg').textContent='⚠ '+r.error;return}
+        await abrirCaso(c.id);$('#caso-msg').textContent='✓ Casos unidos.';cargarCasos()}}}}
 async function gestionarCaso(cambios){
   if(cambios.gestion==='descartado'&&CASO.gestion!=='descartado'&&!confirm('¿Descartar como falso positivo? Los avisos del caso sin valorar contarán como 👎 «no era un incidente».'))return;
   const r=await fetch('/api/caso/gestion',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify({id:CASO.id,...cambios})}).then(r=>r.json()).catch(e=>({error:String(e)}));
