@@ -713,22 +713,54 @@ def init_db():
                 con.execute(f"ALTER TABLE items ADD COLUMN {col} {tipos.get(col, 'TEXT')}")
         con.execute("CREATE INDEX IF NOT EXISTS idx_fecha ON items(fecha)")
         con.execute("CREATE TABLE IF NOT EXISTS trends (grupo TEXT, termino TEXT, t TEXT, valor INTEGER)")
-        # Reclasifica el histórico al arrancar, por si se cambió el léxico o las entidades
-        for r in con.execute("SELECT id, texto, meta FROM items").fetchall():
-            meta = json.loads(r["meta"] or "{}")
-            res = _fila({"texto": r["texto"], **meta})
-            if not res:  # ruido o sin entidad: se oculta, nunca se borra (las reglas pueden cambiar)
-                con.execute("UPDATE items SET oculto = 1 WHERE id = ?", (r["id"],))
-                continue
-            bancos, es_queja, cats, sev, sent = res
-            con.execute("UPDATE items SET bancos=?, es_queja=?, categorias=?, severidad=?, sentimiento=?, oculto=0 WHERE id=?",
-                        (json.dumps(bancos, ensure_ascii=False), int(es_queja),
-                         json.dumps(cats, ensure_ascii=False), sev, sent, r["id"]))
+        # El histórico se reclasifica con las reglas vigentes en segundo plano (reclasificar_historico), sin
+        # retrasar el arranque
         _aplicar_ia(con)
         # sin rastro de los servicios retirados: sus contadores de consumo se borran
         con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
         con.execute("DELETE FROM uso_proveedores WHERE proveedor LIKE 'BrightData%' OR proveedor LIKE 'CreatorCrawl%' "
                     "OR proveedor LIKE 'ScrapeCreators%' OR proveedor LIKE 'ScrapingBee%' OR proveedor LIKE 'Instaloader%'")
+
+
+def reclasificar_historico(lote=400):
+    """Aplica al histórico las reglas vigentes (léxico, entidades, exclusiones), por si cambiaron. Corre en segundo
+    plano después de arrancar, por lotes cortos que sueltan la base entre uno y otro: el panel y el monitoreo siguen
+    funcionando mientras tanto. Solo escribe lo que cambia; lo clasificado por la IA conserva su clasificación (se
+    actualizan entidades y visibilidad), así nada parpadea mientras corre."""
+    t0 = time.time()
+    with _db_lock, db() as con:
+        ids = [r[0] for r in con.execute("SELECT id FROM items")]
+    cambios = 0
+    for i in range(0, len(ids), lote):
+        with _db_lock, db() as con:
+            filas = con.execute(f"SELECT id, texto, meta, bancos, es_queja, categorias, severidad, sentimiento, oculto, "
+                                f"ia_sentimiento, ia_relevante, ia_categorias FROM items WHERE id IN "
+                                f"({','.join('?' * len(ids[i:i + lote]))})", ids[i:i + lote]).fetchall()
+            for r in filas:
+                res = _fila({"texto": r["texto"], **json.loads(r["meta"] or "{}")})
+                if not res:  # ruido o sin entidad: se oculta, nunca se borra (las reglas pueden cambiar)
+                    if not r["oculto"]:
+                        con.execute("UPDATE items SET oculto = 1 WHERE id = ?", (r["id"],))
+                        cambios += 1
+                    continue
+                bancos, es_queja, cats, sev, sent = res
+                ia = r["ia_sentimiento"] is not None
+                nuevo = {"bancos": json.dumps(bancos, ensure_ascii=False),
+                         "oculto": 1 if ia and r["ia_relevante"] == 0 else 0,
+                         "es_queja": r["es_queja"] if ia else int(es_queja),
+                         "severidad": r["severidad"] if ia else sev,
+                         "sentimiento": r["sentimiento"] if ia else sent,
+                         "categorias": r["categorias"] if ia and r["ia_categorias"] not in (None, "[]") else
+                         json.dumps(cats, ensure_ascii=False)}
+                if any(r[k] != v for k, v in nuevo.items()):
+                    con.execute("UPDATE items SET bancos=?, oculto=?, es_queja=?, severidad=?, sentimiento=?, categorias=? "
+                                "WHERE id=?", (*nuevo.values(), r["id"]))
+                    cambios += 1
+        time.sleep(0.05)
+    with _db_lock, db() as con:
+        _aplicar_ia(con)
+    print(f"[{datetime.now():%H:%M:%S}] Histórico reclasificado con las reglas vigentes: {len(ids)} publicaciones, "
+          f"{cambios} con cambios ({time.time() - t0:.0f} s)", flush=True)
 
 
 # Incidente de ciberseguridad (no una charla o consejo sobre el tema): siempre visible y negativo para la entidad
@@ -2789,8 +2821,9 @@ def utilidad_referentes(dias=30):
 
 
 # Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
+# Colores (definidos por el analista): 🔵 informativo y reportes programados · 🟢 leve · 🟡 medio · 🟠 grave · 🔴 crítico
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
-           "Medio": ("🟡", "default", "Warning"), "Informativo": ("🔵", "low", "Accent")}
+           "Medio": ("🟡", "default", "Warning"), "Leve": ("🟢", "low", "Good"), "Informativo": ("🔵", "low", "Accent")}
 TIPOS_AVISO = {"Queja grave": "queja-grave", "Queja crítica": "queja-critica", "Pico de quejas": "pico-de-quejas", "Pico de menciones críticas": "pico-de-menciones-criticas",
                "Pico por hora": "pico-por-hora", "Pico de críticas": "pico-de-criticas", "Cierre de evento": "cierre-de-evento", "Mantenimiento": "mantenimiento", "Resumen de avisos": "resumen-de-avisos",
                "Ciberseguridad": "ciberseguridad", "Pausa": "pausa", "Reporte": "reporte", "Prueba": "prueba"}
@@ -3131,7 +3164,7 @@ def _valorar_evento(b, clase, ventana):
 #   → recordatorio (cada 'recordatorio_min' si siguen llegando quejas) → cierre (Teams y celular, tras 'cierre_min'
 #   sin pico), con la duración y lo acumulado. Se guardan en el disco para que un reinicio no repita la apertura.
 _EVENTOS = {"abiertos": {}, "cerrados": {}, "lock": threading.RLock()}  # cerrados: por si luego llega el restablecimiento
-RANGO_NIVEL = {"Medio": 1, "Grave": 2, "Crítico": 3}
+RANGO_NIVEL = {"Leve": 0.5, "Medio": 1, "Grave": 2, "Crítico": 3}
 ARCHIVO_EVENTOS = os.path.join(DATOS, "eventos_abiertos.json")
 
 
@@ -3816,7 +3849,7 @@ def _revisar_pico(cfg, medida):
         if medida == "quejas":
             nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
         else:
-            nivel_p = "Medio"
+            nivel_p = "Leve"  # malestar reputacional, no una falla
         fase = _evento_registrar(medida, k, nivel_p, n, "pico")
         if not fase:
             continue
@@ -3910,7 +3943,7 @@ ENTIDAD_PROPIA = set(CONFIG.get("entidad_propia", ["SBS"]))
 TEMAS_REPORTE = [("Interrupciones", "App / canales caídos"), ("Fraudes", "Fraude / seguridad"),
                  ("Incidencias operativas", "Errores operativos")]
 NIVEL_ORDEN = {"Crítico": 3, "Grave": 2, "En seguimiento": 1, "Normal": 0}
-NIVEL_COLOR = {"Crítico": "🔴", "Grave": "🟠", "En seguimiento": "🟡", "Normal": "🟢"}
+NIVEL_COLOR = {"Crítico": "🔴", "Grave": "🟠", "En seguimiento": "🟡", "Normal": "🔵"}
 NIVEL_AVISO = {"Crítico": "Crítico", "Grave": "Grave", "En seguimiento": "Medio", "Normal": "Informativo"}
 # Modalidades de fraude que se agrupan para ver un patrón ("misma modalidad en 9 de 14")
 MODALIDADES_FRAUDE = [("QR falso", r"\bqr\b"),
@@ -4376,7 +4409,7 @@ def reporte_a_pedido(d, enviar=False):
                   (f"última {'hora' if horas == 1 else f'{horas:g} horas'}" if horas > 0 and not d.get("desde")
                    else f"desde {desde.astimezone(LIMA):%d/%m %H:%M}") + f" hasta {hasta:%d/%m %H:%M}")
     if enviar:
-        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel=nivel,
+        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte", nivel="Informativo",
                             url=CONFIG.get("notificaciones", {}).get("enlace") or None)
     return {"titulo": titulo, "texto": texto, "corto": None, "nivel": nivel, "enviado": enviar, "desde": iso(desde)}
 
@@ -4420,7 +4453,7 @@ def trabajador_reportes():
                     if atrasado:
                         texto += f"\n\n(Programado para las {t:%H:%M}; sale ahora porque el servidor no estaba disponible.)"
                     enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
-                                        nivel=nivel, url=CONFIG.get("notificaciones", {}).get("enlace") or None)
+                                        nivel="Informativo", url=CONFIG.get("notificaciones", {}).get("enlace") or None)
                     with _db_lock, db() as con:
                         con.execute("INSERT OR REPLACE INTO reportes_enviados (clave, enviado, hasta) VALUES (?, ?, ?)",
                                     (clave, iso(ahora()), iso(hasta)))
@@ -8374,6 +8407,7 @@ def main():
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
+    threading.Thread(target=reclasificar_historico, daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
     srv.daemon_threads = True
     print(f"Monitor banca Perú en http://localhost:{PORT}  (Ctrl+C para salir)", flush=True)

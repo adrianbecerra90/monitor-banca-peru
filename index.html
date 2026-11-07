@@ -1339,7 +1339,7 @@ $('#caso').onclick=e=>{if(e.target.id==='caso')$('#caso').classList.remove('on')
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#caso').classList.remove('on')});
 cargarCasos();setInterval(cargarCasos,60000);
 // Campana: historial de lo enviado a Teams y al celular (mismo texto, en espejo). Las no vistas se cuentan en el globo.
-const NIV_COLOR={'Crítico':'🔴','Grave':'🟠','Medio':'🟡','Informativo':'🔵'};
+const NIV_COLOR={'Crítico':'🔴','Grave':'🟠','Medio':'🟡','Leve':'🟢','Informativo':'🔵'};
 let CAMP=[],CAMP_F='',CAMP_VAL=null,CAMP_MOT={},CAMP_PROP=[];
 function campVisto(){try{return localStorage.getItem('monitor.campana.visto')||''}catch(e){return ''}}
 async function campCargar(){try{const d=await fetch('/api/notificaciones?dias='+$('#camp-dias').value).then(r=>r.json());CAMP=d.notificaciones||[];CAMP_VAL=d.valoracion;CAMP_MOT=d.motivos||{};CAMP_PROP=d.propuestas||[]}catch(e){return}

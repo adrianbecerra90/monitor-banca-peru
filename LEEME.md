@@ -103,6 +103,7 @@ todo el histórico se reclasifica con las reglas nuevas.
     duración (de la primera a la última queja), total de quejas y usuarios, máximo y nivel alcanzado.
 
   Celular y Teams reciben el mismo texto (espejo), avisos y reportes.
+- **Colores:** 🔵 informativo y reportes programados · 🟢 leve (p. ej. pico de menciones críticas, reputacional) · 🟡 medio · 🟠 grave · 🔴 crítico.
 - **Mínimo por entidad** (`notificaciones.minimo_comentarios_30min`): BCP, Interbank, Scotiabank Perú, Yape y Plin no abren
   un evento con menos de 8 comentarios negativos de usuarios en 30 min. No aplica a un comunicado de la entidad ni a la prensa.
 - **BCRP** es solo el Banco Central de Reserva del Perú: «Banco Central» a secas exige contexto de Perú y lo de otro país (p. ej. Paraguay) se descarta.
