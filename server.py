@@ -3849,7 +3849,7 @@ def _revisar_pico(cfg, medida):
         if medida == "quejas":
             nivel_p = "Grave" if n >= max(umbral * 1.5, umbral + 5) else "Medio"  # muy por encima del umbral: grave
         else:
-            nivel_p = "Leve"  # malestar reputacional, no una falla
+            nivel_p = "Medio"
         fase = _evento_registrar(medida, k, nivel_p, n, "pico")
         if not fase:
             continue
