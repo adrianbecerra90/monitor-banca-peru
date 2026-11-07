@@ -4529,6 +4529,10 @@ def evaluar_alerta_ciber(texto, cuenta_peruana=False):
     peru_victima = (CONTEXTO_PE.search(normalizar(cabecera)) is not None or "🇵🇪" in cabecera
                     or bool(pais and CONTEXTO_PE.search(pais.group(2))))
     monitoreadas = detectar_bancos(texto, peru)
+    # proveedor que pertenece a una entidad monitoreada (Izipay → Interbank): su incidente es también de esa entidad
+    for prov, ents in CONFIG.get("ciber", {}).get("proveedores_vinculados", {"Izipay": ["Interbank"]}).items():
+        if re.search(r"(?<![a-z0-9])" + re.escape(normalizar(prov)) + r"(?![a-z0-9])", t):
+            monitoreadas += [e for e in ents if e in BANCOS and e not in monitoreadas]
     m = re.search(r"(?:industria\s*/\s*)?sector\s*:\s*([^\n•|]{2,80})", t)
     sector_txt = m.group(1) if m else ""
     otra = (peru and SF_PERU.search(t)) or (peru_victima and SF_PERU_COMUN.search(re.sub(r"https?://\S+", " ", t)) and
@@ -4543,7 +4547,9 @@ def evaluar_alerta_ciber(texto, cuenta_peruana=False):
         return None  # p.ej. "Sector: Gobierno" aunque el texto mencione una cuenta bancaria
     org = re.search(r"organizaci[oó]n\s*:\s*([^\n•|]{2,80})", texto or "", re.I) or \
         re.search(r"\|\s*([^|\n]{3,80}?)\s*[–-]\s*Per[uú]", cabecera)
-    nombre = (org.group(1).strip() if org else (otra or proveedor).group(0).title() if (otra or proveedor) else "").strip(" .")
+    # la víctima es la de la ficha; si no hay ficha, el proveedor nombrado gana a la entidad que solo se etiqueta
+    # ("dataleak vinculado con #Izipay… @interbank aún no ha confirmado")
+    nombre = (org.group(1).strip() if org else (proveedor or otra).group(0).title() if (otra or proveedor) else "").strip(" .")
     es_prov = bool(proveedor) and not otra and not (de_sector and not PROVEE_SF.search(t))
     return {"entidades": monitoreadas, "organizacion": nombre[:80],
             "sector": "Proveedor del SF" if es_prov else "Seguros" if re.search(r"segur|insurance", sector_txt or t) else
@@ -4727,12 +4733,17 @@ def _avisar_ciber(alertas, cfg):
     for a in alertas:
         if a["fecha"] < corte or (a.get("sector") == "Actor vigilado" and not a.get("entidades")) or a.get("solo_reporte"):
             continue
-        quien = ", ".join(a["entidades"]) or a["organizacion"] or a["sector"]
+        # la víctima identifica el caso; los reguladores etiquetados (SBS, BCRP…) no
+        ents = [e for e in a["entidades"] if normalizar(e) not in NO_IDENTIFICAN] or a["entidades"]
+        org = a.get("organizacion") or ""
+        propia = org and normalizar(org) in {normalizar(e) for e in ents}
+        victima = org if org and not propia else ", ".join(ents) or org or a["sector"]
+        quien = (f"{org} ({', '.join(ents)})" if org and not propia and ents else victima)
         tipo = re.search(r"\|\s*([^|]{3,40}?)\s*\|", a["texto"])
         resumen = re.sub(r"\s+", " ", a["texto"])[:300]
         # mismo caso mientras siga abierto (sin plazo: un incidente puede durar meses; lo cierra el analista)
         clase = a.get("sector") if a.get("sector") in ("Infostealers", "Dominio que imita") else "Incidente"
-        clave_c, nivel_c = f"ciber|{quien}|{clase}", _nivel_ciber(a)
+        clave_c, nivel_c = f"ciber|{victima}|{clase}", _nivel_ciber(a)
         caso = caso_abierto(clave_c) or caso_ciber_relacionado(a, clase) or caso_reabrir_inactivo(clave_c) or \
             caso_abrir(quien, f"Ciberseguridad · {clase}", clave_c, nivel_c)
         caso_nivel(caso, nivel_c)

@@ -305,6 +305,13 @@
       "cuenta_peruana": true,
       "espera": null,
       "origen": "convocatoria laboral"
+    },
+    {
+      "texto": "🚨 Threat Alert | Data Leak | Izipay – Perú 🇵🇪 El actor de amenaza \"ShadowCrown\" publicó una base de datos que atribuye a Izipay Perú",
+      "espera": [
+        "Interbank"
+      ],
+      "origen": "@alph4_SEC, 05/11/2026"
     }
   ],
   "prensa": [
