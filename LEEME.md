@@ -114,6 +114,10 @@ todo el histórico se reclasifica con las reglas nuevas.
   phishing, otra entidad; verificación confirmada, corroborada (2+ fuentes o prensa que nombra a la víctima), una
   fuente con evidencia o rumor. Agravantes (+1 nivel): más de 100 mil registros, datos sensibles en lo expuesto, la
   SBS como víctima. El caso se evalúa con todas sus alertas y solo se notifica si avanza de estado o sube de nivel.
+- **Comentarios y silencios (campana 🔔):** cada aviso admite un comentario; los últimos 15 se le pasan a la IA como
+  criterio al clasificar publicaciones y aparecen en el resumen semanal. Al marcar 👎, un administrador puede silenciar
+  casos así (misma entidad y tipo, misma cuenta o fuente, o una frase) por 7, 30 o 90 días; el aviso silenciado queda en
+  la campana como «🔕 Silenciado». Nunca se silencia un aviso Crítico ni reportes o cierres.
 - **Colores:** 🔵 informativo y reportes programados · 🟢 leve · 🟡 medio · 🟠 grave · 🔴 crítico.
 - **Mínimo por entidad** (`notificaciones.minimo_comentarios_30min`): BCP, Interbank, Scotiabank Perú, Yape y Plin no abren
   un evento con menos de 8 comentarios negativos de usuarios en 30 min. No aplica a un comunicado de la entidad ni a la prensa.

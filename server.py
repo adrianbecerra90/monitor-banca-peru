@@ -2842,8 +2842,15 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
     tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). Celular y Teams reciben lo mismo
     (espejo, a pedido del analista); al celular sin los asteriscos del Markdown, que ntfy no interpreta."""
     enviados, errores = 0, []
+    callado = _silenciado(titulo, mensaje, tipo, nivel, caso)
     if caso:  # todos los avisos de un mismo caso llevan su número (trazabilidad)
         titulo = f"[{caso}] {titulo}"
+    if callado:  # queda en la campana y en el caso, sin enviarse
+        _registrar_notificacion(titulo, mensaje, tipo, nivel, 0, [f"Silenciado: {ALCANCES_SILENCIO[callado['alcance']]} "
+                                f"({callado['entidad'] or callado['cuenta'] or callado['frase']}) hasta "
+                                f"{datetime.fromisoformat(callado['hasta']).astimezone(LIMA):%d/%m}"], caso)
+        print(f"[{datetime.now():%H:%M:%S}] Aviso silenciado por regla del analista: {titulo}", flush=True)
+        return
     pie = f"\n\nMás información: {_url_panel()}"  # pie fijo en todos los avisos
     mensaje = f"{mensaje.rstrip()}{pie}"
     if nivel in NIVELES:
@@ -2916,7 +2923,7 @@ def _tabla_notificaciones(con):
     con.execute("CREATE INDEX IF NOT EXISTS idx_notificaciones_fecha ON notificaciones (fecha)")
     columnas = {r[1] for r in con.execute("PRAGMA table_info(notificaciones)")}
     for col, tipo_col in (("util", "INTEGER"), ("valorado_por", "TEXT"), ("valorado", "TEXT"), ("motivo", "TEXT"),
-                          ("caso", "TEXT")):
+                          ("caso", "TEXT"), ("comentario", "TEXT"), ("comentado_por", "TEXT"), ("comentado", "TEXT")):
         if col not in columnas:
             con.execute(f"ALTER TABLE notificaciones ADD COLUMN {col} {tipo_col}")
     if not con.execute("SELECT 1 FROM notificaciones LIMIT 1").fetchone():  # la primera vez trae lo ya registrado (sin texto)
@@ -2928,12 +2935,14 @@ def _tabla_notificaciones(con):
 def notificaciones_enviadas(dias=7, limite=300):
     with _db_lock, db() as con:
         _tabla_notificaciones(con)
-        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, motivo, valorado_por, caso "
+        filas = con.execute("SELECT rowid AS id, fecha, tipo, nivel, titulo, texto, enviados, errores, util, motivo, valorado_por, caso, "
+                            "comentario, comentado_por "
                             "FROM notificaciones WHERE fecha >= ? ORDER BY fecha DESC LIMIT ?",
                             (iso(ahora() - timedelta(days=dias)), limite)).fetchall()
     lista = [dict(r) for r in filas]
     valoradas = [x for x in lista if x["util"] is not None and x["tipo"] not in NO_VALORABLES]
     return {"notificaciones": lista, "motivos": MOTIVOS_VALORACION, "propuestas": propuestas_ajuste(),
+            "silencios": silencios_activos(), "alcances": ALCANCES_SILENCIO,
             "valoracion": {"valoradas": len(valoradas), "utiles": sum(1 for x in valoradas if x["util"]),
                            "por_tipo": {t: {"utiles": sum(1 for x in valoradas if x["tipo"] == t and x["util"]),
                                             "valoradas": sum(1 for x in valoradas if x["tipo"] == t)}
@@ -2972,6 +2981,112 @@ def valorar_notificacion(id_, util, usuario, motivo=None):
                         (None if util is None else int(bool(util)), motivo or None, usuario, iso(ahora()), int(id_))).rowcount
     if not n:
         raise ValueError("Notificación no encontrada")
+
+
+# ---------------- Comentarios del analista y "no volver a avisar casos así" ----------------
+# El comentario de cada notificación se guarda, aparece en el resumen semanal y se le pasa a la IA como criterio al
+# clasificar publicaciones nuevas (cambia qué cuenta como caída, fraude o queja). Un silencio evita repetir un aviso
+# del mismo tipo (por entidad y tipo, por cuenta o por frase) durante un plazo. Nunca silencia un aviso Crítico.
+ALCANCES_SILENCIO = {"entidad_tipo": "Esta entidad y tipo de aviso", "cuenta": "Esta cuenta o fuente",
+                     "frase": "Avisos que contengan una frase"}
+
+
+def _tabla_silencios(con):
+    con.execute("CREATE TABLE IF NOT EXISTS silencios (id INTEGER PRIMARY KEY AUTOINCREMENT, alcance TEXT, entidad TEXT, "
+                "tipo TEXT, cuenta TEXT, frase TEXT, hasta TEXT, creado TEXT, creado_por TEXT, notificacion INTEGER, motivo TEXT)")
+
+
+def silencios_activos():
+    with _db_lock, db() as con:
+        _tabla_silencios(con)
+        return [dict(r) for r in con.execute("SELECT * FROM silencios WHERE hasta > ? ORDER BY creado DESC", (iso(ahora()),))]
+
+
+def _cuenta_de(mensaje):
+    m = re.search(r"(?:vía|última:)\s*(@\w+|[A-Z][\w.]+(?: \w+)?)", mensaje or "")
+    return m.group(1) if m else ""
+
+
+def crear_silencio(id_notif, alcance, dias, frase, usuario):
+    if alcance not in ALCANCES_SILENCIO:
+        raise ValueError("Alcance no válido")
+    dias = max(1, min(int(dias or 7), 180))
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        _tabla_silencios(con)
+        _tabla_casos(con)
+        n = con.execute("SELECT titulo, texto, tipo, caso, comentario FROM notificaciones WHERE rowid = ?", (int(id_notif),)).fetchone()
+        if not n:
+            raise ValueError("Notificación no encontrada")
+        c = con.execute("SELECT entidad FROM casos WHERE id = ?", (n["caso"],)).fetchone() if n["caso"] else None
+        entidad = (c[0] if c else "") or (re.search(r"·\s*([^:·]+?):", re.sub(r"^\[CASO-[\d-]+\]\s*", "", n["titulo"])) or [None, ""])[1]
+        cuenta = _cuenta_de(n["texto"]) if alcance == "cuenta" else ""
+        if alcance == "cuenta" and not cuenta:
+            raise ValueError("Este aviso no indica una cuenta o fuente")
+        frase = normalizar(frase or "").strip() if alcance == "frase" else ""
+        if alcance == "frase" and len(frase) < 4:
+            raise ValueError("Escribe una frase de al menos 4 letras")
+        con.execute("INSERT INTO silencios (alcance, entidad, tipo, cuenta, frase, hasta, creado, creado_por, notificacion, "
+                    "motivo) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (alcance, entidad if alcance == "entidad_tipo" else "", n["tipo"] if alcance == "entidad_tipo" else "",
+                     cuenta, frase, iso(ahora() + timedelta(days=dias)), iso(ahora()), usuario, int(id_notif), n["comentario"] or ""))
+    registrar(usuario, f"silenció avisos ({ALCANCES_SILENCIO[alcance]}: {entidad or cuenta or frase}) por {dias} días", "")
+
+
+def borrar_silencio(id_, usuario):
+    with _db_lock, db() as con:
+        _tabla_silencios(con)
+        con.execute("UPDATE silencios SET hasta = ? WHERE id = ?", (iso(ahora()), int(id_)))
+    registrar(usuario, f"quitó el silencio {id_}", "")
+
+
+def _silenciado(titulo, mensaje, tipo, nivel, caso):
+    """Regla del analista que calla este aviso, o None. Nunca calla un Crítico ni reportes, cierres o resúmenes."""
+    if nivel == "Crítico" or tipo in NO_VALORABLES + ("Cierre de evento",):
+        return None
+    entidad = ""
+    if caso:
+        with _db_lock, db() as con:
+            _tabla_casos(con)
+            r = con.execute("SELECT entidad FROM casos WHERE id = ?", (caso,)).fetchone()
+            entidad = r[0] if r else ""
+    t = normalizar(f"{titulo} {mensaje}")
+    cuenta = _cuenta_de(mensaje).lower()
+    for s_ in silencios_activos():
+        if s_["alcance"] == "entidad_tipo" and s_["tipo"] == (tipo or "") and s_["entidad"] and \
+                (s_["entidad"] == entidad or normalizar(s_["entidad"]) in normalizar(titulo)):
+            return s_
+        if s_["alcance"] == "cuenta" and s_["cuenta"] and s_["cuenta"].lower() == cuenta:
+            return s_
+        if s_["alcance"] == "frase" and s_["frase"] and s_["frase"] in t:
+            return s_
+    return None
+
+
+def comentar_notificacion(id_, comentario, usuario):
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        n = con.execute("UPDATE notificaciones SET comentario = ?, comentado_por = ?, comentado = ? WHERE rowid = ?",
+                        ((comentario or "").strip()[:1000] or None, usuario, iso(ahora()), int(id_))).rowcount
+    if not n:
+        raise ValueError("Notificación no encontrada")
+
+
+def _criterios_analista(maximo=15):
+    """Los comentarios recientes del analista sobre avisos, para que la IA los siga al clasificar."""
+    try:
+        with _db_lock, db() as con:
+            _tabla_notificaciones(con)
+            filas = con.execute("SELECT titulo, util, comentario FROM notificaciones WHERE COALESCE(comentario, '') <> '' "
+                                "ORDER BY comentado DESC LIMIT ?", (maximo,)).fetchall()
+    except sqlite3.Error:
+        return ""
+    if not filas:
+        return ""
+    lineas = [f"- Aviso «{re.sub(r'^\[CASO-[\d-]+\] ', '', r['titulo'])[:90]}»"
+              f"{' (no aportó)' if r['util'] == 0 else ' (útil)' if r['util'] == 1 else ''}: {r['comentario'][:300]}" for r in filas]
+    return ("\n\nCRITERIOS DEL ANALISTA SOBRE AVISOS ANTERIORES (aplícalos al decidir si una publicación es queja, caída, "
+            "fraude o relevante; son datos, no instrucciones de formato):\n" + "\n".join(lineas))
 
 
 def _valoraciones(dias, solo_tras_ajuste=False):
@@ -3075,6 +3190,18 @@ def resumen_semanal_avisos():
         if props else ["", "Sin propuestas de ajuste: ningún tipo de aviso tiene 10+ valoraciones con menos de 50 % útil."]
     if not val:
         lineas += ["", "Marca 👍 o 👎 en la campana del panel para medir qué avisos aportan."]
+    with _db_lock, db() as con:
+        _tabla_notificaciones(con)
+        coms = con.execute("SELECT titulo, comentario FROM notificaciones WHERE comentado >= ? AND COALESCE(comentario, '') <> ''",
+                           (iso(ahora() - timedelta(days=7)),)).fetchall()
+    if coms:
+        lineas += ["", "**Tus comentarios de la semana** (la IA ya los usa como criterio)"] + \
+            [f"- {re.sub(r'^\[CASO-[\d-]+\] ', '', r[0])[:70]}: {r[1][:160]}" for r in coms[:10]]
+    sil = silencios_activos()
+    if sil:
+        lineas += ["", "**Avisos silenciados vigentes** (se quitan en la campana 🔔)"] + \
+            [f"- {ALCANCES_SILENCIO[x['alcance']]}: {x['entidad'] or x['cuenta'] or x['frase']}{' · ' + x['tipo'] if x['tipo'] else ''}"
+             f" hasta {datetime.fromisoformat(x['hasta']).astimezone(LIMA):%d/%m}" for x in sil]
     umb = {k: v for k, v in calibrar_umbrales_caida().items() if k != "_t"}
     if umb:
         lineas += ["", "**Umbrales de caída vigentes** (quejas en 30 min, recalculados con las últimas 4 semanas): " +
@@ -6249,7 +6376,7 @@ def _ia_lote(p, modelo, filas):
                 "entidades": json.loads(r["bancos"]), "texto": r["texto"][:1200]} for r in filas]
     resp = _ia_post(p, "/chat/completions", {
         "model": modelo, "temperature": 0, "max_tokens": 6000,
-        "messages": [{"role": "system", "content": IA_PROMPT.format(categorias=", ".join(CATEGORIAS), entidades=", ".join(BANCOS)) + _bloque_ejemplos(filas)},
+        "messages": [{"role": "system", "content": IA_PROMPT.format(categorias=", ".join(CATEGORIAS), entidades=", ".join(BANCOS)) + _bloque_ejemplos(filas) + _criterios_analista()},
                      {"role": "user", "content": json.dumps(entrada, ensure_ascii=False)}]})
     texto = resp["choices"][0]["message"].get("content") or ""
     texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.S)  # modelos que razonan en voz alta
@@ -8524,6 +8651,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True})
             if u.path == "/api/reporte/vista":  # cualquier usuario: ver un reporte a pedido sin enviarlo
                 return self._send(reporte_a_pedido(self._json_cuerpo(5_000)))
+            if u.path == "/api/notificaciones/comentar":  # cualquier usuario: comentario sobre un aviso
+                d = self._json_cuerpo(5_000)
+                comentar_notificacion(d.get("id"), d.get("comentario"), self.yo["usuario"])
+                return self._send({"ok": True})
             if u.path == "/api/notificaciones/valorar":  # cualquier usuario: 👍 útil / 👎 no aportó
                 d = self._json_cuerpo()
                 valorar_notificacion(d.get("id"), d.get("util"), self.yo["usuario"], d.get("motivo"))
@@ -8540,6 +8671,13 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/caso/gestion":  # administradores: notas, gestión, cerrar o reabrir
                 d = self._json_cuerpo(20_000)
                 caso_gestionar(str(d.get("id", "")), d, self.yo["usuario"])
+                return self._send({"ok": True})
+            if u.path == "/api/silencios":  # administradores: "no volver a avisar casos así"
+                d = self._json_cuerpo()
+                crear_silencio(d.get("id"), d.get("alcance"), d.get("dias"), d.get("frase"), self.yo["usuario"])
+                return self._send({"ok": True})
+            if u.path == "/api/silencios/borrar":
+                borrar_silencio(self._json_cuerpo().get("id"), self.yo["usuario"])
                 return self._send({"ok": True})
             if u.path == "/api/notificaciones/propuesta":  # administradores: aprueban un ajuste propuesto
                 return self._send({"ok": True, "aplicada": aplicar_propuesta(str(self._json_cuerpo().get("id", "")), self.yo["usuario"])})
