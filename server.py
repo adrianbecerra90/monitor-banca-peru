@@ -173,6 +173,10 @@ MIGRACIONES_REGLAS = {
         "BCP": 8, "Interbank": 8, "Scotiabank Perú": 8, "Yape": 8, "Plin": 8}}},
     # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
+    # 17/11/2026: el analista pide usar siempre el 95 % de cada cupo gratuito, repartido parejo en el mes
+    "cuotas-95-2026-11-17": {"config_set": {"tiktok_rapid.max_llamadas_mes": 285, "linkedin_api.max_creditos_mes": 47,
+                                            "scrapedo.max_creditos_mes": 950, "rapidapi.max_llamadas_mes": 95,
+                                            "apify.presupuesto_usd_mes": 4.75}},
     # 17/11/2026: grupos propios para LinkedIn y TikTok, con turno diario (sus menciones de terceros solo entran por aquí)
     "google-grupos-2026-11-17": {"scrapedo_sitios_reemplazo": True},
 }
@@ -200,6 +204,11 @@ for _m in _pendientes:
     _l = CONFIG.setdefault("nitter", {}).setdefault("consultas_extra", [])
     _l += [x for x in _c.get("nitter_consultas_extra", []) if x not in _l]
     CONFIG.setdefault("notificaciones", {}).update(_c.get("notificaciones", {}))
+    for _ruta, _v in _c.get("config_set", {}).items():
+        _d = CONFIG
+        for _k in _ruta.split(".")[:-1]:
+            _d = _d.setdefault(_k, {})
+        _d[_ruta.split(".")[-1]] = _v
     if _c.get("scrapedo_sitios_reemplazo"):
         CONFIG.setdefault("scrapedo", {}).pop("sitios", None)  # vuelve a los grupos del código (SITIOS_GOOGLE)
     if _c.get("scrapedo_sitios") and CONFIG.get("scrapedo", {}).get("sitios"):  # sin lista propia ya usa SITIOS_GOOGLE
@@ -1957,6 +1966,11 @@ def sd_google(consulta):
         raise
     with resp:
         d = json.loads(resp.read(MAX_RESPUESTA))
+        restantes = next((v for k, v in resp.headers.items() if "remaining" in k.lower() and str(v).isdigit()), None)
+    if restantes is not None:
+        ESTADO.setdefault("scrapedo", {})["restantes"] = int(restantes)
+        if int(restantes) < 50:  # 95 % del plan: se deja el 5 % de margen
+            agotar("Scrape.do", f"Quedan {restantes} créditos en la cuenta (se guarda el 5 %)")
     with _db_lock, db() as con:  # solo se cobran las búsquedas exitosas
         for clave, prov in ((mes, "Scrape.do"), (_hoy_lima().isoformat(), "Scrape.do·día")):
             con.execute("INSERT INTO uso_proveedores VALUES (?, ?, 10) ON CONFLICT(mes, proveedor) "
@@ -2059,6 +2073,8 @@ def rapid_get(ruta, **q):
     est = ESTADO.setdefault("rapidapi", {})
     if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 5)):
         agotar("RapidAPI", f"Cuota agotada ({usados} de {tope} llamadas este mes)")
+    if not _cupo_de_hoy("RapidAPI", tope):
+        raise RutaInactiva("Cupo de hoy usado (se reparte el mes en partes iguales); sigue mañana")
     host = os.environ.get("RAPIDAPI_FB_HOST") or "facebook-scraper3.p.rapidapi.com"  # vacía = la de siempre
     req = urllib.request.Request(f"https://{host}{ruta}?" + urllib.parse.urlencode({k: v for k, v in q.items() if v}),
                                  headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": host, "User-Agent": UA})
@@ -2080,6 +2096,7 @@ def rapid_get(ruta, **q):
     with _db_lock, db() as con:
         con.execute("INSERT INTO uso_proveedores VALUES (?, 'RapidAPI', 1) ON CONFLICT(mes, proveedor) "
                     "DO UPDATE SET creditos = creditos + 1", (mes,))
+    _sumar_dia("RapidAPI")
     est.update(usados_mes=usados + 1, tope=tope, reserva=cfg.get("reserva", 5),
                restantes=int(restantes) if str(restantes).isdigit() else est.get("restantes"),
                limite_plan=int(limite) if str(limite).isdigit() else est.get("limite_plan"))
@@ -2172,7 +2189,7 @@ LINKEDIN_HOST = "professional-network-data.p.rapidapi.com"
 def _linkedin_get(ruta, **q):
     prov, cfg = "Professional Network Data", CONFIG.get("linkedin_api", {})
     exigir_disponible(prov)
-    usados, tope = _creditos_mes(prov), cfg.get("max_creditos_mes", 45)
+    usados, tope = _creditos_mes(prov), cfg.get("max_creditos_mes", 47)
     est = ESTADO.setdefault("linkedin_api", {})
     if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 3)):
         agotar(prov, f"Cuota agotada ({usados} de {tope} créditos este mes)")
@@ -2226,7 +2243,8 @@ def _linkedin_paginas(rango):
         con.execute("CREATE TABLE IF NOT EXISTS linkedin_revisadas (url TEXT PRIMARY KEY, fecha TEXT)")
         vistas = dict(con.execute("SELECT url, fecha FROM linkedin_revisadas").fetchall())
     ultima = max(vistas.values(), default="")
-    if ultima and ahora() - datetime.fromisoformat(ultima) < timedelta(hours=cfg.get("intervalo_horas", 16)):
+    intervalo = _intervalo_parejo("Professional Network Data", cfg.get("max_creditos_mes", 47), cfg.get("intervalo_min", 240))
+    if ultima and ahora() - datetime.fromisoformat(ultima) < timedelta(minutes=intervalo):
         return []
     # páginas prioritarias (la SBS) cada 'prioridad' horas; el resto, la que lleva más tiempo sin revisarse
     prioridad = cfg.get("prioridad", {"SBS": 72})
@@ -2303,10 +2321,39 @@ def fuente_instagram(rango=None):
 TIKTOK_HOST = "tiktok-scraper7.p.rapidapi.com"
 
 
+def _cupo_de_hoy(prov, tope):
+    """Reparte lo que queda del cupo del mes en partes iguales hasta la renovación: ¿queda cupo hoy?"""
+    hoy = _hoy_lima().isoformat()
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes = ? AND proveedor = ?", (hoy, f"{prov}·día")).fetchone()
+    usado_hoy = r[0] if r else 0
+    dias = max(1, (fecha_renovacion(prov) - _hoy_lima()).days)
+    return usado_hoy < (tope - _creditos_mes(prov) + usado_hoy) / dias
+
+
+def _sumar_dia(prov, n=1):
+    with _db_lock, db() as con:
+        con.execute("INSERT INTO uso_proveedores VALUES (?, ?, ?) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + excluded.creditos", (_hoy_lima().isoformat(), f"{prov}·día", n))
+
+
+def _intervalo_parejo(prov, tope, minimo):
+    """Minutos entre consultas para gastar el cupo que queda (hasta 'tope') parejo hasta la renovación."""
+    est = ESTADO.get(_CFG_PROV.get(prov, ""), {})
+    try:
+        fin = datetime.fromisoformat(est["renovacion"]) if est.get("renovacion") else \
+            datetime.combine(fecha_renovacion(prov), datetime.min.time(), LIMA)
+    except (ValueError, TypeError):
+        fin = datetime.combine(fecha_renovacion(prov), datetime.min.time(), LIMA)
+    quedan = max(1, tope - _creditos_mes(prov))
+    return max(minimo, (fin - ahora()).total_seconds() / 60 / quedan)
+
+
 def _tiktok_rapid_get(ruta, **q):
     prov, cfg = "TikTok Scraper", CONFIG.get("tiktok_rapid", {})
     exigir_disponible(prov)
-    usados, tope = _creditos_mes(prov), cfg.get("max_llamadas_mes", 280)
+    usados, tope = _creditos_mes(prov), cfg.get("max_llamadas_mes", 285)
     est = ESTADO.setdefault("tiktok_rapid", {})
     if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 10)):
         agotar(prov, f"Cuota agotada ({usados} de {tope} consultas este mes)")
@@ -2366,8 +2413,8 @@ def tiktok_busqueda_rapid(rango):
     with _db_lock, db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
         m = dict(con.execute("SELECT clave, valor FROM marcas WHERE clave LIKE 'tiktok_rapid_%'").fetchall())
-    if m.get("tiktok_rapid_ultima") and ahora() - datetime.fromisoformat(m["tiktok_rapid_ultima"]) < \
-            timedelta(minutes=cfg.get("intervalo_min", 160)):
+    intervalo = _intervalo_parejo("TikTok Scraper", cfg.get("max_llamadas_mes", 285), cfg.get("intervalo_min", 60))
+    if m.get("tiktok_rapid_ultima") and ahora() - datetime.fromisoformat(m["tiktok_rapid_ultima"]) < timedelta(minutes=intervalo):
         return []
     marca = lambda k, v: _guardar_marca(f"tiktok_rapid_{k}", v)
     marca("ultima", iso(ahora()))  # antes de llamar: un error no hace reintentar en bucle

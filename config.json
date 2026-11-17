@@ -538,7 +538,7 @@
         "commentsPerPost": "{n_coment}"
       }
     },
-    "presupuesto_usd_mes": 4.5,
+    "presupuesto_usd_mes": 4.75,
     "x_via_apify": false,
     "comentarios_max_por_post": 20,
     "dia_renovacion": 10
@@ -792,7 +792,7 @@
   },
   "scrapedo": {
     "_nota": "Búsqueda en Google (plan gratuito mensual: 1000 créditos; 10 por búsqueda; ~3 al día). Grupos y turnos en el código (SITIOS_GOOGLE, CADA_HORAS_GOOGLE): LinkedIn y TikTok cada 24 h, Facebook e Instagram cada 48 h, Reddit y foros cada 96 h; 'cada_horas' los ajusta. LinkedIn busca incidentes, fraudes, ciberataques y sanciones en vez de palabras de queja.",
-    "max_creditos_mes": 900,
+    "max_creditos_mes": 950,
     "periodo": "d",
     "max_dias": 3,
     "dia_renovacion": 1
@@ -809,13 +809,13 @@
     "avisos-calibracion-2026-11-02",
     "minimo-comentarios-2026-11-05",
     "minimo-comentarios-8-2026-11-05",
-    "google-grupos-2026-11-17"
+    "google-grupos-2026-11-17",
+    "cuotas-95-2026-11-17"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú. 'prioridad': páginas que se revisan cada N horas antes que el resto; 'comentarios': páginas de las que además se leen los comentarios de sus 'comentarios_posts' últimas publicaciones (1 crédito cada una).",
-    "max_creditos_mes": 45,
+    "max_creditos_mes": 47,
     "reserva": 3,
-    "intervalo_horas": 16,
     "paginas_globales": [
       "scotiabank"
     ],
@@ -825,13 +825,13 @@
     "comentarios": [
       "SBS"
     ],
-    "comentarios_posts": 2
+    "comentarios_posts": 2,
+    "intervalo_min": 240
   },
   "tiktok_rapid": {
-    "_nota": "Videos de terceros en TikTok con TikTok Scraper (RapidAPI, tikwm; plan gratuito 300 consultas al mes, cuota aparte). Una consulta cada 'intervalo_min' (160 min ≈ 9 al día), términos en rotación con la SBS dos veces por vuelta; comentarios del video de la SBS más comentado (desde 'min_comentarios'). 'terminos' reemplaza la rotación.",
-    "max_llamadas_mes": 280,
-    "reserva": 10,
-    "intervalo_min": 160,
+    "_nota": "Videos de terceros en TikTok con TikTok Scraper (RapidAPI, tikwm; plan gratuito 300 consultas al mes, cuota aparte). Se usa el 95 % (285) repartido parejo hasta la renovación (el intervalo entre consultas se calcula solo; mínimo 'intervalo_min'). Términos en rotación con la SBS dos veces por vuelta; comentarios del video de la SBS con más comentarios nuevos.",
+    "max_llamadas_mes": 285,
+    "intervalo_min": 60,
     "videos": 20,
     "min_comentarios": 5
   }
