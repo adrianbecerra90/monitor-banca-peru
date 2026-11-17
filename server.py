@@ -2297,9 +2297,134 @@ def fuente_instagram(rango=None):
          if os.environ.get("APIFY_TOKEN") else None, "activo")], rango)
 
 
+# TikTok de terceros: búsqueda por palabra clave con TikTok Scraper (RapidAPI, tikwm; plan gratuito de 300 consultas al
+# mes, cuota aparte). Una consulta por turno, cada 'intervalo_min', con términos en rotación (la SBS va dos veces por
+# vuelta) y, si sale un video sobre la SBS con comentarios nuevos, sus comentarios en el turno siguiente.
+TIKTOK_HOST = "tiktok-scraper7.p.rapidapi.com"
+
+
+def _tiktok_rapid_get(ruta, **q):
+    prov, cfg = "TikTok Scraper", CONFIG.get("tiktok_rapid", {})
+    exigir_disponible(prov)
+    usados, tope = _creditos_mes(prov), cfg.get("max_llamadas_mes", 280)
+    est = ESTADO.setdefault("tiktok_rapid", {})
+    if usados >= tope or (est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 10)):
+        agotar(prov, f"Cuota agotada ({usados} de {tope} consultas este mes)")
+    req = urllib.request.Request(f"https://{TIKTOK_HOST}{ruta}?" + urllib.parse.urlencode(q),
+                                 headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": TIKTOK_HOST,
+                                          "User-Agent": UA})
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(400).decode("utf-8", "ignore")
+        if e.code == 429:
+            agotar(prov, "Cuota mensual del plan gratuito agotada")
+        if e.code == 403 and "not subscribed" in cuerpo:
+            raise RutaInactiva("Inactiva: la clave de RapidAPI no está suscrita a TikTok Scraper")
+        raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(cuerpo.encode()))
+    with resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+        h = resp.headers
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        con.execute("INSERT INTO uso_proveedores VALUES (?, ?, 1) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + 1", (ahora().strftime("%Y-%m"), prov))
+    restantes, limite, reset = (h.get(f"X-RateLimit-Scraping-Api-{k}") for k in ("Remaining", "Limit", "Reset"))
+    est.update(usados_mes=usados + 1, tope=tope,
+               restantes=int(restantes) if str(restantes).isdigit() else est.get("restantes"),
+               limite_plan=int(limite) if str(limite).isdigit() else est.get("limite_plan"))
+    if str(reset).isdigit():
+        est["renovacion"] = iso(ahora() + timedelta(seconds=int(reset)))
+    if d.get("code") not in (0, None):
+        raise RuntimeError(str(d.get("msg") or "respuesta sin éxito")[:160])
+    return d.get("data") or {}
+
+
+def _terminos_tiktok():
+    cfg = CONFIG.get("tiktok_rapid", {})
+    if cfg.get("terminos"):
+        return cfg["terminos"]
+    otros = [b for b in BANCOS if b != "SBS" and b not in cfg.get("excluir", ["Italtel Perú"])]
+    sbs, vuelta = ["SBS Perú", "Superintendencia de Banca"], []
+    for i, b in enumerate(otros):  # la SBS dos veces por vuelta, intercalada
+        if i % max(1, len(otros) // 2) == 0:
+            vuelta.append(sbs[len([v for v in vuelta if v in sbs]) % 2])
+        t = BANCOS[b]["buscar"][0]
+        vuelta.append(t if "per" in normalizar(t) else t + " Perú" if b in ("BBVA Perú", "Scotiabank Perú") else t)
+    return vuelta
+
+
+def tiktok_busqueda_rapid(rango):
+    """Videos de cualquier persona que nombran a las entidades (y comentarios de los de la SBS que más se comentan)."""
+    if not os.environ.get("RAPIDAPI_KEY"):
+        raise RutaInactiva("Sin clave: añade RAPIDAPI_KEY en .env")
+    if en_pausa("TikTok Scraper"):
+        raise RutaInactiva("⏸ En pausa")
+    if rango:
+        return []  # sin cargas históricas: el cupo es de 300 consultas al mes
+    cfg = CONFIG.get("tiktok_rapid", {})
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        m = dict(con.execute("SELECT clave, valor FROM marcas WHERE clave LIKE 'tiktok_rapid_%'").fetchall())
+    if m.get("tiktok_rapid_ultima") and ahora() - datetime.fromisoformat(m["tiktok_rapid_ultima"]) < \
+            timedelta(minutes=cfg.get("intervalo_min", 160)):
+        return []
+    marca = lambda k, v: _guardar_marca(f"tiktok_rapid_{k}", v)
+    marca("ultima", iso(ahora()))  # antes de llamar: un error no hace reintentar en bucle
+    out = []
+    pendiente = m.get("tiktok_rapid_comentarios")
+    if pendiente:  # turno de comentarios de un video de la SBS
+        marca("comentarios", "")
+        url, banco = pendiente.split("|", 1)
+        d = _tiktok_rapid_get("/comment/list", url=url, count="50", cursor="0")
+        for c in d.get("comments") or []:
+            u = c.get("user") or {}
+            if not c.get("text"):
+                continue
+            out.append({"id": f"tiktok:{c.get('id') or c.get('cid') or hash(c['text'])}", "fuente": "TikTok",
+                        "tipo": "comentario", "peru": True, "bancos_fijos": [banco], "cuenta": banco,
+                        "autor": u.get("unique_id") or u.get("nickname") or "", "texto": c["text"],
+                        "fecha": _epoch(c.get("create_time")), "url": url})
+        print(f"  TikTok · búsqueda: {len(out)} comentarios de {url}", flush=True)
+        return out
+    terminos = _terminos_tiktok()
+    i = int(m.get("tiktok_rapid_turno") or 0) % len(terminos)
+    marca("turno", str(i + 1))
+    d = _tiktok_rapid_get("/feed/search", keywords=terminos[i], region="pe", count=str(cfg.get("videos", 20)),
+                          cursor="0", publish_time="7", sort_type="0")
+    mejor = None
+    for v in d.get("videos") or []:
+        a = v.get("author") or {}
+        uid, vid = a.get("unique_id") or "", v.get("video_id") or v.get("aweme_id")
+        if not vid or not v.get("title"):
+            continue
+        url = f"https://www.tiktok.com/@{uid}/video/{vid}"
+        out.append({"id": f"tiktok:busqueda:{vid}", "fuente": "TikTok", "tipo": "", "peru": True, "autor": uid,
+                    "texto": v["title"], "fecha": _epoch(v.get("create_time")), "url": url, "contexto": terminos[i],
+                    "metricas": {"comentarios": v.get("comment_count"), "reproducciones": v.get("play_count")}})
+        n = int(v.get("comment_count") or 0)
+        # comentarios solo si el video tiene al menos 'min_comentarios' nuevos desde la última vez que se leyeron
+        nuevos = n - int(m.get(f"tiktok_rapid_com_{vid}") or 0)
+        if "SBS" in detectar_bancos(v["title"] + " " + terminos[i], True) and nuevos >= cfg.get("min_comentarios", 5) and \
+                (not mejor or nuevos > mejor[2]):
+            mejor = (url, vid, nuevos, n)
+    if mejor:
+        marca("comentarios", f"{mejor[0]}|SBS")
+        marca(f"com_{mejor[1]}", str(mejor[3]))
+    print(f"  TikTok · búsqueda «{terminos[i]}»: {len(out)} videos", flush=True)
+    return out
+
+
+def _guardar_marca(clave, valor):
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        con.execute("INSERT OR REPLACE INTO marcas VALUES (?, ?)", (clave, valor))
+
+
 def fuente_tiktok(rango=None):
-    # La ruta gratuita va primero; los servicios de pago solo entran si ella falla (así no se gastan créditos)
+    # Cuentas oficiales con la ruta gratuita (Apify solo si falla) y, aparte, videos de terceros con TikTok Scraper
     return ejecutar_rutas("TikTok", [("yt-dlp (gratis)", tiktok_libre, "activo"),
+                                     ("TikTok Scraper (búsqueda)", tiktok_busqueda_rapid, "activo"),
                                      ("Apify", tiktok_apify, "respaldo")], rango)
 
 
@@ -2514,7 +2639,7 @@ except OSError:
 # Servicios de pago agotados: se apagan solos hasta su fecha de renovación y mientras tanto no se consultan
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
-_CFG_PROV = {"Apify": "apify",
+_CFG_PROV = {"Apify": "apify", "TikTok Scraper": "tiktok_rapid",
              "Scrape.do": "scrapedo", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
@@ -6600,7 +6725,7 @@ def resumen_proveedores():
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
                 "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
-    ap, ra, li = (ESTADO.get(k, {}) for k in ("apify", "rapidapi", "linkedin_api"))
+    ap, ra, li, tt = (ESTADO.get(k, {}) for k in ("apify", "rapidapi", "linkedin_api", "tiktok_rapid"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
               f"US${ap['usado']:.2f} de US${ap['tope']:.2f} este mes" if ap.get("usado") is not None else None,
@@ -6615,6 +6740,10 @@ def resumen_proveedores():
               f"{li['restantes']} de {li.get('limite_plan', '?')} créditos del plan" if li.get("restantes") is not None else None,
               f"{_creditos_mes('Professional Network Data')} de {CONFIG.get('linkedin_api', {}).get('max_creditos_mes', 45)} créditos este mes",
               [("LinkedIn", "Professional Network Data")]),
+        ficha("TikTok Scraper", "RAPIDAPI_KEY", "TikTok: videos de terceros y comentarios (búsqueda) · RapidAPI, cuota aparte",
+              f"{tt['restantes']} de {tt.get('limite_plan', '?')} consultas del plan" if tt.get("restantes") is not None else None,
+              f"{_creditos_mes('TikTok Scraper')} de {CONFIG.get('tiktok_rapid', {}).get('max_llamadas_mes', 280)} consultas este mes",
+              [("TikTok", "TikTok Scraper (búsqueda)")]),
     ]
 
 

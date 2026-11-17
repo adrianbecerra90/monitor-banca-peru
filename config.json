@@ -826,5 +826,13 @@
       "SBS"
     ],
     "comentarios_posts": 2
+  },
+  "tiktok_rapid": {
+    "_nota": "Videos de terceros en TikTok con TikTok Scraper (RapidAPI, tikwm; plan gratuito 300 consultas al mes, cuota aparte). Una consulta cada 'intervalo_min' (160 min ≈ 9 al día), términos en rotación con la SBS dos veces por vuelta; comentarios del video de la SBS más comentado (desde 'min_comentarios'). 'terminos' reemplaza la rotación.",
+    "max_llamadas_mes": 280,
+    "reserva": 10,
+    "intervalo_min": 160,
+    "videos": 20,
+    "min_comentarios": 5
   }
 }
