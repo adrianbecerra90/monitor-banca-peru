@@ -4491,15 +4491,17 @@ def _es_de_usuario(meta):
 
 
 def _filas_reporte(desde, hasta, banco=None, por="capturado"):
-    """Publicaciones visibles del periodo. por="capturado": lo que llegó en el periodo (así no se pierde lo que se
-    captura tarde), sin cargas históricas (fecha de más de 48 h antes del inicio). por="fecha": para el normal."""
+    """Publicaciones visibles del periodo. por="capturado": lo que llegó en el periodo, respetando la fecha de
+    publicación: solo entra lo publicado en el periodo o hasta 'reporte_tolerancia_min' (60) antes de su inicio (lo
+    que X entrega con retraso al cierre del periodo anterior). Un video o comentario de días atrás que recién se
+    encuentra (p. ej. por una búsqueda) no se presenta como algo nuevo. por="fecha": para el normal."""
     campo = "capturado" if por == "capturado" else "fecha"
     with _db_lock, db() as con:
         filas = [dict(r) for r in con.execute(
             f"SELECT id, bancos, sentimiento, es_queja, categorias, autor, fuente, texto, meta, fecha, url FROM items "
             f"WHERE oculto = 0 AND {campo} >= ? AND {campo} < ? AND fecha >= ? "
             f"AND meta NOT LIKE '%\"tipo\": \"post_oficial\"%'",
-            (iso(desde), iso(hasta), iso(desde - timedelta(hours=48))))]
+            (iso(desde), iso(hasta), iso(desde - timedelta(minutes=CONFIG.get("notificaciones", {}).get("reporte_tolerancia_min", 60)))))]
     for r in filas:
         r["_meta"] = json.loads(r["meta"] or "{}")
         r["_cats"] = set(json.loads(r["categorias"] or "[]"))
