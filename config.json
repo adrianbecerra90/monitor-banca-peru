@@ -791,16 +791,10 @@
     }
   },
   "scrapedo": {
-    "_nota": "Búsqueda en Google (plan gratuito mensual: 1000 créditos; 10 por búsqueda). El saldo del mes se reparte por día para que alcance todo el mes. Los grupos de 'sitios' rotan: primero el que lleva más tiempo sin buscarse. LinkedIn busca incidentes, fraudes, ciberataques y sanciones en vez de palabras de queja.",
+    "_nota": "Búsqueda en Google (plan gratuito mensual: 1000 créditos; 10 por búsqueda; ~3 al día). Grupos y turnos en el código (SITIOS_GOOGLE, CADA_HORAS_GOOGLE): LinkedIn y TikTok cada 24 h, Facebook e Instagram cada 48 h, Reddit y foros cada 96 h; 'cada_horas' los ajusta. LinkedIn busca incidentes, fraudes, ciberataques y sanciones en vez de palabras de queja.",
     "max_creditos_mes": 900,
     "periodo": "d",
     "max_dias": 3,
-    "sitios": [
-      "site:facebook.com",
-      "(site:tiktok.com OR site:instagram.com)",
-      "(site:reddit.com OR inurl:foro OR inurl:forum)",
-      "(site:linkedin.com/posts OR site:linkedin.com/pulse)"
-    ],
     "dia_renovacion": 1
   },
   "_migraciones": [
@@ -814,7 +808,8 @@
     "linkedin-scotiabank-2026-10-31",
     "avisos-calibracion-2026-11-02",
     "minimo-comentarios-2026-11-05",
-    "minimo-comentarios-8-2026-11-05"
+    "minimo-comentarios-8-2026-11-05",
+    "google-grupos-2026-11-17"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú. 'prioridad': páginas que se revisan cada N horas antes que el resto; 'comentarios': páginas de las que además se leen los comentarios de sus 'comentarios_posts' últimas publicaciones (1 crédito cada una).",

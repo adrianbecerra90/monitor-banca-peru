@@ -173,6 +173,8 @@ MIGRACIONES_REGLAS = {
         "BCP": 8, "Interbank": 8, "Scotiabank Perú": 8, "Yape": 8, "Plin": 8}}},
     # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
+    # 17/11/2026: grupos propios para LinkedIn y TikTok, con turno diario (sus menciones de terceros solo entran por aquí)
+    "google-grupos-2026-11-17": {"scrapedo_sitios_reemplazo": True},
 }
 _hechas = CONFIG.setdefault("_migraciones", [])
 _pendientes = [m for m in MIGRACIONES_REGLAS if m not in _hechas]
@@ -198,6 +200,8 @@ for _m in _pendientes:
     _l = CONFIG.setdefault("nitter", {}).setdefault("consultas_extra", [])
     _l += [x for x in _c.get("nitter_consultas_extra", []) if x not in _l]
     CONFIG.setdefault("notificaciones", {}).update(_c.get("notificaciones", {}))
+    if _c.get("scrapedo_sitios_reemplazo"):
+        CONFIG.setdefault("scrapedo", {}).pop("sitios", None)  # vuelve a los grupos del código (SITIOS_GOOGLE)
     if _c.get("scrapedo_sitios") and CONFIG.get("scrapedo", {}).get("sitios"):  # sin lista propia ya usa SITIOS_GOOGLE
         _l = CONFIG["scrapedo"]["sitios"]
         _l += [x for x in _c["scrapedo_sitios"] if x not in _l]
@@ -1909,8 +1913,11 @@ def _epoch(v):
 
 # ---------------- Scrape.do: búsqueda en Google de menciones públicas en redes y foros ----------------
 # Plan gratuito mensual (10 créditos por búsqueda). El saldo del mes se reparte por día para que alcance todo el mes.
-SITIOS_GOOGLE = ["site:facebook.com", "(site:tiktok.com OR site:instagram.com)", "(site:reddit.com OR inurl:foro OR inurl:forum)",
-                 "(site:linkedin.com/posts OR site:linkedin.com/pulse)"]
+SITIOS_GOOGLE = ["(site:linkedin.com/posts OR site:linkedin.com/pulse)", "site:tiktok.com",
+                 "(site:facebook.com OR site:instagram.com)", "(site:reddit.com OR inurl:foro OR inurl:forum)"]
+# Cada cuántas horas toca cada grupo (la cuota gratuita da ~3 búsquedas al día): LinkedIn y TikTok, a diario, porque
+# sus menciones de terceros solo entran por aquí; Facebook e Instagram cada 2 días; Reddit y foros cada 4
+CADA_HORAS_GOOGLE = {"linkedin": 24, "tiktok": 24, "facebook": 48, "reddit": 96}
 # En LinkedIn casi nadie "reclama": se habla de incidentes, caídas, fraudes, ciberataques y sanciones (empleados, gremios,
 # consultores, prensa). Esos grupos usan estas palabras en lugar de las de queja.
 SITIOS_INCIDENTES = ("linkedin.com",)
@@ -1998,8 +2005,14 @@ def fuente_busqueda_web(rango=None):
     with _db_lock, db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS busqueda_web_grupos (grupo TEXT PRIMARY KEY, fecha TEXT)")
         vistos = dict(con.execute("SELECT grupo, fecha FROM busqueda_web_grupos").fetchall())
-    for sitios in sorted(grupos, key=lambda g: vistos.get(g, "")):
-        palabras = PALABRAS_INCIDENTE if any(d in sitios for d in SITIOS_INCIDENTES) else quejas
+    cada = {**CADA_HORAS_GOOGLE, **cfg.get("cada_horas", {})}
+    def atraso(g):  # cuánto se pasó de su turno (en horas); los que no tocan todavía quedan al final
+        h = next((v for k, v in cada.items() if k in g), 48)
+        visto = vistos.get(g)
+        return ((ahora() - datetime.fromisoformat(visto)).total_seconds() / 3600 - h) if visto else 1e6
+    for sitios in sorted((g for g in grupos if atraso(g) >= 0), key=atraso, reverse=True):
+        palabras = PALABRAS_INCIDENTE if any(d in sitios for d in SITIOS_INCIDENTES) else \
+            '(reclamo OR queja OR estafa OR fraude OR "no funciona" OR caída OR denuncia OR bloqueada)' if "tiktok" in sitios else quejas
         try:
             resultados = buscar_google(f"{sitios} ({terminos}) {palabras}")
         except RutaInactiva:
