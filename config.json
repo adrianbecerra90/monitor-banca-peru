@@ -817,12 +817,19 @@
     "minimo-comentarios-8-2026-11-05"
   ],
   "linkedin_api": {
-    "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú.",
+    "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú. 'prioridad': páginas que se revisan cada N horas antes que el resto; 'comentarios': páginas de las que además se leen los comentarios de sus 'comentarios_posts' últimas publicaciones (1 crédito cada una).",
     "max_creditos_mes": 45,
     "reserva": 3,
     "intervalo_horas": 16,
     "paginas_globales": [
       "scotiabank"
-    ]
+    ],
+    "prioridad": {
+      "SBS": 72
+    },
+    "comentarios": [
+      "SBS"
+    ],
+    "comentarios_posts": 2
   }
 }

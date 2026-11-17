@@ -2215,7 +2215,11 @@ def _linkedin_paginas(rango):
     ultima = max(vistas.values(), default="")
     if ultima and ahora() - datetime.fromisoformat(ultima) < timedelta(hours=cfg.get("intervalo_horas", 16)):
         return []
-    url = min(mapa, key=lambda u: vistas.get(u, ""))  # la que lleva más tiempo sin revisarse (o nunca)
+    # páginas prioritarias (la SBS) cada 'prioridad' horas; el resto, la que lleva más tiempo sin revisarse
+    prioridad = cfg.get("prioridad", {"SBS": 72})
+    urgentes = [u for u, b in mapa.items() if b in prioridad and
+                (not vistas.get(u) or ahora() - datetime.fromisoformat(vistas[u]) >= timedelta(hours=prioridad[b]))]
+    url = urgentes[0] if urgentes else min((u for u in mapa if mapa[u] not in prioridad) or mapa, key=lambda u: vistas.get(u, ""))
     banco = mapa[url]
     slug = re.sub(r"[?#].*$", "", url).rstrip("/").rsplit("/", 1)[-1]
     with _db_lock, db() as con:  # se marca antes de llamar: un error no hace reintentar la misma página en bucle
@@ -2235,7 +2239,33 @@ def _linkedin_paginas(rango):
                     "peru": True, "bancos_fijos": [banco], "cuenta": banco, "autor": banco, "url": purl, "fecha": fecha,
                     "texto": p.get("text") or "(publicación sin texto)",
                     "metricas": {"reacciones": p.get("totalReactionCount"), "compartidos": p.get("repostsCount")}})
-    print(f"  LinkedIn · {banco}: {len(out)} publicaciones leídas", flush=True)
+    # comentarios de las últimas publicaciones de las páginas elegidas (la SBS): lo que la gente le responde
+    n_com = 0
+    if banco in cfg.get("comentarios", ["SBS"]):
+        recientes = sorted((p for p in d.get("data") or [] if str(p.get("postedDateTimestamp")).isdigit() and
+                            int(p["postedDateTimestamp"]) // 1000 >= (ahora() - timedelta(days=10)).timestamp()),
+                           key=lambda p: -int(p["postedDateTimestamp"]))[:cfg.get("comentarios_posts", 2)]
+        for p in recientes:
+            try:
+                c = _linkedin_get("/get-company-post-comments", urn=str(p.get("urn")), sort="mostRecent", page="1")
+            except RutaInactiva:
+                break  # sin cupo: lo ya leído vale
+            except Exception as e:
+                print(f"  LinkedIn · comentarios de {banco}: {type(e).__name__}: {e}", flush=True)
+                continue
+            for k in c.get("data") or []:
+                autor = k.get("author") or {}
+                nombre = autor.get("name") or autor.get("username") or \
+                    " ".join(x for x in (autor.get("firstName"), autor.get("lastName")) if x) if isinstance(autor, dict) else str(autor)
+                ts = k.get("createdAt")
+                if not k.get("text") or not k.get("urn"):
+                    continue
+                out.append({"id": f"linkedin:comment:{k['urn']}", "fuente": "LinkedIn", "tipo": "comentario", "peru": True,
+                            "bancos_fijos": [banco], "cuenta": banco, "autor": nombre or "LinkedIn",
+                            "fecha": _epoch(int(ts) // 1000) if str(ts).isdigit() else k.get("createdAtString"),
+                            "texto": k["text"], "url": k.get("permalink") or p.get("postUrl") or ""})
+                n_com += 1
+    print(f"  LinkedIn · {banco}: {len(out) - n_com} publicaciones y {n_com} comentarios leídos", flush=True)
     return out
 
 
@@ -5798,13 +5828,17 @@ def revisar_alerta_x():
     ventana = cfg.get("ventana_minutos", 30)
     desde_v, desde_b = ahora() - timedelta(minutes=ventana), ahora() - timedelta(hours=48)
     with _db_lock, db() as con:
-        filas = con.execute("SELECT bancos, fecha FROM items WHERE fuente = 'X' AND es_queja = 1 AND oculto = 0 "
+        filas = con.execute("SELECT bancos, fecha, autor FROM items WHERE fuente = 'X' AND es_queja = 1 AND oculto = 0 "
                             "AND fecha >= ? AND meta NOT LIKE '%\"tipo\": \"oficial\"%'", (iso(desde_b),)).fetchall()
-    ahora_n, base_n = {}, {}
+    ahora_n, base_n, autores = {}, {}, {}
     for r in filas:
-        destino = ahora_n if r["fecha"] >= iso(desde_v) else base_n
+        reciente = r["fecha"] >= iso(desde_v)
         for b in json.loads(r["bancos"]):
-            destino[b] = destino.get(b, 0) + 1
+            if reciente:  # usuarios distintos: alguien que repite el mismo mensaje 15 veces no es un pico
+                autores.setdefault(b, set()).add((r["autor"] or "").lower())
+                ahora_n[b] = len(autores[b])
+            else:
+                base_n[b] = base_n.get(b, 0) + 1
     ventanas_base = (48 * 60 - ventana) / ventana
     activas = []
     for b, n in ahora_n.items():
@@ -5864,6 +5898,8 @@ def cargar_historico(desde, hasta, fuentes):
 
 IA_PROMPT = """Eres analista de reputación y riesgo del sistema financiero peruano (bancos, billeteras, seguros, AFP,
 BCRP y SBS). Clasifica cada publicación de redes sociales o noticia sobre estas entidades monitoreadas: {entidades}.
+SBS es el supervisor: lo que le piden o le reclaman a la SBS (que supervise o sancione a una entidad o fintech, que
+no hizo nada, críticas a su gestión) es relevante para la SBS aunque la falla sea de otra empresa.
 BCRP es únicamente el Banco Central de Reserva del Perú: lo que trata del banco central de otro país (p. ej. el Banco
 Central del Paraguay y la crisis de Ueno Bank, aunque lo escriban "BCRP" o "BCP") lleva "relevante": false.
 TODAS son relevantes aunque no sean bancos (p. ej. una aseguradora o el BCRP): nunca marques "relevante": false por
