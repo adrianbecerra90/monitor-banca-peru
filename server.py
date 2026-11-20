@@ -3170,6 +3170,11 @@ def _aporta(caso, h):
         _tabla_huellas(con)
         r = con.execute("SELECT huella, fecha FROM huellas_avisos WHERE caso = ?", (caso,)).fetchone()
     if not r:
+        if h.get("tipo") == "recordatorio":
+            # un "Sigue" nunca es el primer aviso: si falta la referencia (caso unido, aviso previo a este control), este
+            # queda como base y se retiene; los siguientes se comparan contra él
+            _guardar_huella(caso, h)
+            return False, "sin referencia del aviso anterior: se toma esta como base"
         return True, "primer aviso del caso"
     p, cuando = json.loads(r[0]), datetime.fromisoformat(r[1]).astimezone(LIMA).strftime("%H:%M")
     if h.get("tipo") in ("cierre", "ciber"):
@@ -3194,10 +3199,15 @@ def _aporta(caso, h):
 
 
 def _guardar_huella(caso, h):
+    sigue = False
+    if h.get("tipo") == "cierre":  # (antes de tomar la base, para no cruzar candados)
+        with _EVENTOS["lock"]:
+            sigue = any(ev.get("caso") == caso for ev in _EVENTOS["abiertos"].values())
     with _db_lock, db() as con:
         _tabla_huellas(con)
         if h.get("tipo") == "cierre":  # tras el cierre, si el caso reaparece se compara desde cero (otro episodio)
-            con.execute("DELETE FROM huellas_avisos WHERE caso = ?", (caso,))
+            if not sigue:  # salvo que otro evento del mismo caso (unido) siga abierto
+                con.execute("DELETE FROM huellas_avisos WHERE caso = ?", (caso,))
             return
         r = con.execute("SELECT huella FROM huellas_avisos WHERE caso = ?", (caso,)).fetchone()
         p = json.loads(r[0]) if r else {}
@@ -3877,6 +3887,17 @@ def caso_unir(origen, destino, usuario):
         nombres = list(dict.fromkeys([x.strip() for x in (d["entidad"] + "," + o["entidad"]).split(",") if x.strip()]))
         nota = f"{ahora().astimezone(LIMA):%d/%m/%Y %H:%M} · {usuario} unió {origen} ({o['entidad']}) a este caso."
         con.execute("UPDATE notificaciones SET caso = ? WHERE caso = ?", (destino, origen))
+        # lo ya avisado del caso unido cuenta como avisado en el destino (si no, el siguiente aviso pasaría como nuevo)
+        _tabla_huellas(con)
+        hs = [json.loads(x[0]) for x in con.execute("SELECT huella FROM huellas_avisos WHERE caso IN (?, ?)", (origen, destino))]
+        if hs:
+            u = {"nivel_max": max((x.get("nivel_max") for x in hs), key=lambda n: RANGO_NIVEL.get(n, 0)),
+                 "estados": sorted({e for x in hs for e in x.get("estados", [])}),
+                 "certeza": max((x.get("certeza") or "usuarios" for x in hs), key=lambda c: RANGO_CERTEZA.get(c, 0)),
+                 "fuentes": sorted({f for x in hs for f in x.get("fuentes") or []}),
+                 "prensa": any(x.get("prensa") for x in hs), "comunicado": any(x.get("comunicado") for x in hs),
+                 "usuarios": max(x.get("usuarios") or 0 for x in hs)}
+            con.execute("INSERT OR REPLACE INTO huellas_avisos VALUES (?, ?, ?)", (destino, json.dumps(u), iso(ahora())))
         con.execute("UPDATE casos SET entidad = ?, nivel_max = ?, apertura = MIN(apertura, ?), notas = ?, actualizado = ?, "
                     "actualizado_por = ? WHERE id = ?",
                     (", ".join(nombres), nivel, o["apertura"], ((d["notas"] + "\n") if d["notas"] else "") + nota,
