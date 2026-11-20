@@ -2073,7 +2073,8 @@ def sa_google(consulta):
     ESTADO.setdefault("serpapi", {}).update(usados_mes=usados + 1, tope=tope)
     return [{"url": x.get("link"), "title": x.get("title"), "description": x.get("snippet") or "",
              "domain": urllib.parse.urlparse(x.get("link") or "").netloc, "date": x.get("date")}
-            for x in d.get("organic_results") or [] if x.get("link")]
+            for x in d.get("organic_results") or []
+            if x.get("link") and "google." not in urllib.parse.urlparse(x["link"]).netloc]  # sin redirecciones de Google
 
 
 def buscar_google(consulta):
