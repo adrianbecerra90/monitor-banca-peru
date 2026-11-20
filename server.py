@@ -173,6 +173,8 @@ MIGRACIONES_REGLAS = {
         "BCP": 8, "Interbank": 8, "Scotiabank Perú": 8, "Yape": 8, "Plin": 8}}},
     # 31/10/2026: la búsqueda Google suma LinkedIn (menciones de terceros: empleados, gremios, prensa)
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
+    # 20/11/2026: menos avisos repetidos: recordatorio cada 2 h y como máximo 3 por caso
+    "antispam-2026-11-20": {"notificaciones": {"recordatorio_min": 120, "recordatorios_max": 3, "reabrir_horas": 24}},
     # 17/11/2026: el analista pide usar siempre el 95 % de cada cupo gratuito, repartido parejo en el mes
     "cuotas-95-2026-11-17": {"config_set": {"tiktok_rapid.max_llamadas_mes": 285, "linkedin_api.max_creditos_mes": 47,
                                             "scrapedo.max_creditos_mes": 950, "rapidapi.max_llamadas_mes": 95,
@@ -3517,7 +3519,7 @@ ARCHIVO_EVENTOS = os.path.join(DATOS, "eventos_abiertos.json")
 def _guardar_eventos():
     try:
         with open(ARCHIVO_EVENTOS, "w", encoding="utf-8") as f:
-            limite = time.time() - 12 * 3600
+            limite = time.time() - 48 * 3600  # se recuerdan 2 días: reapertura (24 h) y restablecimientos tardíos
             _EVENTOS["cerrados"] = {k: v for k, v in _EVENTOS["cerrados"].items() if v.get("cerrado", 0) > limite}
             json.dump({"abiertos": _EVENTOS["abiertos"], "cerrados": _EVENTOS["cerrados"]}, f, ensure_ascii=False)
     except OSError as e:
@@ -3883,7 +3885,21 @@ def _evento_registrar(medida, k, nivel, usuarios, origen):
             if previo.get("restablecido") and t - previo["restablecido"] < cfg.get("pico_ventana_min", 30) * 60:
                 return None  # la entidad acaba de confirmar el restablecimiento: las quejas de antes no abren otro caso
             tema = TEMA_ORIGEN.get(origen, "Pico de quejas") if medida == "quejas" else "Pico de menciones críticas"
-            caso = caso_abrir("Todas" if k == "Total" else k, tema, clave, nivel)
+            if previo.get("caso") and not previo.get("restablecido") and \
+                    t - previo.get("cerrado", 0) < cfg.get("reabrir_horas", 24) * 3600:
+                caso = previo["caso"]  # vuelve antes de 24 h: el mismo caso (un problema de varios días), no uno nuevo
+                with _db_lock, db() as con:
+                    con.execute("UPDATE casos SET estado = 'abierto', cierre = NULL, cierre_motivo = NULL WHERE id = ?", (caso,))
+                _EVENTOS["cerrados"].pop(clave, None)
+            else:
+                caso = caso_abrir("Todas" if k == "Total" else k, tema, clave, nivel)
+            # si la entidad tenía abierto un caso de menciones críticas, se une a este (un caso por entidad)
+            critico_ev = _EVENTOS["abiertos"].pop(f"criticas|{k}", None) if medida == "quejas" else None
+            if critico_ev and critico_ev.get("caso") and critico_ev["caso"] != caso:
+                try:
+                    caso_unir(critico_ev["caso"], caso, "monitor")
+                except ValueError:
+                    pass
             _EVENTOS["abiertos"][clave] = {"medida": medida, "entidad": k, "origen": origen, "inicio": t, "nivel": nivel,
                                            "nivel_max": nivel, "usuarios_aviso": usuarios, "max_usuarios": usuarios,
                                            "ultimo_aviso": t, "ultima_actividad": t, "caso": caso}
@@ -3978,10 +3994,12 @@ def _seguir_eventos(medida):
                      f"{ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
             _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", prioridad="default",
                            etiquetas="white_check_mark", caso=ev.get("caso"))
-        elif t - ev["ultimo_aviso"] >= recordar and t - actividad <= 15 * 60:  # solo si siguen llegando quejas
+        elif t - ev["ultimo_aviso"] >= recordar and t - actividad <= 15 * 60 and \
+                ev.get("recordatorios", 0) < cfg.get("recordatorios_max", 3):  # solo si siguen llegando quejas
             with _EVENTOS["lock"]:
                 if clave in _EVENTOS["abiertos"]:
                     _EVENTOS["abiertos"][clave]["ultimo_aviso"] = t
+                    _EVENTOS["abiertos"][clave]["recordatorios"] = ev.get("recordatorios", 0) + 1
                     _guardar_eventos()
             titulo = f"Sigue · {quien}: {nombre}"
             texto = (f"Evento abierto: {_texto_duracion(primera, ultima) or 'sin quejas de usuarios aún'}. Acumulado: "
@@ -4188,7 +4206,8 @@ def evaluar_caida_en_vivo(b):
     if not ev:
         if not nivel:
             return
-        reabre = cerrado and not cerrado.get("restablecido") and t - cerrado.get("cerrado", 0) < 2 * 3600 and cerrado.get("caso")
+        reabre = cerrado and not cerrado.get("restablecido") and cerrado.get("caso") and \
+            t - cerrado.get("cerrado", 0) < cfg.get("reabrir_horas", 24) * 3600
         with _EVENTOS["lock"]:
             if reabre:
                 _EVENTOS["cerrados"].pop(clave, None)
@@ -4215,6 +4234,8 @@ def evaluar_caida_en_vivo(b):
         _notificar_estado(b, estado, antes, nivel, detalle, ejemplos, caso)
         return
     # caso abierto: ¿cambió el estado?
+    if amplio and ev.get("tipo_ev") != "interrupcion":
+        ev["tipo_ev"] = "interrupcion"  # lo abrió un pico de quejas; desde aquí lo sigue la matriz (sin avisos del pico)
     cambios, estado = [], ev.get("estado") or "Detectado"
     if q30 or oficial:
         ev["ultima_actividad"] = t
@@ -4222,23 +4243,35 @@ def evaluar_caida_en_vivo(b):
     rango = lambda n: RANGO_NIVEL.get(n, 0)
     if RANGO_CERTEZA[certeza] > RANGO_CERTEZA.get(ev.get("certeza", "usuarios"), 0):
         cambios.append(("Confirmado", f"certeza: {TXT_CERTEZA[certeza]}"))
-    if nivel and rango(nivel) > rango(ev.get("nivel")):
+    # Escala solo con un máximo nuevo: más nivel que el máximo alcanzado o el doble de usuarios que en el último
+    # Detectado/Escalado. Que las quejas vuelvan tras "En recuperación" sin superar eso no se notifica (antes el caso
+    # oscilaba Escalado ↔ En recuperación cada hora)
+    base_usr = max(ev.get("usuarios_escalado", ev.get("usuarios_aviso", 0)), 1)
+    espera_ok = t - ev.get("ultimo_aviso", 0) >= cfg.get("crece_espera_min", 15) * 60
+    if nivel and rango(nivel) > rango(ev.get("nivel_max")) and (espera_ok or nivel == "Crítico"):
         cambios.append(("Escalado", f"impacto {impacto.lower()}"))
-    elif len(usuarios30) >= 2 * max(ev.get("usuarios_aviso", 0), 1) and len(usuarios30) - ev.get("usuarios_aviso", 0) >= 3 \
+    elif len(usuarios30) >= 2 * base_usr and len(usuarios30) - base_usr >= 3 \
             and t - ev.get("ultimo_aviso", 0) >= cfg.get("crece_espera_min", 15) * 60:
-        cambios.append(("Escalado", f"los usuarios se duplicaron ({ev.get('usuarios_aviso')} → {len(usuarios30)})"))
-    if not cambios and rango(ev.get("nivel_max")) >= 2 and estado not in ("En recuperación",) and ev["pico30"] >= 3:
+        cambios.append(("Escalado", f"los usuarios se duplicaron ({base_usr} → {len(usuarios30)})"))
+    if any(e == "Escalado" for e, _ in cambios):
+        ev.update(usuarios_escalado=len(usuarios30), recuperacion_avisada=False)
+    if estado == "En recuperación" and not cambios and len(q30) >= 0.3 * ev["pico30"]:
+        ev["estado"] = "Activo"  # vuelven quejas sin superar el máximo: sigue el mismo evento, sin aviso
+        ev.pop("bajo_desde", None)
+    if not cambios and rango(ev.get("nivel_max")) >= 2 and estado not in ("En recuperación",) and ev["pico30"] >= 3 \
+            and not ev.get("recuperacion_avisada"):
         if len(q30) < 0.3 * ev["pico30"]:
             ev.setdefault("bajo_desde", t)
             if t - ev["bajo_desde"] >= 30 * 60:
                 cambios.append(("En recuperación", f"quejas por debajo del 30 % del pico ({len(q30)} de {ev['pico30']}) por 30 min"))
+                ev["recuperacion_avisada"] = True  # una vez por escalamiento
         else:
             ev.pop("bajo_desde", None)
-    nuevo_nivel = nivel if nivel and rango(nivel) > rango(ev.get("nivel")) else ev.get("nivel")
+    nuevo_nivel = nivel if nivel and rango(nivel) > rango(ev.get("nivel_max")) else ev.get("nivel_max") or ev.get("nivel")
     if cambios:
         estado_nuevo = cambios[-1][0] if cambios[-1][0] != "Confirmado" or len(cambios) == 1 else "Escalado"
         ev.update(estado=estado_nuevo, certeza=max([certeza, ev.get("certeza", "usuarios")], key=RANGO_CERTEZA.get),
-                  impacto=impacto, nivel=nuevo_nivel, usuarios_aviso=len(usuarios30), ultimo_aviso=t,
+                  impacto=impacto, nivel=nuevo_nivel, ultimo_aviso=t,
                   nivel_max=max([ev.get("nivel_max") or nuevo_nivel, nuevo_nivel], key=rango))
     ev["primera"] = iso(primera)
     with _EVENTOS["lock"]:
@@ -4415,6 +4448,9 @@ def _revisar_pico(cfg, medida):
         explicado = True
         if f"{medida}|{k}" not in _EVENTOS["abiertos"] and _bajo_minimo_comentarios(k):
             continue
+        if medida == "criticas" and f"quejas|{k}" in _EVENTOS["abiertos"]:
+            _EVENTOS["abiertos"][f"quejas|{k}"]["ultima_actividad"] = time.time()
+            continue  # la entidad ya tiene un caso abierto: el malestar va en ese caso y en el reporte, sin otro aviso
         if (_EVENTOS["abiertos"].get(f"{medida}|{k}") or {}).get("tipo_ev") == "interrupcion":
             _EVENTOS["abiertos"][f"{medida}|{k}"]["ultima_actividad"] = time.time()
             continue  # la interrupción tiene sus propios estados y avisos (evaluar_caida_en_vivo)
@@ -4955,7 +4991,28 @@ def reporte_periodico(desde, hasta, banco=None, registrar=False):
                   "los últimos 7 días; «el reporte anterior», ajustado a la misma duración y horario.*")
     titulo = f"Reporte {hasta.astimezone(LIMA):%H:%M}{' · ' + banco if banco else ''}"
     corto = re.sub(r"[*]", "", "\n".join([cab, frase, linea_q]))  # el celular no muestra Markdown
+    ESTADO["reporte_meta"] = {"entidades": sorted({h[2] for h in hallazgos if NIVEL_ORDEN[h[0]] >= 1}),
+                              "repartidas": not hallazgos and _flecha(actual["Quejas"], normal["Quejas"]) == "↑",
+                              "casos": [c["id"] for c in casos]}
     return titulo, "\n".join(lineas), NIVEL_AVISO[nivel], corto
+
+
+def _reporte_ya_notificado(desde, hasta):
+    """¿Todo lo relevante del periodo ya llegó como aviso? Hay casos abiertos o avisados en el periodo y cada entidad con
+    hallazgos tiene su caso; no hay quejas altas repartidas sin caso. Entonces el reporte programado sería repetición."""
+    meta = ESTADO.get("reporte_meta") or {}
+    with _db_lock, db() as con:
+        _tabla_casos(con)
+        _tabla_notificaciones(con)
+        cubiertas = {r[0] for r in con.execute(
+            "SELECT DISTINCT c.entidad FROM casos c WHERE c.estado = 'abierto' OR EXISTS (SELECT 1 FROM notificaciones n "
+            "WHERE n.caso = c.id AND n.fecha >= ? AND n.fecha < ?)", (iso(desde), iso(hasta)))}
+    nombres = {normalizar(x).strip() for e in cubiertas for x in e.split(",")}
+    if not cubiertas or meta.get("repartidas"):
+        return None
+    if all(normalizar(e) in nombres for e in meta.get("entidades", [])):
+        return sorted(cubiertas)
+    return None
 
 
 def reporte_a_pedido(d, enviar=False):
@@ -5026,8 +5083,16 @@ def trabajador_reportes():
                     titulo, texto, nivel, corto = reporte_periodico(desde, hasta, registrar=True)
                     if atrasado:
                         texto += f"\n\n(Programado para las {t:%H:%M}; sale ahora porque el servidor no estaba disponible.)"
-                    enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
-                                        nivel="Informativo", url=CONFIG.get("notificaciones", {}).get("enlace") or None)
+                    cubierto = _reporte_ya_notificado(desde, hasta) if cfg.get("omitir_si_notificado", True) else None
+                    if cubierto:
+                        # todo lo relevante ya llegó como aviso de sus casos: el reporte no se envía (sería repetición);
+                        # queda en la campana para consultarlo
+                        _registrar_notificacion(titulo, texto, "Reporte", "Informativo", 0,
+                                                [f"Omitido: lo relevante ya se notificó en sus casos ({', '.join(cubierto)})"])
+                        print(f"[{datetime.now():%H:%M:%S}] Reporte programado omitido (ya notificado): {', '.join(cubierto)}", flush=True)
+                    else:
+                        enviar_notificacion(titulo, texto, prioridad="default", etiquetas="newspaper", tipo="Reporte",
+                                            nivel="Informativo", url=CONFIG.get("notificaciones", {}).get("enlace") or None)
                     with _db_lock, db() as con:
                         con.execute("INSERT OR REPLACE INTO reportes_enviados (clave, enviado, hasta) VALUES (?, ?, ?)",
                                     (clave, iso(ahora()), iso(hasta)))
@@ -5101,7 +5166,7 @@ PAIS_AJENO = re.compile(r"\b(ecuador\w*|ecuatorian[oa]s?|colombi\w*|espana|spain
 
 def _pais_ajeno(cabecera):
     """El país que el titular nombra como víctima, si no es Perú (por nombre o por bandera)."""
-    c = normalizar(cabecera)
+    c = normalizar(re.sub(r"\S+\.\w{2,}/\S*|https?://\S+", " ", cabecera))  # sin enlaces: "rpp.pe/mundo/…" no es Perú
     if CONTEXTO_PE.search(c):
         return None
     m = PAIS_AJENO.search(c)
