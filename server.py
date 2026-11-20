@@ -3063,12 +3063,73 @@ def _url_panel():
     return (os.environ.get("PANEL_URL") or CONFIG.get("notificaciones", {}).get("enlace") or URL_PANEL).rstrip("/") + "/"
 
 
+# Control previo de valor: antes de enviar un aviso de un caso se compara su "huella" (nivel, estado, certeza,
+# usuarios, fuentes, prensa, comunicado) con la del último aviso enviado del mismo caso. Si no trae nada nuevo, se
+# retiene: queda en la campana y en el caso como «Retenido», sin sonar en el celular ni en Teams.
+def _tabla_huellas(con):
+    con.execute("CREATE TABLE IF NOT EXISTS huellas_avisos (caso TEXT PRIMARY KEY, huella TEXT, fecha TEXT)")
+
+
+def _aporta(caso, h):
+    """(aporta, motivo). Siempre aporta: el primer aviso del caso, el cierre o restablecimiento, un nivel o certeza
+    mayores que los ya avisados, un estado nuevo relevante (Confirmado, Reaparece), una red, nota de prensa o
+    comunicado nuevos, o un crecimiento material de usuarios (+50 % y al menos 10 más)."""
+    with _db_lock, db() as con:
+        _tabla_huellas(con)
+        r = con.execute("SELECT huella, fecha FROM huellas_avisos WHERE caso = ?", (caso,)).fetchone()
+    if not r:
+        return True, "primer aviso del caso"
+    p, cuando = json.loads(r[0]), datetime.fromisoformat(r[1]).astimezone(LIMA).strftime("%H:%M")
+    if h.get("tipo") in ("cierre", "ciber"):
+        return True, "cierre" if h.get("tipo") == "cierre" else "ciberseguridad (ya filtrado por estado)"
+    if RANGO_NIVEL.get(h.get("nivel"), 0) > RANGO_NIVEL.get(p.get("nivel_max"), 0):
+        return True, f"nivel nuevo ({p.get('nivel_max')} → {h.get('nivel')})"
+    if h.get("estado") in ("Confirmado", "Reaparece") and h.get("estado") not in p.get("estados", []):
+        return True, f"estado nuevo: {h.get('estado')}"
+    if RANGO_CERTEZA.get(h.get("certeza"), 0) > RANGO_CERTEZA.get(p.get("certeza"), 0):
+        return True, f"certeza nueva: {h.get('certeza')}"
+    nuevas = set(h.get("fuentes") or []) - set(p.get("fuentes") or [])
+    if nuevas:
+        return True, "red nueva: " + ", ".join(sorted(nuevas))
+    if h.get("prensa") and not p.get("prensa"):
+        return True, "primera nota de prensa"
+    if h.get("comunicado") and not p.get("comunicado"):
+        return True, "comunicado de la entidad"
+    u, pu = h.get("usuarios") or 0, p.get("usuarios") or 0
+    if u >= 1.5 * pu and u - pu >= 10:
+        return True, f"usuarios {pu} → {u}"
+    return False, f"sin novedad frente al aviso de las {cuando}"
+
+
+def _guardar_huella(caso, h):
+    with _db_lock, db() as con:
+        _tabla_huellas(con)
+        if h.get("tipo") == "cierre":  # tras el cierre, si el caso reaparece se compara desde cero (otro episodio)
+            con.execute("DELETE FROM huellas_avisos WHERE caso = ?", (caso,))
+            return
+        r = con.execute("SELECT huella FROM huellas_avisos WHERE caso = ?", (caso,)).fetchone()
+        p = json.loads(r[0]) if r else {}
+        nueva = {"nivel_max": max([p.get("nivel_max"), h.get("nivel")], key=lambda n: RANGO_NIVEL.get(n, 0)) or h.get("nivel"),
+                 "estados": sorted(set(p.get("estados", [])) | ({h["estado"]} if h.get("estado") else set())),
+                 "certeza": max([p.get("certeza") or "usuarios", h.get("certeza") or "usuarios"], key=lambda c: RANGO_CERTEZA.get(c, 0)),
+                 "fuentes": sorted(set(p.get("fuentes") or []) | set(h.get("fuentes") or [])),
+                 "prensa": bool(p.get("prensa") or h.get("prensa")), "comunicado": bool(p.get("comunicado") or h.get("comunicado")),
+                 "usuarios": max(p.get("usuarios") or 0, h.get("usuarios") or 0)}
+        con.execute("INSERT OR REPLACE INTO huellas_avisos VALUES (?, ?, ?)", (caso, json.dumps(nueva), iso(ahora())))
+
+
 def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None,
-                        caso=None):
+                        caso=None, huella=None):
     """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
     tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). Celular y Teams reciben lo mismo
     (espejo, a pedido del analista); al celular sin los asteriscos del Markdown, que ntfy no interpreta."""
     enviados, errores = 0, []
+    if caso and huella is not None:
+        ok, por_que = _aporta(caso, {**huella, "nivel": nivel})
+        if not ok:
+            _registrar_notificacion(f"[{caso}] {titulo}", mensaje, tipo, nivel, 0, [f"Retenido: {por_que}"], caso)
+            print(f"[{datetime.now():%H:%M:%S}] Aviso retenido ({por_que}): {titulo}", flush=True)
+            return
     callado = _silenciado(titulo, mensaje, tipo, nivel, caso)
     if caso:  # todos los avisos de un mismo caso llevan su número (trazabilidad)
         titulo = f"[{caso}] {titulo}"
@@ -3119,6 +3180,8 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
         errores.append("Teams: la URL no parece de Workflows de Teams")
         _log_aviso("Teams", titulo, False, f"URL no reconocida (dominio {urllib.parse.urlparse(teams).hostname})")
     _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores, caso)
+    if enviados and caso and huella is not None:
+        _guardar_huella(caso, {**huella, "nivel": nivel})
     if not enviados:
         raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
     if tipo not in (None, "Reporte", "Prueba", "Pausa", "Resumen de avisos"):  # el reporte siguiente menciona los avisos inmediatos enviados
@@ -4005,7 +4068,7 @@ def _seguir_eventos(medida):
                      f"Total: {n} {nombre}{' (' + ', '.join(fuentes) + ')' if fuentes else ''}; máximo "
                      f"{ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min. Nivel máximo: {ev['nivel_max']}.")
             _avisar_evento(titulo, texto, "Cierre de evento", "Informativo", prioridad="default",
-                           etiquetas="white_check_mark", caso=ev.get("caso"))
+                           etiquetas="white_check_mark", caso=ev.get("caso"), huella={"tipo": "cierre"})
         elif t - ev["ultimo_aviso"] >= recordar and t - actividad <= 15 * 60 and \
                 ev.get("recordatorios", 0) < cfg.get("recordatorios_max", 3):  # solo si siguen llegando quejas
             with _EVENTOS["lock"]:
@@ -4018,7 +4081,7 @@ def _seguir_eventos(medida):
                      f"{n} {nombre} de {usuarios} usuarios distintos{' (' + ', '.join(fuentes) + ')' if fuentes else ''}."
                      f"\nNivel: {ev['nivel']}; máximo {ev['max_usuarios']} usuarios en {cfg.get('pico_ventana_min', 30)} min.")
             _avisar_evento(titulo, texto, "Pico de quejas" if medida == "quejas" else "Pico de menciones críticas",
-                           ev["nivel"], caso=ev.get("caso"))
+                           ev["nivel"], caso=ev.get("caso"), huella={"tipo": "recordatorio", "usuarios": usuarios, "fuentes": fuentes})
 
 
 def _cerrar_por_restablecimiento(b, item):
@@ -4051,7 +4114,7 @@ def _cerrar_por_restablecimiento(b, item):
         caso_cerrar(ev.get("caso"), "Restablecimiento comunicado por la entidad", fin=hora, n=n, usuarios=usuarios,
                     fuentes=fuentes, primera=primera, nivel_max=ev["nivel_max"])
         _avisar_evento(f"Resuelto · {b}: restablecido", texto, "Cierre de evento", "Informativo", prioridad="default",
-                       etiquetas="white_check_mark", caso=ev.get("caso"))
+                       etiquetas="white_check_mark", caso=ev.get("caso"), huella={"tipo": "cierre"})
         return
     sombra = {"medida": "quejas", "entidad": b, "inicio": time.time()}
     n, usuarios, _, _, _ = _acumulado_evento(sombra, desde=ahora() - timedelta(hours=6))
@@ -4250,7 +4313,9 @@ def evaluar_caida_en_vivo(b):
             _guardar_eventos()
             caso = e.get("caso")
         caso_nivel(caso, nivel)
-        _notificar_estado(b, estado, antes, nivel, detalle, ejemplos, caso)
+        _notificar_estado(b, estado, antes, nivel, detalle, ejemplos, caso,
+                          {"certeza": certeza, "fuentes": sorted(redes), "prensa": bool(prensa), "comunicado": bool(oficial),
+                           "usuarios": len(usuarios30)})
         return
     # caso abierto: ¿cambió el estado?
     if amplio and ev.get("tipo_ev") != "interrupcion":
@@ -4304,14 +4369,16 @@ def evaluar_caida_en_vivo(b):
             # que bajen las quejas no es una novedad que amerite aviso: queda en el caso y el aviso llega con "Resuelto"
             print(f"[{datetime.now():%H:%M:%S}] {b}: en recuperación (sin aviso)", flush=True)
             return
-        _notificar_estado(b, ev["estado"], estado, nuevo_nivel, detalle + f"\nCambio: {motivo}.", ejemplos, ev.get("caso"))
+        _notificar_estado(b, ev["estado"], estado, nuevo_nivel, detalle + f"\nCambio: {motivo}.", ejemplos, ev.get("caso"),
+                          {"certeza": certeza, "fuentes": sorted(redes), "prensa": bool(prensa), "comunicado": bool(oficial),
+                           "usuarios": len(usuarios30)})
 
 
-def _notificar_estado(b, estado, antes, nivel, detalle, ejemplos, caso):
+def _notificar_estado(b, estado, antes, nivel, detalle, ejemplos, caso, huella=None):
     flecha = f"{antes} → {estado}" if antes else estado
     titulo = f"{estado} · {b}: interrupción"
     texto = f"Estado: {flecha} · Nivel: {nivel}.\n{detalle}" + (f"\n{ejemplos}" if ejemplos else "")
-    _avisar_evento(titulo, texto, "Interrupción", nivel, caso=caso,
+    _avisar_evento(titulo, texto, "Interrupción", nivel, caso=caso, huella={"tipo": "estado", "estado": estado, **(huella or {})},
                    prioridad="urgent" if nivel == "Crítico" else "high", etiquetas="rotating_light" if nivel == "Crítico" else "warning")
 
 
@@ -4391,7 +4458,10 @@ def avisar_graves(nuevos):
             cuerpo = f"{resumen[0].upper() + resumen[1:]}" + (f" (en el aviso anterior: {antes})" if fase == "crece" and antes else "") \
                 + ".\n" + "\n".join(f"· {v['fuente']} · {v['autor']}: {v['texto']}" for v in ejemplos)
             try:
+                vistos_b = _GRAVES["vistos"].get(("grave", b), [])
                 enviar_notificacion(titulo[:120], cuerpo, prioridad="urgent" if critico else "high", caso=_caso_de_evento(f"quejas|{b}"),
+                                    huella={"tipo": "grave", "usuarios": n_aut, "fuentes": sorted({v["fuente"] for v in vistos_b}),
+                                            "prensa": any(v["medio"] for v in vistos_b)},
                                     tipo="Queja crítica" if critico else "Queja grave", nivel=nivel,
                                     etiquetas="rotating_light" if critico else "warning",
                                     url=n.get("url") or cfg.get("enlace") or None)
@@ -4505,7 +4575,7 @@ def _revisar_pico(cfg, medida):
             texto += f"\nEn el aviso anterior eran {ev.get('usuarios_antes')} usuarios."
         # el nivel del aviso es el del evento (una caída ya valorada Grave no baja a Medio por venir del pico)
         nivel_ev = ev.get("nivel") if RANGO_NIVEL.get(ev.get("nivel"), 0) > RANGO_NIVEL.get(nivel_p, 0) else nivel_p
-        _avisar_evento(titulo, texto, tipo, nivel_ev, caso=ev.get("caso"))
+        _avisar_evento(titulo, texto, tipo, nivel_ev, caso=ev.get("caso"), huella={"tipo": "pico", "usuarios": n})
         enviadas.append({"clave": k, "medida": medida, "n": n, "umbral": round(umbral, 1), "fase": fase})
     return enviadas
 
@@ -5559,7 +5629,8 @@ def _avisar_ciber(alertas, cfg):
                                 f"Estado: {cambio} · Nivel: {nivel_c}.\nTipo: {tipo_c}"
                                 f"{' · agravantes: ' + ', '.join(agrav) if agrav else ''} · {len({x['cuenta'] for x in del_caso})} "
                                 f"fuente(s) en el caso · última: {a['cuenta']}\n{resumen}",
-                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=nivel_c, caso=caso)
+                                etiquetas="shield", url=a["url"] or None, tipo="Ciberseguridad", nivel=nivel_c, caso=caso,
+                                huella={"tipo": "ciber", "estado": estado_c})
         except Exception as e:
             print(f"  Notificación de ciberseguridad fallida ({type(e).__name__}: {e})", flush=True)
 
