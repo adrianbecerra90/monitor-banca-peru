@@ -401,7 +401,10 @@
     "https://gestion.pe/arc/outboundfeeds/rss/?outputType=xml",
     "https://elcomercio.pe/arc/outboundfeeds/rss/?outputType=xml",
     "https://diariocorreo.pe/arc/outboundfeeds/rss/?outputType=xml",
-    "https://www.infobae.com/arc/outboundfeeds/rss/category/peru/"
+    "https://www.infobae.com/arc/outboundfeeds/rss/category/peru/",
+    "https://radioondaazul.com/feed/",
+    "https://losandes.com.pe/feed/",
+    "https://diariosinfronteras.com.pe/feed/"
   ],
   "cuentas_oficiales": {
     "_nota": "Verificadas contra la web oficial de cada entidad (incl. yape.com.pe y plin.pe). Yape y Plin no tienen cuenta en X; Plin no tiene TikTok.",
@@ -748,7 +751,8 @@
     "reabrir_horas": 24,
     "sin_interrupcion": [
       "SBS"
-    ]
+    ],
+    "avisar_recuperacion": false
   },
   "x_referentes": {
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
@@ -817,7 +821,8 @@
     "google-grupos-2026-11-17",
     "cuotas-95-2026-11-17",
     "antispam-2026-11-20",
-    "cierre-90-2026-11-20"
+    "cierre-90-2026-11-20",
+    "rss-regionales-2026-11-20"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú. 'prioridad': páginas que se revisan cada N horas antes que el resto; 'comentarios': páginas de las que además se leen los comentarios de sus 'comentarios_posts' últimas publicaciones (1 crédito cada una).",

@@ -175,6 +175,10 @@ MIGRACIONES_REGLAS = {
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
     # 20/11/2026: menos avisos repetidos: recordatorio cada 2 h y como máximo 3 por caso
     "antispam-2026-11-20": {"notificaciones": {"recordatorio_min": 120, "recordatorios_max": 3, "reabrir_horas": 24}},
+    # 20/11/2026: medios regionales en el RSS (Onda Azul de Puno no entraba) y sin aviso de "En recuperación"
+    "rss-regionales-2026-11-20": {"rss_extra": ["https://radioondaazul.com/feed/", "https://losandes.com.pe/feed/",
+                                                "https://diariosinfronteras.com.pe/feed/"],
+                                  "notificaciones": {"avisar_recuperacion": False}},
     # 20/11/2026: el caso se cierra tras 90 min sin quejas (con 45 se cerraba en los baches normales de una caída: la
     # pausa p90 entre quejas dentro de una caída fue 37 min y X llega con ~11 min de retraso); la SBS no tiene
     # interrupciones, solo quejas o riesgo reputacional
@@ -215,6 +219,8 @@ for _m in _pendientes:
         for _k in _ruta.split(".")[:-1]:
             _d = _d.setdefault(_k, {})
         _d[_ruta.split(".")[-1]] = _v
+    if _c.get("rss_extra") and isinstance(CONFIG.get("noticias_rss"), list):
+        CONFIG["noticias_rss"] += [u for u in _c["rss_extra"] if u not in CONFIG["noticias_rss"]]
     if _c.get("scrapedo_sitios_reemplazo"):
         CONFIG.setdefault("scrapedo", {}).pop("sitios", None)  # vuelve a los grupos del código (SITIOS_GOOGLE)
     if _c.get("scrapedo_sitios") and CONFIG.get("scrapedo", {}).get("sitios"):  # sin lista propia ya usa SITIOS_GOOGLE
@@ -4294,6 +4300,10 @@ def evaluar_caida_en_vivo(b):
     if cambios:
         caso_nivel(ev.get("caso"), nuevo_nivel)
         motivo = "; ".join(m for _, m in cambios)
+        if [e for e, _ in cambios] == ["En recuperación"] and not cfg.get("avisar_recuperacion", False):
+            # que bajen las quejas no es una novedad que amerite aviso: queda en el caso y el aviso llega con "Resuelto"
+            print(f"[{datetime.now():%H:%M:%S}] {b}: en recuperación (sin aviso)", flush=True)
+            return
         _notificar_estado(b, ev["estado"], estado, nuevo_nivel, detalle + f"\nCambio: {motivo}.", ejemplos, ev.get("caso"))
 
 
