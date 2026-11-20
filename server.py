@@ -2033,10 +2033,62 @@ def sd_google(consulta):
             for x in d.get("organic_results") or [] if x.get("link")]
 
 
+def sa_google(consulta):
+    """Respaldo: una búsqueda en Google vía SerpApi (plan gratuito: 250 búsquedas al mes, 1 crédito cada una). Mismo
+    ritmo parejo y tope del 95 % que Scrape.do; devuelve los resultados con el mismo formato."""
+    exigir_disponible("SerpApi")
+    cfg = CONFIG.get("serpapi", {})
+    mes = ahora().strftime("%Y-%m")
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        r = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='SerpApi'", (mes,)).fetchone()
+        hoy = con.execute("SELECT creditos FROM uso_proveedores WHERE mes=? AND proveedor='SerpApi·día'",
+                          (_hoy_lima().isoformat(),)).fetchone()
+    usados, tope = (r[0] if r else 0), cfg.get("max_creditos_mes", 237)
+    if usados + 1 > tope:
+        agotar("SerpApi", f"Tope mensual alcanzado ({usados} de {tope} búsquedas)")
+    dias = max(1, (fecha_renovacion("SerpApi") - _hoy_lima()).days)
+    cuota_hoy = max(1, (tope - usados) // dias)
+    if (hoy[0] if hoy else 0) + 1 > cuota_hoy:
+        raise RutaInactiva(f"Cuota de hoy usada ({hoy[0] if hoy else 0} de {cuota_hoy} búsquedas); sigue mañana")
+    periodo = CONFIG.get("scrapedo", {}).get("periodo", "d")
+    q = {"engine": "google", "q": consulta, "gl": "pe", "hl": "es", "google_domain": "google.com.pe",
+         "tbs": f"qdr:{periodo if periodo in ('h', 'd', 'w') else 'd'}", "num": 20, "api_key": os.environ["SERPAPI_KEY"]}
+    req = urllib.request.Request("https://serpapi.com/search.json?" + urllib.parse.urlencode(q), headers={"User-Agent": UA})
+    try:
+        resp = urllib.request.urlopen(req, timeout=90)
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(300).decode("utf-8", "ignore").lower()
+        if e.code in (401, 402, 403, 429) and ("run out" in cuerpo or "searches" in cuerpo or "limit" in cuerpo):
+            agotar("SerpApi", "Sin búsquedas en la cuenta")
+        raise
+    with resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+    if d.get("error") and "run out" in str(d["error"]).lower():
+        agotar("SerpApi", "Sin búsquedas en la cuenta")
+    with _db_lock, db() as con:  # cada búsqueda cuenta 1 (también las que no traen resultados)
+        for clave, prov in ((mes, "SerpApi"), (_hoy_lima().isoformat(), "SerpApi·día")):
+            con.execute("INSERT INTO uso_proveedores VALUES (?, ?, 1) ON CONFLICT(mes, proveedor) "
+                        "DO UPDATE SET creditos = creditos + excluded.creditos", (clave, prov))
+    ESTADO.setdefault("serpapi", {}).update(usados_mes=usados + 1, tope=tope)
+    return [{"url": x.get("link"), "title": x.get("title"), "description": x.get("snippet") or "",
+             "domain": urllib.parse.urlparse(x.get("link") or "").netloc, "date": x.get("date")}
+            for x in d.get("organic_results") or [] if x.get("link")]
+
+
 def buscar_google(consulta):
-    if en_pausa("Scrape.do"):
-        raise RutaInactiva("⏸ Scrape.do en pausa")
-    return sd_google(consulta)
+    """Scrape.do primero; si está en pausa, sin créditos o ya usó su cuota del día, sigue SerpApi (si hay clave)."""
+    motivo = None
+    if os.environ.get("SCRAPEDO_TOKEN") and not en_pausa("Scrape.do"):
+        try:
+            return sd_google(consulta)
+        except RutaInactiva as e:
+            motivo = str(e)
+    elif os.environ.get("SCRAPEDO_TOKEN"):
+        motivo = "⏸ Scrape.do en pausa"
+    if os.environ.get("SERPAPI_KEY") and not en_pausa("SerpApi"):
+        return sa_google(consulta)
+    raise RutaInactiva(motivo or "Sin servicio de búsqueda en Google disponible")
 
 
 RED_POR_DOMINIO = {"facebook.com": "Facebook", "instagram.com": "Instagram", "tiktok.com": "TikTok",
@@ -2059,7 +2111,7 @@ def _autor_web(url, dominio):
 def fuente_busqueda_web(rango=None):
     if rango:
         return []  # Google solo sirve para lo reciente
-    if not os.environ.get("SCRAPEDO_TOKEN"):
+    if not (os.environ.get("SCRAPEDO_TOKEN") or os.environ.get("SERPAPI_KEY")):
         return None
     terminos = " OR ".join(f'"{c["buscar"][0]}"' for c in BANCOS.values())
     quejas = '(reclamo OR problema OR estafa OR "no funciona" OR caído OR bloqueada OR queja)'
@@ -2707,7 +2759,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "Scrape.do", "RapidAPI"]
+PROVEEDORES_PAGO = ["Apify", "Scrape.do", "SerpApi", "RapidAPI"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -2739,7 +2791,7 @@ except OSError:
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify", "TikTok Scraper": "tiktok_rapid",
-             "Scrape.do": "scrapedo", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
+             "Scrape.do": "scrapedo", "SerpApi": "serpapi", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
         AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
@@ -6983,6 +7035,8 @@ def resumen_proveedores():
               [("Facebook", "Apify"), ("Instagram", "Apify"), ("TikTok", "Apify"), ("X", "Apify (respaldo de pago)")]),
         ficha("Scrape.do", "SCRAPEDO_TOKEN", "Búsqueda Google: Facebook, TikTok, Instagram, LinkedIn, Reddit, foros", None,
               f"{_creditos_mes('Scrape.do')} de {CONFIG.get('scrapedo', {}).get('max_creditos_mes', 900)} créditos este mes", []),
+        ficha("SerpApi", "SERPAPI_KEY", "Búsqueda Google (respaldo de Scrape.do)", None,
+              f"{_creditos_mes('SerpApi')} de {CONFIG.get('serpapi', {}).get('max_creditos_mes', 237)} búsquedas este mes", []),
         ficha("RapidAPI", "RAPIDAPI_KEY", "Facebook (Facebook Scraper)",
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
               f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
@@ -7135,7 +7189,7 @@ def config_editable():
         "monitoreo": resumen_monitoreo(),
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPEDO_TOKEN", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPEDO_TOKEN", "SERPAPI_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 

@@ -846,5 +846,10 @@
     "intervalo_min": 60,
     "videos": 20,
     "min_comentarios": 5
+  },
+  "serpapi": {
+    "_nota": "Respaldo de la búsqueda en Google cuando Scrape.do está sin créditos o ya usó su cuota del día. Plan gratuito: 250 búsquedas al mes (1 crédito cada una); se usa el 95 % a ritmo parejo.",
+    "max_creditos_mes": 237,
+    "dia_renovacion": 1
   }
 }
