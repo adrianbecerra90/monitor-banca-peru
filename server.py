@@ -757,31 +757,38 @@ def reclasificar_historico(lote=400):
         ids = [r[0] for r in con.execute("SELECT id FROM items")]
     cambios = 0
     for i in range(0, len(ids), lote):
+        # se lee con la base tomada, se clasifica SIN tomarla (es lo lento: antes bloqueaba el panel ~10 s por lote) y
+        # solo se vuelve a tomar para escribir lo que cambió
         with _db_lock, db() as con:
-            filas = con.execute(f"SELECT id, texto, meta, bancos, es_queja, categorias, severidad, sentimiento, oculto, "
-                                f"ia_sentimiento, ia_relevante, ia_categorias FROM items WHERE id IN "
-                                f"({','.join('?' * len(ids[i:i + lote]))})", ids[i:i + lote]).fetchall()
-            for r in filas:
-                res = _fila({"texto": r["texto"], **json.loads(r["meta"] or "{}")})
-                if not res:  # ruido o sin entidad: se oculta, nunca se borra (las reglas pueden cambiar)
-                    if not r["oculto"]:
-                        con.execute("UPDATE items SET oculto = 1 WHERE id = ?", (r["id"],))
-                        cambios += 1
-                    continue
-                bancos, es_queja, cats, sev, sent = res
-                ia = r["ia_sentimiento"] is not None
-                nuevo = {"bancos": json.dumps(bancos, ensure_ascii=False),
-                         "oculto": 1 if ia and r["ia_relevante"] == 0 else 0,
-                         "es_queja": r["es_queja"] if ia else int(es_queja),
-                         "severidad": r["severidad"] if ia else sev,
-                         "sentimiento": r["sentimiento"] if ia else sent,
-                         "categorias": r["categorias"] if ia and r["ia_categorias"] not in (None, "[]") else
-                         json.dumps(cats, ensure_ascii=False)}
-                if any(r[k] != v for k, v in nuevo.items()):
-                    con.execute("UPDATE items SET bancos=?, oculto=?, es_queja=?, severidad=?, sentimiento=?, categorias=? "
-                                "WHERE id=?", (*nuevo.values(), r["id"]))
-                    cambios += 1
-        time.sleep(0.05)
+            filas = [dict(r) for r in con.execute(
+                f"SELECT id, texto, meta, bancos, es_queja, categorias, severidad, sentimiento, oculto, "
+                f"ia_sentimiento, ia_relevante, ia_categorias FROM items WHERE id IN "
+                f"({','.join('?' * len(ids[i:i + lote]))})", ids[i:i + lote])]
+        escribir = []
+        for r in filas:
+            res = _fila({"texto": r["texto"], **json.loads(r["meta"] or "{}")})
+            if not res:  # ruido o sin entidad: se oculta, nunca se borra (las reglas pueden cambiar)
+                if not r["oculto"]:
+                    escribir.append(("UPDATE items SET oculto = 1 WHERE id = ?", (r["id"],)))
+                continue
+            bancos, es_queja, cats, sev, sent = res
+            ia = r["ia_sentimiento"] is not None
+            nuevo = {"bancos": json.dumps(bancos, ensure_ascii=False),
+                     "oculto": 1 if ia and r["ia_relevante"] == 0 else 0,
+                     "es_queja": r["es_queja"] if ia else int(es_queja),
+                     "severidad": r["severidad"] if ia else sev,
+                     "sentimiento": r["sentimiento"] if ia else sent,
+                     "categorias": r["categorias"] if ia and r["ia_categorias"] not in (None, "[]") else
+                     json.dumps(cats, ensure_ascii=False)}
+            if any(r[k] != v for k, v in nuevo.items()):
+                escribir.append(("UPDATE items SET bancos=?, oculto=?, es_queja=?, severidad=?, sentimiento=?, categorias=? "
+                                 "WHERE id=?", (*nuevo.values(), r["id"])))
+        if escribir:
+            with _db_lock, db() as con:
+                for sql, args in escribir:
+                    con.execute(sql, args)
+            cambios += len(escribir)
+        time.sleep(0.2)  # cede el procesador al panel y a la captura
     with _db_lock, db() as con:
         _aplicar_ia(con)
     print(f"[{datetime.now():%H:%M:%S}] Histórico reclasificado con las reglas vigentes: {len(ids)} publicaciones, "
