@@ -734,7 +734,7 @@
     "_nota_graves": "Aviso inmediato solo con el evento valorado: N usuarios distintos de la misma entidad y tipo en la ventana (una queja suelta no avisa). Crítico: aviso oficial, el doble de usuarios, o corroboración en 2+ fuentes o prensa.",
     "pico_ventana_min": 30,
     "recordatorio_min": 120,
-    "cierre_min": 45,
+    "cierre_min": 90,
     "escalar_minimo": 3,
     "total_minimo": 8,
     "minimo_comentarios_30min": {
@@ -745,7 +745,10 @@
       "Plin": 8
     },
     "recordatorios_max": 3,
-    "reabrir_horas": 24
+    "reabrir_horas": 24,
+    "sin_interrupcion": [
+      "SBS"
+    ]
   },
   "x_referentes": {
     "_nota": "Cuentas de inteligencia de amenazas en X (vía Nitter). Solo se guardan sus alertas sobre entidades monitoreadas o del sistema financiero, seguros y AFP del Perú.",
@@ -813,7 +816,8 @@
     "minimo-comentarios-8-2026-11-05",
     "google-grupos-2026-11-17",
     "cuotas-95-2026-11-17",
-    "antispam-2026-11-20"
+    "antispam-2026-11-20",
+    "cierre-90-2026-11-20"
   ],
   "linkedin_api": {
     "_nota": "LinkedIn vía Professional Network Data (RapidAPI, plan gratuito: 50 créditos al mes, cuota aparte de la de Facebook). Una página por consulta (trae sus últimas 50 publicaciones), cada 'intervalo_horas', la que lleva más tiempo sin revisarse. 'max_creditos_mes' deja 'reserva' de margen. 'paginas_globales': páginas de la casa matriz (p. ej. Scotiabank) de las que solo se guardan las publicaciones que nombran al Perú. 'prioridad': páginas que se revisan cada N horas antes que el resto; 'comentarios': páginas de las que además se leen los comentarios de sus 'comentarios_posts' últimas publicaciones (1 crédito cada una).",

@@ -175,6 +175,10 @@ MIGRACIONES_REGLAS = {
     "google-linkedin-2026-10-31": {"scrapedo_sitios": ["(site:linkedin.com/posts OR site:linkedin.com/pulse)"]},
     # 20/11/2026: menos avisos repetidos: recordatorio cada 2 h y como máximo 3 por caso
     "antispam-2026-11-20": {"notificaciones": {"recordatorio_min": 120, "recordatorios_max": 3, "reabrir_horas": 24}},
+    # 20/11/2026: el caso se cierra tras 90 min sin quejas (con 45 se cerraba en los baches normales de una caída: la
+    # pausa p90 entre quejas dentro de una caída fue 37 min y X llega con ~11 min de retraso); la SBS no tiene
+    # interrupciones, solo quejas o riesgo reputacional
+    "cierre-90-2026-11-20": {"notificaciones": {"cierre_min": 90, "sin_interrupcion": ["SBS"]}},
     # 17/11/2026: el analista pide usar siempre el 95 % de cada cupo gratuito, repartido parejo en el mes
     "cuotas-95-2026-11-17": {"config_set": {"tiktok_rapid.max_llamadas_mes": 285, "linkedin_api.max_creditos_mes": 47,
                                             "scrapedo.max_creditos_mes": 950, "rapidapi.max_llamadas_mes": 95,
@@ -3885,6 +3889,8 @@ def _evento_registrar(medida, k, nivel, usuarios, origen):
             if previo.get("restablecido") and t - previo["restablecido"] < cfg.get("pico_ventana_min", 30) * 60:
                 return None  # la entidad acaba de confirmar el restablecimiento: las quejas de antes no abren otro caso
             tema = TEMA_ORIGEN.get(origen, "Pico de quejas") if medida == "quejas" else "Pico de menciones críticas"
+            if _sin_interrupcion(k):
+                tema = "Quejas y riesgo reputacional"
             if previo.get("caso") and not previo.get("restablecido") and \
                     t - previo.get("cerrado", 0) < cfg.get("reabrir_horas", 24) * 3600:
                 caso = previo["caso"]  # vuelve antes de 24 h: el mismo caso (un problema de varios días), no uno nuevo
@@ -4092,6 +4098,11 @@ RANGO_CERTEZA = {"usuarios": 0, "corroborada": 1, "confirmada": 2}
 TXT_CERTEZA = {"usuarios": "solo usuarios", "corroborada": "corroborada", "confirmada": "confirmada por la entidad"}
 
 
+def _sin_interrupcion(b):
+    """La SBS (supervisor) no tiene interrupciones: lo que se dice de ella es queja o riesgo reputacional."""
+    return b in CONFIG.get("notificaciones", {}).get("sin_interrupcion", ["SBS"])
+
+
 def calibrar_umbrales_caida(dias=28):
     """Umbral de quejas de caída en 30 min por entidad: el mayor entre 4 y su ruido normal (percentil 99) + 3. Se
     recalcula una vez al día con las últimas 4 semanas."""
@@ -4160,6 +4171,8 @@ def _senales_caida(b, desde_cierre=None):
 
 def evaluar_caida_en_vivo(b):
     """Evalúa la interrupción de una entidad con la matriz y notifica cada cambio de estado del caso."""
+    if _sin_interrupcion(b):
+        return
     cfg = CONFIG.get("notificaciones", {})
     clave, t = f"quejas|{b}", time.time()
     with _EVENTOS["lock"]:
@@ -4336,9 +4349,10 @@ def avisar_graves(nuevos):
         if not (grave or oficial or caida):
             continue
         if caida or oficial or (medio and caida):
-            for b in n.get("bancos") or []:
-                interrupciones.add(b)
-            continue
+            if not any(_sin_interrupcion(b) for b in n.get("bancos") or []):
+                for b in n.get("bancos") or []:
+                    interrupciones.add(b)
+                continue
         clase = "grave"
         registro = {"t": time.time(), "autor": (n.get("autor") or n.get("id", "")).lower(), "fuente": n.get("fuente", ""),
                     "medio": n.get("tipo") == "noticia" or n.get("fuente") == "Noticias", "oficial": tipo_oficial,
@@ -4674,6 +4688,8 @@ def _cifra(nombre, x, ant, normal):
 
 
 def evaluar_interrupcion(b, filas, hasta):
+    if _sin_interrupcion(b):
+        return None  # la SBS no tiene interrupciones: sus quejas van como quejas o riesgo reputacional
     """Regla explícita para distinguir una interrupción de comentarios aislados (por entidad):
     - CONFIRMADA (crítico): comunicado general de la entidad que reconoce la falla (no un mantenimiento programado ni
       un tercero), o 6+ usuarios distintos en una misma hora, o 3+ en una hora con prensa o en 2+ redes.

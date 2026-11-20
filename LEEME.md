@@ -118,6 +118,10 @@ todo el histórico se reclasifica con las reglas nuevas.
   criterio al clasificar publicaciones y aparecen en el resumen semanal. Al marcar 👎, un administrador puede silenciar
   casos así (misma entidad y tipo, misma cuenta o fuente, o una frase) por 7, 30 o 90 días; el aviso silenciado queda en
   la campana como «🔕 Silenciado». Nunca se silencia un aviso Crítico ni reportes o cierres.
+- **SBS:** no tiene interrupciones (no presta un servicio al público que se caiga): lo que se dice de ella se trata
+  como queja o riesgo reputacional (`notificaciones.sin_interrupcion`).
+- **Cierre del caso:** tras 90 min sin quejas nuevas (la pausa p90 entre quejas dentro de una caída fue de 37 min y X
+  llega con ~11 min de retraso), o con el comunicado de restablecimiento; si vuelve dentro de 24 h, es el mismo caso.
 - **Colores:** 🔵 informativo y reportes programados · 🟢 leve · 🟡 medio · 🟠 grave · 🔴 crítico.
 - **Mínimo por entidad** (`notificaciones.minimo_comentarios_30min`): BCP, Interbank, Scotiabank Perú, Yape y Plin no abren
   un evento con menos de 8 comentarios negativos de usuarios en 30 min. No aplica a un comunicado de la entidad ni a la prensa.
