@@ -33,6 +33,7 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 import html
 import io
+import multiprocessing
 import json
 import os
 import queue
@@ -745,6 +746,14 @@ def init_db():
         con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
         con.execute("DELETE FROM uso_proveedores WHERE proveedor LIKE 'BrightData%' OR proveedor LIKE 'CreatorCrawl%' "
                     "OR proveedor LIKE 'ScrapeCreators%' OR proveedor LIKE 'ScrapingBee%' OR proveedor LIKE 'Instaloader%'")
+
+
+def _reclasificar_aparte():
+    try:
+        os.nice(15)
+    except (AttributeError, OSError):
+        pass
+    reclasificar_historico()
 
 
 def reclasificar_historico(lote=400):
@@ -9269,6 +9278,9 @@ def main():
                 ESTADO["trends"].setdefault("actualizado", ultima)
     if HOST not in ("127.0.0.1", "localhost", "::1") and not hay_usuarios():
         sys.exit("Por seguridad, para publicar el monitor define ADMIN_USUARIO y ADMIN_CLAVE (primer administrador)")
+    # En un proceso aparte y con prioridad baja: en un hilo competía con el panel por el intérprete (el panel tardaba
+    # hasta 55 s en responder mientras corría). Se lanza antes que cualquier hilo, para no copiar candados tomados
+    multiprocessing.Process(target=_reclasificar_aparte, daemon=True).start()
     threading.Thread(target=planificador, daemon=True).start()
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()
@@ -9279,7 +9291,6 @@ def main():
     presupuesto_apify_inicial()
     for k in range(len(_ia_proveedores())):
         threading.Thread(target=trabajador_ia, args=(k,), daemon=True).start()
-    threading.Thread(target=reclasificar_historico, daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
     srv.daemon_threads = True
     print(f"Monitor banca Perú en http://localhost:{PORT}  (Ctrl+C para salir)", flush=True)
