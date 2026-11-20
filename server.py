@@ -748,12 +748,36 @@ def init_db():
                     "OR proveedor LIKE 'ScrapeCreators%' OR proveedor LIKE 'ScrapingBee%' OR proveedor LIKE 'Instaloader%'")
 
 
+ARCHIVO_HUELLA_REGLAS = os.path.join(DATOS, "huella_reglas.txt")
+CLAVES_REGLAS = ("idioma", "bancos", "contexto_peru", "contexto_excluir", "cuentas_oficiales", "ciber", "notificaciones")
+
+
+def _huella_reglas():
+    """Huella de lo que decide la clasificación: el código del monitor y las secciones de reglas de la configuración.
+    Si no cambió desde la última reclasificación completa, el histórico ya está al día y no hace falta repasarlo."""
+    h = hashlib.sha256()
+    with open(os.path.abspath(__file__), "rb") as f:
+        h.update(f.read())
+    h.update(json.dumps({k: CONFIG.get(k) for k in CLAVES_REGLAS}, sort_keys=True, ensure_ascii=False).encode())
+    return h.hexdigest()
+
+
 def _reclasificar_aparte():
     try:
         os.nice(15)
     except (AttributeError, OSError):
         pass
+    huella = _huella_reglas()
+    try:
+        with open(ARCHIVO_HUELLA_REGLAS) as f:
+            if f.read().strip() == huella:
+                print(f"[{datetime.now():%H:%M:%S}] Histórico al día: las reglas no cambiaron, no se reclasifica", flush=True)
+                return
+    except OSError:
+        pass
     reclasificar_historico()
+    with open(ARCHIVO_HUELLA_REGLAS, "w") as f:  # solo tras terminar: si se corta a medias, se repite al arrancar
+        f.write(huella)
 
 
 def reclasificar_historico(lote=400):
