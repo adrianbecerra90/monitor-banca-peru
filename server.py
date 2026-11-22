@@ -1761,7 +1761,189 @@ def x_respuestas_oficiales():
 
 def fuente_x(rango=None):
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
+                                ("RapidAPI (Twttr API · The Old Bird)", x_rapid, "activo"),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
+
+
+# ---------------- X por RapidAPI: una búsqueda combinada por llamada, a ritmo parejo para no pasarse del plan -------
+# (nombre del servicio, host, clave en config, consultas del plan). Se usan los que la clave de RapidAPI tenga suscritos.
+X_RAPID = [("Twttr API", "twitter241.p.rapidapi.com", "x_twttr", 1000),
+           ("The Old Bird", "twitter154.p.rapidapi.com", "x_oldbird", 200)]
+X_PRIORITARIAS = {"SBS": "SBS", "BCP": "BCP", "Interbank": "Interbank", "BBVA Perú": "BBVA", "Scotiabank Perú": "Scotiabank",
+                  "Banco de la Nación": "Banco de la Nación", "Yape": "Yape", "Plin": "Plin"}  # entidad -> término en X
+X_PALABRAS = ('("no funciona" OR caído OR caida OR caída OR "no puedo" OR reclamo OR queja OR estafa OR fraude OR '
+              'robo OR bloqueada OR bloquearon OR "me cobraron" OR "sin sistema" OR app)')
+_X_SIN_SUSCRIPCION = {}  # servicio -> hasta cuándo no se vuelve a probar (la clave no está suscrita)
+
+
+def _grupos_x():
+    """Términos en grupos que caben en una búsqueda de X: las entidades prioritarias van en una llamada sí y otra no;
+    el resto rota en las demás."""
+    def termino(b):
+        return f'"{BANCOS[b]["buscar"][0]}"'
+    prio = [f'"{t}"' for b, t in X_PRIORITARIAS.items() if b in BANCOS]
+    resto, grupo, grupos = [termino(b) for b in BANCOS if b not in X_PRIORITARIAS], [], []
+    for t in resto:
+        if len(" OR ".join(grupo + [t])) > 220:
+            grupos.append(grupo)
+            grupo = []
+        grupo.append(t)
+    if grupo:
+        grupos.append(grupo)
+    return prio, grupos
+
+
+def _x_consulta_siguiente():
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        r = con.execute("SELECT valor FROM marcas WHERE clave = 'x_rapid_turno'").fetchone()
+    turno = int(r[0]) if r and str(r[0]).isdigit() else 0
+    _guardar_marca("x_rapid_turno", str(turno + 1))
+    prio, grupos = _grupos_x()
+    if turno % 2 == 0 or not grupos:
+        terminos = prio
+    else:
+        terminos = grupos[(turno // 2) % len(grupos)]
+    return f'({" OR ".join(terminos)}) {X_PALABRAS} lang:es'
+
+
+def _x_rapid_get(nombre, host, clave, ruta, q):
+    cfg = CONFIG.get(clave, {})
+    exigir_disponible(nombre)
+    req = urllib.request.Request(f"https://{host}{ruta}?" + urllib.parse.urlencode(q),
+                                 headers={"X-RapidAPI-Key": os.environ["RAPIDAPI_KEY"], "X-RapidAPI-Host": host, "User-Agent": UA})
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read(400).decode("utf-8", "ignore")
+        if e.code == 403 and "not subscribed" in cuerpo.lower():
+            _X_SIN_SUSCRIPCION[nombre] = time.time() + 3600
+            raise RutaInactiva(f"la clave de RapidAPI no está suscrita a {nombre}")
+        if e.code == 429:
+            _rapid_renovacion_de(clave, e.headers)
+            agotar(nombre, "Cuota mensual del plan agotada")
+        raise urllib.error.HTTPError(e.url, e.code, e.msg, e.headers, io.BytesIO(cuerpo.encode()))
+    with resp:
+        d = json.loads(resp.read(MAX_RESPUESTA))
+        h = resp.headers
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+        con.execute("INSERT INTO uso_proveedores VALUES (?, ?, 1) ON CONFLICT(mes, proveedor) "
+                    "DO UPDATE SET creditos = creditos + 1", (ahora().strftime("%Y-%m"), nombre))
+    _sumar_dia(nombre)
+    est = ESTADO.setdefault(clave, {})
+    restantes = h.get("X-RateLimit-Requests-Remaining")
+    est.update(usados_mes=_creditos_mes(nombre), tope=cfg.get("max_creditos_mes"),
+               restantes=int(restantes) if str(restantes).isdigit() else est.get("restantes"))
+    _rapid_renovacion_de(clave, h)
+    if est.get("restantes") is not None and est["restantes"] <= cfg.get("reserva", 5):
+        apagar_hasta_renovacion(nombre, f"Quedan {est['restantes']} consultas del plan (se guarda el 5 %)")
+    return d
+
+
+def _rapid_renovacion_de(clave, headers):
+    try:
+        seg = int((headers or {}).get("X-RateLimit-Requests-Reset") or 0)
+    except (TypeError, ValueError):
+        return
+    if seg > 0:
+        ESTADO.setdefault(clave, {})["renovacion"] = iso(ahora() + timedelta(seconds=seg))
+
+
+def _tuits_de(d):
+    """Saca los tuits de la respuesta, sea cual sea la forma (Twttr API: la de X; The Old Bird: 'results')."""
+    out, vistos = [], set()
+
+    def autor_de(x):
+        for ruta in (("core", "user_results", "result", "legacy", "screen_name"), ("core", "user_results", "result", "core", "screen_name"),
+                     ("user", "username"), ("user", "screen_name"), ("author", "screen_name")):
+            v = x
+            for k in ruta:
+                v = v.get(k) if isinstance(v, dict) else None
+            if v:
+                return str(v)
+        return ""
+
+    def andar(x):
+        if isinstance(x, list):
+            for y in x:
+                andar(y)
+            return
+        if not isinstance(x, dict):
+            return
+        leg = x.get("legacy") if isinstance(x.get("legacy"), dict) else None
+        texto = (leg or {}).get("full_text") or (x.get("text") if "tweet_id" in x else None)
+        tid = (leg or {}).get("id_str") or x.get("rest_id") or x.get("tweet_id")
+        fecha = (leg or {}).get("created_at") or x.get("creation_date")
+        if texto and tid and str(tid) not in vistos:
+            vistos.add(str(tid))
+            nota = x.get("note_tweet", {}).get("note_tweet_results", {}).get("result", {}).get("text") \
+                if isinstance(x.get("note_tweet"), dict) else None
+            out.append({"id": str(tid), "texto": nota or texto, "autor": autor_de(x), "fecha": fecha})
+        for v in x.values():
+            if isinstance(v, (dict, list)):
+                andar(v)
+    andar(d)
+    return out
+
+
+def x_rapid(rango=None):
+    """X por RapidAPI (Twttr API y/o The Old Bird, los que estén suscritos). Cada servicio hace una búsqueda combinada
+    cuando le toca según su cupo (repartido parejo hasta la renovación); juntos dan una búsqueda cada ~35 min."""
+    if rango:
+        return []  # sin cargas históricas: el cupo es chico
+    if not os.environ.get("RAPIDAPI_KEY"):
+        return None
+    out, motivos, consultado = [], [], False
+    handles = cuentas("x")
+    oficiales = {k.lower(): b for k, b in handles.items()}
+    for nombre, host, clave, plan in X_RAPID:
+        cfg = CONFIG.get(clave, {})
+        if cfg.get("activo") is False or en_pausa(nombre) or agotado(nombre):
+            continue
+        if _X_SIN_SUSCRIPCION.get(nombre, 0) > time.time():
+            motivos.append(f"{nombre}: sin suscripción")
+            continue
+        tope = cfg.get("max_creditos_mes", int(plan * 0.95))
+        marca_ult = f"x_rapid_ultima_{clave}"
+        with _db_lock, db() as con:
+            con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+            r = con.execute("SELECT valor FROM marcas WHERE clave = ?", (marca_ult,)).fetchone()
+        intervalo = _intervalo_parejo(nombre, tope, cfg.get("intervalo_min", 20))
+        if r and ahora() - datetime.fromisoformat(r[0]) < timedelta(minutes=intervalo):
+            continue
+        if _creditos_mes(nombre) >= tope:
+            apagar_hasta_renovacion(nombre, f"Tope del mes alcanzado ({tope} consultas)")
+            continue
+        _guardar_marca(marca_ult, iso(ahora()))  # antes de llamar: un error no hace reintentar en bucle
+        q = _x_consulta_siguiente()
+        try:
+            if clave == "x_twttr":
+                d = _x_rapid_get(nombre, host, clave, "/search-v2", {"type": "Latest", "count": 20, "query": q})
+            else:
+                d = _x_rapid_get(nombre, host, clave, "/search/search",
+                                 {"query": q, "section": "latest", "limit": 20, "language": "es"})
+        except RutaInactiva as e:
+            motivos.append(f"{nombre}: {e}")
+            continue
+        consultado = True
+        for t in _tuits_de(d):
+            fecha = parse_fecha(t["fecha"]) if t["fecha"] else None
+            if not fecha:
+                continue
+            autor = "@" + t["autor"].lstrip("@") if t["autor"] else ""
+            url = f"https://x.com/{t['autor'].lstrip('@') or 'i'}/status/{t['id']}"
+            it = {"id": "x:" + t["id"], "fuente": "X", "autor": autor, "texto": limpiar_html(t["texto"]), "fecha": fecha,
+                  "url": url}
+            a = t["autor"].lstrip("@").lower()
+            if a in oficiales:
+                it.update(tipo="oficial", bancos_fijos=[oficiales[a]], peru=True, cuenta=oficiales[a])
+            out.append(it)
+        print(f"  X · {nombre}: {len(out)} tuits (consulta {q[:60]}…)", flush=True)
+    activos = [n for n, _h, c, _p in X_RAPID if CONFIG.get(c, {}).get("activo") is not False]
+    if not consultado and motivos and len(motivos) >= len(activos):
+        raise RutaInactiva("; ".join(motivos))
+    return out
 
 
 NITTER_EXTRA = ["https://nitter.click"]  # instancias sanas añadidas también a monitores con configuración antigua
@@ -1975,10 +2157,11 @@ def _epoch(v):
 # ---------------- Scrape.do: búsqueda en Google de menciones públicas en redes y foros ----------------
 # Plan gratuito mensual (10 créditos por búsqueda). El saldo del mes se reparte por día para que alcance todo el mes.
 SITIOS_GOOGLE = ["(site:linkedin.com/posts OR site:linkedin.com/pulse)", "site:tiktok.com",
-                 "(site:facebook.com OR site:instagram.com)", "(site:reddit.com OR inurl:foro OR inurl:forum)"]
+                 "(site:facebook.com OR site:instagram.com)", "(site:reddit.com OR inurl:foro OR inurl:forum)",
+                 "(site:x.com OR site:twitter.com)"]
 # Cada cuántas horas toca cada grupo (la cuota gratuita da ~3 búsquedas al día): LinkedIn y TikTok, a diario, porque
 # sus menciones de terceros solo entran por aquí; Facebook e Instagram cada 2 días; Reddit y foros cada 4
-CADA_HORAS_GOOGLE = {"linkedin": 24, "tiktok": 24, "facebook": 48, "reddit": 96}
+CADA_HORAS_GOOGLE = {"linkedin": 24, "tiktok": 24, "facebook": 48, "reddit": 96, "x.com": 6}  # X: cada 6 h (sin Nitter)
 # En LinkedIn casi nadie "reclama": se habla de incidentes, caídas, fraudes, ciberataques y sanciones (empleados, gremios,
 # consultores, prensa). Esos grupos usan estas palabras en lugar de las de queja.
 SITIOS_INCIDENTES = ("linkedin.com",)
@@ -2760,7 +2943,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "Scrape.do", "SerpApi", "RapidAPI"]
+PROVEEDORES_PAGO = ["Apify", "Scrape.do", "SerpApi", "RapidAPI", "Twttr API", "The Old Bird"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -2792,7 +2975,7 @@ except OSError:
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify", "TikTok Scraper": "tiktok_rapid",
-             "Scrape.do": "scrapedo", "SerpApi": "serpapi", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
+             "Scrape.do": "scrapedo", "SerpApi": "serpapi", "Twttr API": "x_twttr", "The Old Bird": "x_oldbird", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
         AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
