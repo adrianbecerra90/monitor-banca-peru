@@ -1815,6 +1815,27 @@ def _consultas_x_rsshub():
     return consultas
 
 
+class LimiteX(RuntimeError):
+    """X limitó las búsquedas de la cuenta de RSSHub (429 / rate limit): hay que dejarla descansar."""
+
+
+def _pausa_rsshub():
+    """Hasta cuándo RSSHub está en pausa por límite de X (compartido con el recuperador, que corre aparte)."""
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        r = con.execute("SELECT valor FROM marcas WHERE clave = 'x_rsshub_pausa'").fetchone()
+    try:
+        return datetime.fromisoformat(r[0]) if r else None
+    except ValueError:
+        return None
+
+
+def _pausar_rsshub(minutos):
+    hasta = ahora() + timedelta(minutes=minutos)
+    _guardar_marca("x_rsshub_pausa", iso(hasta))
+    return hasta
+
+
 def _rsshub_buscar(base, q, oficiales):
     """Una búsqueda en RSSHub (/twitter/keyword) → tuits en el formato del monitor. Falla con RutaInactiva si X
     rechaza la sesión y con la excepción original ante otros errores."""
@@ -1825,7 +1846,9 @@ def _rsshub_buscar(base, q, oficiales):
             cuerpo = resp.read(5 * 1024 * 1024)
         raiz = ET.fromstring(cuerpo)
     except urllib.error.HTTPError as e:
-        texto = e.read(300).decode("utf-8", "ignore").lower()
+        texto = e.read(400).decode("utf-8", "ignore").lower()
+        if e.code == 429 or "rate limit" in texto or "too many" in texto or "429" in texto:
+            raise LimiteX("X limitó las búsquedas de la cuenta") from None
         if "token" in texto or "cookie" in texto or "auth" in texto or e.code in (401, 403):
             raise RutaInactiva("RSSHub sin una sesión válida de X (falta o venció TWITTER_AUTH_TOKEN)")
         raise
@@ -1864,6 +1887,10 @@ def x_rsshub(rango=None):
     with _db_lock, db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
         r = con.execute("SELECT valor FROM marcas WHERE clave = 'x_rsshub_ultima'").fetchone()
+    pausa = _pausa_rsshub()
+    if pausa and pausa > ahora():
+        raise RutaInactiva(f"X limitó la búsqueda de la cuenta: en pausa hasta las {pausa.astimezone(LIMA):%H:%M} "
+                           f"(mientras tanto, respaldo)")
     if r and ahora() - datetime.fromisoformat(r[0]) < timedelta(minutes=cfg.get("intervalo_min", 10)):
         return []
     _guardar_marca("x_rsshub_ultima", iso(ahora()))
@@ -1873,6 +1900,10 @@ def x_rsshub(rango=None):
     for q in consultas:
         try:
             out += _rsshub_buscar(base, q, oficiales)
+        except LimiteX:
+            hasta = _pausar_rsshub(30)
+            raise RutaInactiva(f"X limitó la búsqueda de la cuenta: en pausa hasta las {hasta.astimezone(LIMA):%H:%M} "
+                               f"(mientras tanto, respaldo)") from None
         except RutaInactiva:
             raise
         except urllib.error.HTTPError as e:
@@ -1887,38 +1918,64 @@ def x_rsshub(rango=None):
     return out
 
 
-def recuperar_x(desde, hasta, pausa=25, minimo_min=10):
+def recuperar_x(desde, hasta, pausa=25, minimo_min=10, desde_consulta=1, hasta_primera=None):
     """Recupera X de un periodo pasado por RSSHub (gratis, con la sesión de la cuenta secundaria): cada consulta
     agrupada por tramos de 1 h; si un tramo viene lleno (20 tuits, el máximo por página) se parte en dos hasta
-    'minimo_min'. Guarda sin avisar (en_vivo=False). Pausa entre búsquedas para no exceder el límite de X."""
+    'minimo_min'. Guarda sin avisar (en_vivo=False). Pausa entre búsquedas para no exceder el límite de X.
+    Si X limita la cuenta: pausa de 30 min (también la del monitoreo en vivo) y sigue en el mismo tramo; a la tercera,
+    se detiene y anota desde dónde reanudar. Si X rechaza la sesión, o 5 tramos seguidos sin respuesta, se detiene.
+    Reanudar: desde_consulta=k, hasta_primera=<fecha ISO del tramo pendiente de esa consulta>."""
     base = os.environ.get("RSSHUB_URL", "").rstrip("/")
     oficiales = {h.lower(): b for h, b in cuentas("x").items()}
     desde, hasta = datetime.fromisoformat(desde), datetime.fromisoformat(hasta)
-    leidos = nuevos = fallos = llamadas = 0
+    leidos = nuevos = fallos = llamadas = limites = seguidos = 0
+
+    def fin(motivo, k=None, t=None):
+        reanudar = f" · para reanudar: desde_consulta={k}, hasta_primera='{iso(t)}'" if k else ""
+        print(f"[{datetime.now():%H:%M:%S}] Recuperación de X {desde:%d/%m %H:%M} → {hasta:%d/%m %H:%M} {motivo}: "
+              f"{leidos} leídos, {nuevos} nuevos, {fallos} tramos sin respuesta, {llamadas} búsquedas{reanudar}", flush=True)
+        return nuevos
+
     for k, q in enumerate(_consultas_x_rsshub(), 1):
+        if k < desde_consulta:
+            continue
         pila = []
-        t = hasta
+        t = datetime.fromisoformat(hasta_primera) if (k == desde_consulta and hasta_primera) else hasta
         while t > desde:
             pila.append((max(desde, t - timedelta(hours=1)), t))
             t -= timedelta(hours=1)
         while pila:
-            a, b = pila.pop(0)
+            a, b = pila[0]
+            p = _pausa_rsshub()
+            if p and p > ahora():  # el monitoreo en vivo detectó el límite: se espera también
+                time.sleep(min(1800, (p - ahora()).total_seconds() + 5))
             qq = f"{q} since_time:{int(a.timestamp())} until_time:{int(b.timestamp())}"
             items = None
-            for intento in range(3):
-                try:
-                    items = _rsshub_buscar(base, qq, oficiales)
-                    break
-                except RutaInactiva:
-                    raise
-                except Exception as e:
-                    print(f"  recuperar X · {a:%d/%m %H:%M}: {type(e).__name__}, reintento {intento + 1}", flush=True)
-                    time.sleep(pausa * (intento + 2))
+            try:
+                items = _rsshub_buscar(base, qq, oficiales)
+            except LimiteX:
+                limites += 1
+                if limites >= 3:
+                    return fin("detenida: X limitó la cuenta 3 veces", k, b)
+                hasta_p = _pausar_rsshub(30)
+                print(f"  recuperar X · X limitó la cuenta: pausa hasta {hasta_p.astimezone(LIMA):%H:%M} "
+                      f"({limites} de 3)", flush=True)
+                time.sleep(1800)
+                continue  # mismo tramo
+            except RutaInactiva as e:
+                return fin(f"detenida: {e}", k, b)
+            except Exception as e:
+                print(f"  recuperar X · {a.astimezone(LIMA):%d/%m %H:%M}: {type(e).__name__}", flush=True)
             llamadas += 1
+            pila.pop(0)
             time.sleep(pausa)
             if items is None:
                 fallos += 1
+                seguidos += 1
+                if seguidos >= 5:
+                    return fin("detenida: 5 tramos seguidos sin respuesta", k, b)
                 continue
+            seguidos = 0
             if len(items) >= 20 and (b - a) > timedelta(minutes=minimo_min):
                 m = a + (b - a) / 2
                 pila[:0] = [(a, m), (m, b)]
@@ -1926,9 +1983,7 @@ def recuperar_x(desde, hasta, pausa=25, minimo_min=10):
             nuevos += guardar(items, en_vivo=False)
             print(f"  recuperar X · consulta {k} · {a.astimezone(LIMA):%d/%m %H:%M}–{b.astimezone(LIMA):%H:%M}: "
                   f"{len(items)} leídos · total {nuevos} nuevos ({llamadas} búsquedas)", flush=True)
-    print(f"[{datetime.now():%H:%M:%S}] Recuperación de X {desde:%d/%m %H:%M} → {hasta:%d/%m %H:%M}: {leidos} leídos, "
-          f"{nuevos} nuevos, {fallos} tramos sin respuesta, {llamadas} búsquedas", flush=True)
-    return nuevos
+    return fin("terminada")
 
 
 # ---------------- X por twitterapi.io: respaldo de pago por uso (~US$0.15 por mil tuits), solo si fallan las rutas
@@ -7451,7 +7506,7 @@ def resumen_proveedores():
               f"{_creditos_mes('twitterapi.io')} de {CONFIG.get('twitterapi', {}).get('max_llamadas_mes', 600)} llamadas este mes", []),
         ficha("RapidAPI", "RAPIDAPI_KEY", "Facebook (Facebook Scraper)",
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
-              f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
+              f"{_creditos_mes('RapidAPI')} de {CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 95)} llamadas este mes",
               [("Facebook", "RapidAPI")]),
         ficha("Professional Network Data", "RAPIDAPI_KEY", "LinkedIn (páginas de empresa) · RapidAPI, cuota aparte",
               f"{li['restantes']} de {li.get('limite_plan', '?')} créditos del plan" if li.get("restantes") is not None else None,
@@ -8150,12 +8205,22 @@ def trabajador_trends():
                                         [(grupo, k, t, v[i]) for t, v in serie for i, k in enumerate(terminos[:5])])
                     n_rt += 1
                 except Exception as e:
-                    ruta_fallo("Google Trends", "Alerta rápida (8 min)", e)
                     _trends_opener(nuevo=True)
-                    _trends_op["proximo_rt"] = time.time() + 15 * 60
+                    if "429" in str(e) or getattr(e, "code", None) == 429:
+                        # Google limita: pausa creciente (30 min, 1 h, 2 h, máx. 4 h); no es una falla del monitor
+                        k = _trends_op["rt_429"] = _trends_op.get("rt_429", 0) + 1
+                        espera = min(30 * 2 ** (k - 1), 240)
+                        _trends_op["proximo_rt"] = time.time() + espera * 60
+                        ruta_inactiva("Google Trends", "Alerta rápida (8 min)",
+                                      f"Google limitó las consultas (429): en pausa hasta las "
+                                      f"{(ahora() + timedelta(minutes=espera)).astimezone(LIMA):%H:%M}; se reintenta sola")
+                    else:
+                        ruta_fallo("Google Trends", "Alerta rápida (8 min)", e)
+                        _trends_op["proximo_rt"] = time.time() + 15 * 60
                     break
                 time.sleep(15)
             if n_rt:
+                _trends_op["rt_429"] = 0
                 ruta_ok("Google Trends", "Alerta rápida (8 min)", f"{n_rt} grupos de fallas al minuto")
         for _ in range(min(cfg.get("rss_minutos", 15), cfg.get("alerta_minutos", 10)) * 6):  # espera, atenta a una pausa
             if en_pausa("Google Trends"):
