@@ -848,6 +848,14 @@
     "videos": 20,
     "min_comentarios": 5
   },
+  "limite_ruta_seg": {
+    "_nota": "Segundos máximos que puede tardar cada ruta de una fuente en una pasada; si se pasa, queda «con fallas» y se sigue con las demás. Apify corre sus actores hasta ~5 min.",
+    "_defecto": 180,
+    "Facebook": 360,
+    "Instagram": 360,
+    "TikTok": 360,
+    "LinkedIn": 300
+  },
   "twitterapi": {
     "_nota": "Respaldo de X por twitterapi.io (pago por uso, ~US$0.003 por llamada de 20 tuits): solo si fallan RSSHub y RapidAPI. Tope de llamadas al mes, repartidas parejo hasta la renovación y nunca más seguido que 'intervalo_min'. 600 llamadas ≈ US$1.8 al mes como máximo.",
     "max_llamadas_mes": 600,

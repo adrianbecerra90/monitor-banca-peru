@@ -30,7 +30,7 @@ import hashlib
 import hmac
 import itertools
 import secrets
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 import html
 import io
 import multiprocessing
@@ -1199,11 +1199,33 @@ def ejecutar_rutas(fuente, rutas, rango=None):
     rutas = [r for r in rutas if not retirado("ruta", fuente, r[0])]
     activas = [(n, f) for n, f, m in rutas if m == "activo"]
     respaldo = [(n, f) for n, f, m in rutas if m == "respaldo"]
-    with ThreadPoolExecutor(max_workers=max(1, len(activas))) as ex:
-        resultados = list(ex.map(lambda nf: correr(*nf), activas))
+    # límite por ruta: una ruta lenta no deja la fuente «consultando» indefinidamente; si no termina a tiempo se marca
+    # con fallas y se sigue con las demás (la llamada termina sola en segundo plano por sus propios timeouts)
+    limite = CONFIG.get("limite_ruta_seg", {}).get(fuente, CONFIG.get("limite_ruta_seg", {}).get("_defecto", 180))
+    if rango:  # la carga histórica pide mucho más por llamada: sin este límite
+        limite = 3600
+
+    def con_limite(lista):
+        if not lista:
+            return []
+        ex = ThreadPoolExecutor(max_workers=len(lista))
+        futuros = [ex.submit(correr, n, f) for n, f in lista]
+        res = []
+        for (n, _), fu in zip(lista, futuros):
+            try:
+                res.append(fu.result(timeout=max(1, limite - (time.time() - t0))))
+            except FutTimeout:
+                ruta_fallo(fuente, n, RuntimeError(f"tardó más de {limite} s en responder"))
+                res.append(("error", None))
+        ex.shutdown(wait=False)
+        return res
+
+    t0 = time.time()
+    resultados = con_limite(activas)
     if not any(st == "ok" for st, _ in resultados):
         for n, f in respaldo:
-            st, r = correr(n, f)
+            t0 = time.time()
+            st, r = con_limite([(n, f)])[0]
             resultados.append((st, r))
             if st == "ok":
                 print(f"  {fuente}: rutas principales caídas, usando respaldo «{n}»", flush=True)
@@ -2373,6 +2395,11 @@ def x_nitter(rango=None):
     """X sin clave: búsqueda vía RSS de Nitter. Las consultas se reparten en paralelo entre las instancias sanas
     y cada una salta a otra instancia si la suya falla. Histórico: pagina hacia atrás hasta `desde`.
     Si ninguna instancia responde, queda inactiva (no es una falla del monitor) y se vuelve a probar cada 6 h."""
+    if not _NITTER_SIN_INSTANCIAS["hasta"]:  # tras reiniciar: lo anotado en la base
+        with _db_lock, db() as con:
+            con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+            r = con.execute("SELECT valor FROM marcas WHERE clave = 'nitter_sin_instancias'").fetchone()
+        _NITTER_SIN_INSTANCIAS["hasta"] = float(r[0]) if r else 1
     if time.time() < _NITTER_SIN_INSTANCIAS["hasta"] or not _instancias_nitter():
         raise RutaInactiva(NITTER_INACTIVO)
     cfg = CONFIG.get("nitter", {})
@@ -2473,6 +2500,7 @@ def x_nitter(rango=None):
                 errores.append(e)
     if consultas and len(errores) == len(consultas):
         _NITTER_SIN_INSTANCIAS["hasta"] = time.time() + 6 * 3600
+        _guardar_marca("nitter_sin_instancias", str(_NITTER_SIN_INSTANCIAS["hasta"]))
         raise RutaInactiva(NITTER_INACTIVO)
     if errores:
         print(f"  nitter: {len(errores)} de {len(consultas)} consultas fallaron en todas las instancias", flush=True)

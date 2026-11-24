@@ -777,6 +777,7 @@ function motivoStd(m){ // mensaje técnico → [tipo, detalle corto en lenguaje 
   if(/falta instalar/i.test(m))return['inactivo','falta instalar un componente'];
   if(/sin proveedor/i.test(m))return['inactivo','sin proveedor disponible'];
   if(/en pausa/i.test(m))return['pausa',hora?'vuelve a las '+hora:'reintenta sola'];
+  if(/tardó más de (\d+)/i.test(m))return['fallas','no respondió a tiempo (más de '+m.match(/tardó más de (\d+)/i)[1]+' s)'];
   if(/404|no encontrad/i.test(m))return['fallas','página no encontrada'];
   if(/timed? ?out|tiempo|fetch failed|no respond|URLError|unreachable|conexi/i.test(m))return['fallas','no responde'];
   if(/\b5\d\d\b|servidor/i.test(m))return['fallas','error del servicio'];
