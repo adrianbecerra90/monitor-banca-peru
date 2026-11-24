@@ -1890,9 +1890,10 @@ def x_respuestas_oficiales():
 
 
 def fuente_x(rango=None):
+    # Nitter es la primera opción; RSSHub (cuenta secundaria de X) solo si Nitter falla o no trae nada
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
-                                ("RSSHub (propio)", x_rsshub, "activo"),
                                 ("RapidAPI (Twttr API · The Old Bird)", x_rapid, "activo"),
+                                ("RSSHub (propio)", x_rsshub, "respaldo"),
                                 ("twitterapi.io (respaldo de pago)", x_twitterapi, "respaldo"),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
 
@@ -2514,6 +2515,8 @@ def x_nitter(rango=None):
         raise RutaInactiva(_nitter_inactivo())
     if errores:
         print(f"  nitter: {len(errores)} de {len(consultas)} consultas fallaron en todas las instancias", flush=True)
+    if consultas and not out and not rango:  # instancias que responden vacío: que entre el respaldo
+        raise RuntimeError(f"Las instancias respondieron sin tuits en {len(consultas)} consultas")
     if not rango and time.time() - _X_RESP["ultima"] >= CONFIG.get("nitter", {}).get("respuestas_cada_min", 10) * 60:
         _X_RESP["ultima"] = time.time()
         try:
