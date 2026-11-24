@@ -1956,7 +1956,7 @@ def _rsshub_buscar(base, q, oficiales):
             cuerpo = resp.read(5 * 1024 * 1024)
         raiz = ET.fromstring(cuerpo)
     except urllib.error.HTTPError as e:
-        texto = e.read(400).decode("utf-8", "ignore").lower()
+        texto = e.read(20000).decode("utf-8", "ignore").lower()  # el motivo va a mitad de la página de error
         if "route is empty" in texto:  # RSSHub responde 503 cuando la búsqueda no tiene tuits: no es una falla
             return []
         if e.code == 429 or "rate limit" in texto or "too many" in texto or "429" in texto:
