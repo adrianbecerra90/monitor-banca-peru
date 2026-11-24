@@ -3476,6 +3476,35 @@ def retirar_indisponibles(usuario):
     return cands
 
 
+def dar_mantenimiento(usuario):
+    """Botón «Dar mantenimiento»: (1) anota qué funciona ahora; (2) reactiva los servicios cuya renovación ya llegó;
+    (3) actualiza el consumo real informado por los proveedores que lo dan (Apify) para repartir bien lo que queda;
+    (4) retira lo que lleva más de DIAS_RETIRO días seguidos sin funcionar. Devuelve un resumen de lo hecho."""
+    hechos = []
+    antes = list(AGOTADOS)
+    reactivados = [p for p in antes if agotado(p) is None]  # agotado() reactiva solo al llegar la fecha
+    registrar_disponibilidad()
+    if reactivados:
+        hechos.append("Reactivados por renovación: " + ", ".join(reactivados))
+    if os.environ.get("APIFY_TOKEN") and not agotado("Apify"):
+        try:
+            usado, limite = apify_consumo()
+            tope = min(CONFIG.get("apify", {}).get("presupuesto_usd_mes", 4.5), limite or 1e9)
+            ESTADO.setdefault("apify", {}).update(usado=round(usado, 3), tope=tope, limite_plan=limite)
+            hechos.append(f"Apify: consumo actualizado (US${usado:.2f} de US${tope:.2f})")
+        except Exception as e:
+            hechos.append(f"Apify: no se pudo leer el consumo ({motivo_corto(str(e))})")
+    ritmo = ritmo_proveedores()
+    adelantados = [r["proveedor"] for r in ritmo if r["estado"].startswith("adelantado")]
+    hechos.append("Reparto de créditos recalculado para " + str(len(ritmo)) + " servicios" +
+                  (f"; van adelantados y se frenarán solos: {', '.join(adelantados)}" if adelantados else "; todos al ritmo o con holgura"))
+    retirados = retirar_indisponibles(usuario)
+    hechos.append(f"Retirados por no funcionar hace más de {DIAS_RETIRO} días: " +
+                  (", ".join(c["nombre"] for c in retirados) if retirados else "ninguno"))
+    registrar(usuario, "dio mantenimiento: " + " · ".join(hechos)[:500], "")
+    return {"hechos": hechos, "retirados": retirados, "ritmo": ritmo}
+
+
 def restaurar_retirado(clave, usuario):
     if RETIRADOS.pop(clave, None) is None:
         raise ValueError("No está retirado")
@@ -9924,8 +9953,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True})
             except Exception as e:
                 return self._send({"error": str(e)[:200]}, code=400)
-        if u.path == "/api/mantenimiento/limpiar":  # administradores: retira lo que no funciona hace más de 40 días
-            return self._send({"ok": True, "retirados": retirar_indisponibles(self.yo["usuario"])})
+        if u.path == "/api/mantenimiento/dar":  # administradores: botón «Dar mantenimiento»
+            return self._send({"ok": True, **dar_mantenimiento(self.yo["usuario"])})
         if u.path == "/api/mantenimiento/restaurar":
             try:
                 restaurar_retirado(qs.get("clave", [""])[0][:300], self.yo["usuario"])
