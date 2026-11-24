@@ -2162,9 +2162,16 @@ def _nitter_get(ruta, inicio=0):
 _X_ULTIMO = {}  # consulta -> fecha del tuit más nuevo visto en la pasada anterior
 
 
+_NITTER_SIN_INSTANCIAS = {"hasta": 0}
+NITTER_INACTIVO = "Sin instancias públicas de Nitter que sirvan búsquedas (el proyecto cerró); X sigue por RSSHub"
+
+
 def x_nitter(rango=None):
     """X sin clave: búsqueda vía RSS de Nitter. Las consultas se reparten en paralelo entre las instancias sanas
-    y cada una salta a otra instancia si la suya falla. Histórico: pagina hacia atrás hasta `desde`."""
+    y cada una salta a otra instancia si la suya falla. Histórico: pagina hacia atrás hasta `desde`.
+    Si ninguna instancia responde, queda inactiva (no es una falla del monitor) y se vuelve a probar cada 6 h."""
+    if time.time() < _NITTER_SIN_INSTANCIAS["hasta"]:
+        raise RutaInactiva(NITTER_INACTIVO)
     cfg = CONFIG.get("nitter", {})
     handles = cuentas("x")
     oficiales = {h.lower(): b for h, b in handles.items()}
@@ -2261,8 +2268,9 @@ def x_nitter(rango=None):
                 out += f.result()
             except Exception as e:
                 errores.append(e)
-    if len(errores) == len(consultas):
-        raise RuntimeError(f"Nitter no disponible ({errores[0]})")
+    if consultas and len(errores) == len(consultas):
+        _NITTER_SIN_INSTANCIAS["hasta"] = time.time() + 6 * 3600
+        raise RutaInactiva(NITTER_INACTIVO)
     if errores:
         print(f"  nitter: {len(errores)} de {len(consultas)} consultas fallaron en todas las instancias", flush=True)
     if not rango and time.time() - _X_RESP["ultima"] >= CONFIG.get("nitter", {}).get("respuestas_cada_min", 10) * 60:
