@@ -1506,7 +1506,22 @@ def apify_consumo():
     return d.get("current", {}).get("monthlyUsageUsd", 0) or 0, d.get("limits", {}).get("maxMonthlyUsageUsd", 0) or 0
 
 
+APIFY_SIN_TOKEN = "Token de Apify no válido; la cuenta ya no existe o el token se revocó: pega uno nuevo en ⚙ Configuración"
+
+
 def apify(nombre, rango=None, **valores):
+    try:
+        return _apify(nombre, rango, **valores)
+    except RutaInactiva:
+        raise
+    except Exception as e:
+        txt = str(e) + str(getattr(e, "code", ""))
+        if "user-or-token-not-found" in txt or "401" in txt:
+            raise RutaInactiva(APIFY_SIN_TOKEN) from None
+        raise
+
+
+def _apify(nombre, rango=None, **valores):
     spec = CONFIG["apify"][nombre]
     cfg = CONFIG["apify"]
     usado, limite = apify_consumo()
