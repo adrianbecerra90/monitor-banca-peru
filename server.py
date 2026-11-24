@@ -1074,25 +1074,49 @@ class RutaInactiva(RuntimeError):
     """Una ruta que no se usa por un motivo esperado (pausa, sin clave…), con el motivo para mostrarlo en el panel."""
 
 
+def _pausa_trends_429(ruta):
+    """Google limitó las consultas: pausa creciente (30 min, 1 h, 2 h, máx. 4 h), en gris; no es una falla."""
+    k = _trends_op[f"429:{ruta}"] = _trends_op.get(f"429:{ruta}", 0) + 1
+    espera = min(30 * 2 ** (k - 1), 240)
+    ruta_inactiva("Google Trends", ruta, f"límite de consultas de Google: en pausa hasta las "
+                  f"{(ahora() + timedelta(minutes=espera)).astimezone(LIMA):%H:%M}")
+    return espera
+
+
+def motivo_corto(m):
+    """Motivo técnico → texto corto estándar (mismo vocabulario que el panel)."""
+    m = m or ""
+    f = re.search(r"hasta (?:el )?(\d{1,2}/\d{2})", m)
+    h = re.search(r"hasta las (\d{1,2}:\d{2})", m)
+    if re.search(r"cupo de hoy", m, re.I):
+        return "cupo del día usado (sigue mañana)"
+    if re.search(r"sin créditos|presupuesto|apagado hasta|cuota (mensual )?agotada|tope mensual|sin saldo", m, re.I):
+        return "sin créditos" + (f" hasta el {f.group(1)}" if f else " este mes")
+    if re.search(r"429|límite de consultas|rate.?limit|too many|limitó", m, re.I):
+        return "límite de consultas" + (f" (vuelve a las {h.group(1)})" if h else "")
+    if re.search(r"cerró|sin instancias", m, re.I):
+        return "servicio cerrado"
+    if re.search(r"no está suscrita", m, re.I):
+        return "sin suscripción"
+    if re.search(r"token|sesión|no válid", m, re.I):
+        return "clave o sesión vencida"
+    return re.sub(r"^HTTP(?: Error)? \d{3}:?\s*", "", m).split(";")[0].split(" · ")[0][:50]
+
+
 def _resumen_inactivas(msgs):
-    """Un solo mensaje corto: agrupa los servicios apagados por fecha y nombra aparte lo demás."""
-    por_fecha, otros = {}, []
+    """Un solo mensaje corto y estándar: «En pausa · Apify sin créditos hasta el 10/12; RapidAPI cupo del día…»."""
+    partes, vistos = [], set()
     for n, m in msgs.items():
         prov = next((p for p in AGOTADOS if n.startswith(p)), None) if "AGOTADOS" in globals() else None
         hasta = agotado(prov) if prov else None
         if hasta:
-            por_fecha.setdefault(hasta, [])
-            if prov not in por_fecha[hasta]:
-                por_fecha[hasta].append(prov)
+            if prov not in vistos:
+                vistos.add(prov)
+                partes.append(f"{prov} sin créditos hasta el {hasta:%d/%m}")
         elif m and "falta clave" not in m:
-            otros.append(f"{n} ({m.split(';')[0].split(' · ')[0][:50]})")
-    def lista(xs):
-        return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " y " + xs[-1]
-    partes = [f"{lista(ps)} hasta el {f:%d/%m}" for f, ps in sorted(por_fecha.items())]
-    texto = ("Sin créditos: " + "; ".join(partes) + ". Se pueden encender en ⚙ Configuración") if partes else ""
-    if otros:
-        texto += (" · " if texto else "Sin proveedores disponibles: ") + ", ".join(otros)
-    return texto
+            nombre = n.split(" (")[0]
+            partes.append(f"{nombre} {motivo_corto(m)}")
+    return ("En pausa · " + "; ".join(partes)) if partes else ""
 
 
 def ejecutar_rutas(fuente, rutas, rango=None):
@@ -1140,7 +1164,7 @@ def ejecutar_rutas(fuente, rutas, rango=None):
         msgs = {n: SALUD.get(fuente, {}).get(n, {}).get("msg", "") for n, _, _ in rutas}
         fallidas = {n for (n, _, _), (st, _) in zip(rutas, resultados) if st == "error"}
         inactivas = _resumen_inactivas({n: m for n, m in msgs.items() if n not in fallidas})
-        fallos = "; ".join(f"{n}: {msgs[n].split(' · ')[-1]}" for n in sorted(fallidas))
+        fallos = "; ".join(f"{n.split(' (')[0]}: {motivo_corto(msgs[n])}" for n in sorted(fallidas))
         raise RuntimeError("Sin datos en esta pasada. " + " · ".join(x for x in (inactivas, f"Falló {fallos}" if fallos else "") if x))
     vistos, out = set(), []
     for st, r in resultados:
@@ -8159,12 +8183,16 @@ def trabajador_trends():
                                         [(grupo, k, t, v[i]) for t, v in serie for i, k in enumerate(terminos[:5])])
                     ok += 1
                 except Exception as e:
-                    ruta_fallo("Google Trends", "Interés por hora", e)
                     _trends_opener(nuevo=True)  # renueva cookies tras un 429
-                    proximo_serie = time.time() + 15 * 60  # reintento antes que el ciclo normal
+                    if "429" in str(e) or getattr(e, "code", None) == 429:
+                        proximo_serie = time.time() + _pausa_trends_429("Interés por hora") * 60
+                    else:
+                        ruta_fallo("Google Trends", "Interés por hora", e)
+                        proximo_serie = time.time() + 15 * 60  # reintento antes que el ciclo normal
                     break
                 time.sleep(20)  # espacio entre consultas para no disparar el límite de Google
             if ok:
+                _trends_op["429:Interés por hora"] = 0
                 ruta_ok("Google Trends", "Interés por hora", f"{ok} grupos actualizados")
                 ESTADO["trends"]["actualizado"] = iso(ahora())
         ESTADO["trends"]["ultima"] = iso(ahora())
@@ -8207,20 +8235,14 @@ def trabajador_trends():
                 except Exception as e:
                     _trends_opener(nuevo=True)
                     if "429" in str(e) or getattr(e, "code", None) == 429:
-                        # Google limita: pausa creciente (30 min, 1 h, 2 h, máx. 4 h); no es una falla del monitor
-                        k = _trends_op["rt_429"] = _trends_op.get("rt_429", 0) + 1
-                        espera = min(30 * 2 ** (k - 1), 240)
-                        _trends_op["proximo_rt"] = time.time() + espera * 60
-                        ruta_inactiva("Google Trends", "Alerta rápida (8 min)",
-                                      f"Google limitó las consultas (429): en pausa hasta las "
-                                      f"{(ahora() + timedelta(minutes=espera)).astimezone(LIMA):%H:%M}; se reintenta sola")
+                        _trends_op["proximo_rt"] = time.time() + _pausa_trends_429("Alerta rápida (8 min)") * 60
                     else:
                         ruta_fallo("Google Trends", "Alerta rápida (8 min)", e)
                         _trends_op["proximo_rt"] = time.time() + 15 * 60
                     break
                 time.sleep(15)
             if n_rt:
-                _trends_op["rt_429"] = 0
+                _trends_op["429:Alerta rápida (8 min)"] = 0
                 ruta_ok("Google Trends", "Alerta rápida (8 min)", f"{n_rt} grupos de fallas al minuto")
         for _ in range(min(cfg.get("rss_minutos", 15), cfg.get("alerta_minutos", 10)) * 6):  # espera, atenta a una pausa
             if en_pausa("Google Trends"):

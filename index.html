@@ -761,12 +761,39 @@ function ultimaAct(f){ // "Última actualización: 15:42 (hace 3 min)" en hora d
   if(!f)return '<span class="sub">Sin actualizar todavía</span>';
   const t=new Date(f).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
   return `<span class="sub">Última actualización: <b>${esc(t)}</b> (hace ${hace(f)})</span>`}
+// Estados estándar de rutas, fuentes y proveedores (mismo vocabulario en todo el panel):
+//   🟢 Activo · 🟡 Con fallas (reintenta solo) · ⏸ En pausa (límite o cupo del proveedor; vuelve sola) · ⚪ Inactivo (sin clave, cerrado…)
+const ESTADOS={activo:['var(--good)','Activo'],fallas:['var(--warn)','Con fallas'],pausa:['var(--acc)','En pausa'],inactivo:['var(--line)','Inactivo'],espera:['var(--warn)','Consultando…']};
+function horaDe(ts){return new Date(ts).toLocaleTimeString('es-PE',{timeZone:'America/Lima',hour:'2-digit',minute:'2-digit'})}
+function motivoStd(m){ // mensaje técnico → [tipo, detalle corto en lenguaje simple]
+  m=String(m||'');const fecha=(m.match(/hasta (?:el )?(\d{1,2}\/\d{2})/)||[])[1],hora=(m.match(/hasta las (\d{1,2}:\d{2})/)||[])[1];
+  if(/cupo de hoy/i.test(m))return['pausa','cupo del día usado · sigue mañana'];
+  if(/sin créditos|presupuesto|apagado hasta|cuota (mensual )?agotada|tope mensual|sin saldo/i.test(m))return['pausa','sin créditos'+(fecha?' hasta el '+fecha:' este mes')];
+  if(/429|límite de consultas|rate.?limit|too many|limitó/i.test(m))return['pausa','límite de consultas del proveedor'+(hora?' · vuelve a las '+hora:' · reintenta sola')];
+  if(/falta clave|sin clave|no aplica/i.test(m))return['inactivo','sin clave configurada'];
+  if(/no está suscrita|sin suscripción/i.test(m))return['inactivo','sin suscripción al servicio'];
+  if(/cerró|sin instancias|no sirvan/i.test(m))return['inactivo','servicio cerrado'];
+  if(/token|sesión|no válid|401|403/i.test(m))return['inactivo','clave o sesión vencida'];
+  if(/falta instalar/i.test(m))return['inactivo','falta instalar un componente'];
+  if(/sin proveedor/i.test(m))return['inactivo','sin proveedor disponible'];
+  if(/en pausa/i.test(m))return['pausa',hora?'vuelve a las '+hora:'reintenta sola'];
+  if(/404|no encontrad/i.test(m))return['fallas','página no encontrada'];
+  if(/timed? ?out|tiempo|fetch failed|no respond|URLError|unreachable|conexi/i.test(m))return['fallas','no responde'];
+  if(/\b5\d\d\b|servidor/i.test(m))return['fallas','error del servicio'];
+  return['fallas',m.replace(/^HTTP(?: Error)? \d{3}:?\s*/i,'').split(' · ').pop().split('(')[0].trim().slice(0,50)||'error']}
+function estadoStd(r){ // r: {ok, msg, pausa_hasta, inactiva}
+  if(!r)return['inactivo','sin datos'];
+  if(r.pausa_hasta*1000>Date.now())return['pausa','tras varios fallos · reintenta a las '+horaDe(r.pausa_hasta*1000)];
+  if(r.ok===true)return['activo',/clasificando/i.test(r.msg||'')?r.msg:(r.msg||'')];
+  if(!r.msg||r.msg==='Pendiente')return['espera','iniciando'];
+  if(/clasificando|consultando|reanudando/i.test(r.msg))return['espera',r.msg];
+  const[t,d]=motivoStd(r.msg);return[r.ok===false&&t==='inactivo'?'inactivo':t,d]}
+function chipStd(tipo,det,nombre){const[c,et]=ESTADOS[tipo];
+  return `<span class="d" style="background:${c}"></span>${nombre?esc(nombre)+' · ':''}<b style="font-weight:600">${et}</b>${det?' · '+esc(det):''}`}
 function rutasHTML(rs,pref=''){ // estado de cada ruta alternativa (alta disponibilidad)
   if(!rs||!Object.keys(rs).length)return '';
-  return '<div class="rutas">'+Object.entries(rs).map(([n,r])=>{const pausa=r.pausa_hasta*1000>Date.now();
-    // sin resultado todavía: "Pendiente" = iniciando; si el servidor explica el motivo (pausa, sin clave, tope…), se muestra
-    const sinRes=!r.msg||r.msg==='Pendiente'?'iniciando…':/clasificando|consultando|reanudando/i.test(r.msg)?r.msg:'inactiva · '+r.msg;
-    return `<div title="${esc(r.msg||'')}"><span class="d" style="background:${pausa?'var(--neg)':r.ok===true?'var(--good)':r.ok===false?'var(--warn)':/clasificando|iniciando/i.test(sinRes)?'var(--warn)':'var(--line)'}"></span>${esc(pref+n.replace(/^https?:\/\//,''))} · ${esc(pausa?'en pausa':r.ok===true?(/clasificando/i.test(r.msg||'')?r.msg:'OK'):r.ok===false?'falló · '+(r.msg||'').split(' · ').pop():sinRes)}</div>`}).join('')+'</div>'}
+  return '<div class="rutas">'+Object.entries(rs).map(([n,r])=>{const[t,d]=estadoStd(r);
+    return `<div title="${esc(r.msg||'')}">${chipStd(t,d,pref+n.replace(/^https?:\/\//,''))}</div>`}).join('')+'</div>'}
 // Ficha corta en Monitoreo: un semáforo por fuente (verde al día · ámbar consultando o atrasada · rojo falló · gris detenida
 // por un motivo conocido: sin créditos, sin proveedor, en pausa). El detalle de rutas y proveedores está en Sistema
 function pintarFuentesMini(es,fs){
@@ -781,7 +808,7 @@ function pintarFuentesMini(es,fs){
     let c,t;
     if(pausada(n)){c='var(--warn)';t='⏸ en pausa'}
     else if(f.ejecutando){c='var(--warn)';t='consultando…'}
-    else if(f.ok===false){c='var(--neg)';t='falló · '+(f.msg||'').split(' · ').pop().slice(0,60)}
+    else if(f.ok===false){const[k,d]=motivoStd(f.msg);c=k==='fallas'?'var(--neg)':ESTADOS[k][0];t=(k==='fallas'?'Caída':ESTADOS[k][1])+' · '+d}
     else if(f.ok===null||f.ok===undefined){const m=motivo(n,f);c='var(--line)';t=m||'aún sin consultar'}
     else if(edad>3*int+600e3){c='var(--warn)';t='atrasada'}
     else{c='var(--good)';t='al día';alDia++}
@@ -799,7 +826,7 @@ async function cargarEstado(){
     const hoy=new Date(),min=new Date(hoy-89*864e5).toISOString().slice(0,10);$('#h-hasta').value=hoy.toISOString().slice(0,10);$('#h-desde').value=new Date(hoy-30*864e5).toISOString().slice(0,10);$('#h-desde').min=min;$('#h-hasta').min=min;$('#h-hasta').max=$('#h-hasta').value}
   const fs=Object.entries(es.fuentes);const ult=fs.map(([,f])=>f.ultima).filter(Boolean).sort().pop();
   $('#estado').textContent=`${fs.filter(([,f])=>f.ok).length}/${fs.length} fuentes activas · `+(ult?'último dato hace '+hace(ult):'primer escaneo en curso…')+` · ${fmt(es.base.total)} publicaciones guardadas`;
-  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br>${ultimaAct(f.ultima)}<br><span class="sub">${esc(f.ejecutando?'Consultando…':(es.rutas[n]&&Object.keys(es.rutas[n]).length>1&&/^Sin datos en esta pasada/.test(f.msg||'')?'Sin datos en esta pasada: ninguna ruta disponible (detalle abajo)':f.msg))}</span>${rutasHTML(es.rutas[n])}${n==='X'?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
+  $('#fuentes').innerHTML=fs.map(([n,f])=>`<div title="${esc(f.desc)}"><span class="d" style="background:${f.ejecutando?'var(--warn)':f.ok===true?'var(--good)':f.ok===false?'var(--neg)':'var(--line)'}"></span><b>${esc(n)}</b> <span class="sub">cada ${es.intervalos[n]||30} min</span>${f.ok!==null&&!pausada(n)?`<button data-f="${esc(n)}" title="Consultar ahora">↻</button>`:''}${es.pausa.todo?'':`<button data-p="${esc(n)}" title="${pausada(n)?'Reanudar':'Pausar'} esta fuente">${pausada(n)?'▶':'⏸'}</button>`}<br>${ultimaAct(f.ultima)}<br><span class="sub">${esc(f.ejecutando?'Consultando…':(es.rutas[n]&&Object.keys(es.rutas[n]).length>1&&/^Sin datos en esta pasada/.test(f.msg||'')?'Sin datos en esta pasada: ninguna ruta disponible (detalle abajo)':f.ok===true||/^En pausa · /.test(f.msg||'')?f.msg:(f.msg?ESTADOS[motivoStd(f.msg)[0]][1]+' · '+motivoStd(f.msg)[1]:'')))}</span>${rutasHTML(es.rutas[n])}${n==='X'&&!/cerró|sin instancias/i.test(es.rutas.X?.['Nitter (varias instancias)']?.msg||'')?rutasHTML(es.rutas['X·Nitter'],'instancia '):''}</div>`).join('');
   $('#fuentes').querySelectorAll('button[data-f]').forEach(b=>b.onclick=async()=>{await post('/api/refresh?fuente='+encodeURIComponent(b.dataset.f));setTimeout(cargarEstado,800)});
   const ia=es.ia_estado||{};
   // tarjeta propia de la clasificación con IA: estado, cola pendiente y cada proveedor (activo-activo)
@@ -814,14 +841,14 @@ async function cargarEstado(){
   // proveedores de pago: misma ficha para todos
   $('#fuentes').insertAdjacentHTML('beforeend','<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:8px"><b style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Proveedores de pago</b></div>');
   for(const p of es.proveedores||[]){
-    const col=!p.clave||p.apagado_hasta?'var(--line)':p.pausa?'var(--warn)':Object.values(p.rutas).some(r=>r.ok===false)?'var(--neg)':'var(--good)';
+    const col=!p.clave?'var(--line)':p.apagado_hasta||p.pausa?'var(--acc)':Object.values(p.rutas).some(r=>estadoStd(r)[0]==='fallas')?'var(--warn)':'var(--good)';
     const apagado=p.apagado_hasta?new Date(p.apagado_hasta+'T12:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'long'}):'';
-    const estado=!p.clave?'Sin clave configurada':apagado?`⏻ Apagado hasta el ${apagado} (renovación de créditos); no se consulta`:p.pausa?'⏸ En pausa':'Activo';
+    const estado=!p.clave?'Inactivo · sin clave configurada':apagado?`En pausa · sin créditos hasta el ${apagado} (se reanuda solo)`:p.pausa?'En pausa · pausado a mano':'Activo';
     const saldoBajo=p.saldo&&parseInt(String(p.saldo).replace(/\D/g,''))<50;
     $('#fuentes').insertAdjacentHTML('beforeend',`<div><span class="d" style="background:${col}"></span><b>${esc(p.nombre)}</b> <span class="sub">(pago por uso)</span>${p.clave&&p.apagado_hasta?(YO?.rol==='admin'?`<button data-enc-p="${esc(p.nombre)}" title="Encender ya (no esperar a la renovación)">⏻ Encender</button>`:''):p.clave&&!es.pausa.todo?`<button data-p="${esc(p.nombre)}" title="${p.pausa?'Reanudar':'Pausar'}">${p.pausa?'▶':'⏸'}</button>`:''}
       <br><span class="sub">${esc(estado)} · ${esc(p.redes)}</span>
       ${p.clave&&(p.saldo||p.uso)?`<br><span class="sub" style="${saldoBajo?'color:var(--neg);font-weight:600':''}">${p.saldo?'Saldo: '+esc(p.saldo)+(saldoBajo?' ⚠ casi agotado':'')+' · ':''}${p.uso?'Consumo: '+esc(p.uso)+(apagado?' (contador de este servidor; el proveedor informó el cupo del mes agotado)':''):''}</span>`:''}
-      ${!p.clave?'':apagado?`<div class="rutas">${Object.keys(p.rutas||{}).map(n=>`<div><span class="d" style="background:var(--line)"></span>${esc(n)} · ⏻ apagado hasta el ${esc(apagado)} (sin créditos; se reanuda solo)</div>`).join('')}</div>`:rutasHTML(p.rutas)}</div>`)}
+      ${!p.clave?'':apagado?`<div class="rutas">${Object.keys(p.rutas||{}).map(n=>`<div><span class="d" style="background:var(--line)"></span>${esc(n)} · <b style="font-weight:600">En pausa</b> · sin créditos hasta el ${esc(apagado)}</div>`).join('')}</div>`:rutasHTML(p.rutas)}</div>`)}
   $('#fuentes').querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>pausa(b.dataset.p,!pausada(b.dataset.p)));
   $('#fuentes').querySelectorAll('button[data-enc-p]').forEach(b=>b.onclick=async()=>{
     b.disabled=true;const r=await post('/api/encender?'+new URLSearchParams({tipo:'proveedor',nombre:b.dataset.encP})).then(r=>r.json());
