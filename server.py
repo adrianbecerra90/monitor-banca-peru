@@ -1761,8 +1761,100 @@ def x_respuestas_oficiales():
 
 def fuente_x(rango=None):
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
+                                ("RSSHub (propio)", x_rsshub, "activo"),
                                 ("RapidAPI (Twttr API · The Old Bird)", x_rapid, "activo"),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
+
+
+# ---------------- X por RSSHub propio (contenedor junto al monitor, con la sesión de una cuenta secundaria de X) -----
+def _consultas_x_rsshub():
+    """Las búsquedas de Nitter agrupadas en pocas consultas largas (cada consulta usa la sesión de la cuenta: menos
+    consultas, menos riesgo de que X la limite)."""
+    handles = cuentas("x")
+    partes = []
+    for banco, c in BANCOS.items():
+        p_ = [f'"{t}"' for t in c["buscar"]]
+        h = next((h for h, b in handles.items() if b == banco), None)
+        if h:
+            p_ += [f"to:{h}", f"@{h}"]
+        partes.append(" OR ".join(p_))
+    grupos, g = [], []
+    for p_ in partes:
+        if g and len(" OR ".join(g + [p_])) > 420:
+            grupos.append(g)
+            g = []
+        g.append(p_)
+    if g:
+        grupos.append(g)
+    consultas = [f"({' OR '.join(x)}) lang:es" for x in grupos]
+    buscados = {normalizar(t) for c in BANCOS.values() for t in c["buscar"]}
+    amb = list(dict.fromkeys(a for c in BANCOS.values() for a in c.get("ambiguos", [])
+                             if normalizar(a) not in buscados and "." not in a))
+    ctx = CONFIG.get("nitter", {}).get("contexto_busqueda", ["peru", "perú", "lima", "soles", "yape", "plin"])
+    if amb and ctx:
+        consultas.append("(" + " OR ".join(f'"{a}"' for a in amb) + ") (" + " OR ".join(ctx) + ") lang:es")
+    return consultas
+
+
+def x_rsshub(rango=None):
+    """X vía un RSSHub propio (ruta /twitter/keyword). Cada pasada lee todas las consultas agrupadas, como mínimo cada
+    'intervalo_min'. Si RSSHub no tiene la sesión de X o X la rechaza, queda inactiva y entran las demás rutas."""
+    base = os.environ.get("RSSHUB_URL", "").rstrip("/")
+    if not base or rango:
+        return None if not base else []
+    cfg = CONFIG.get("rsshub", {})
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        r = con.execute("SELECT valor FROM marcas WHERE clave = 'x_rsshub_ultima'").fetchone()
+    if r and ahora() - datetime.fromisoformat(r[0]) < timedelta(minutes=cfg.get("intervalo_min", 10)):
+        return []
+    _guardar_marca("x_rsshub_ultima", iso(ahora()))
+    oficiales = {h.lower(): b for h, b in cuentas("x").items()}
+    out, errores = [], []
+    consultas = _consultas_x_rsshub()
+    for q in consultas:
+        url = f"{base}/twitter/keyword/{urllib.parse.quote(q, safe='')}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                cuerpo = resp.read(5 * 1024 * 1024)
+            raiz = ET.fromstring(cuerpo)
+        except urllib.error.HTTPError as e:
+            texto = e.read(300).decode("utf-8", "ignore").lower()
+            if "token" in texto or "cookie" in texto or "auth" in texto or e.code in (401, 403):
+                raise RutaInactiva("RSSHub sin una sesión válida de X (falta o venció TWITTER_AUTH_TOKEN)")
+            errores.append(f"HTTP {e.code}")
+            continue
+        except Exception as e:
+            errores.append(type(e).__name__)
+            continue
+        for i in raiz.iter("item"):
+            link = (i.findtext("link") or "").split("#")[0].split("?")[0]
+            m_ = re.search(r"https?://(?:x|twitter)\.com/(\w+)/status/(\d+)", link)
+            if not m_:
+                continue
+            usuario, tid = m_.group(1), m_.group(2)
+            desc = i.findtext("description") or i.findtext("title") or ""
+            texto = re.sub(r"\n\s*\n+", "\n", limpiar_html(re.split(r"<blockquote|<hr", desc)[0] or desc)).strip()
+            fecha = parse_fecha(i.findtext("pubDate"))
+            if not texto or not fecha:
+                continue
+            it = {"id": "x:" + tid, "fuente": "X", "autor": "@" + usuario, "texto": texto, "fecha": fecha,
+                  "url": f"https://x.com/{usuario}/status/{tid}"}
+            a = usuario.lower()
+            if a in oficiales:
+                it.update(tipo="oficial", bancos_fijos=[oficiales[a]], peru=True, cuenta=oficiales[a])
+            else:
+                destino = [b for h, b in oficiales.items() if "@" + h in normalizar(texto)]
+                if destino:
+                    it.update(tipo="comentario", bancos_fijos=destino, peru=True, cuenta=destino[0])
+            out.append(it)
+        time.sleep(cfg.get("pausa_seg", 5))
+    if errores and len(errores) == len(consultas):
+        raise RuntimeError(f"RSSHub no respondió ({errores[0]})")
+    out = list({o["id"]: o for o in out}.values())  # un tuit puede salir en dos consultas
+    print(f"  X · RSSHub: {len(out)} tuits en {len(consultas)} consultas", flush=True)
+    return out
 
 
 # ---------------- X por RapidAPI: una búsqueda combinada por llamada, a ritmo parejo para no pasarse del plan -------
