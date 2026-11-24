@@ -1147,7 +1147,9 @@ def motivo_corto(m):
         return "sin créditos" + (f" hasta el {f.group(1)}" if f else " este mes")
     if re.search(r"429|límite de consultas|rate.?limit|too many|limitó", m, re.I):
         return "límite de consultas" + (f" (vuelve a las {h.group(1)})" if h else "")
-    if re.search(r"cerró|sin instancias", m, re.I):
+    if re.search(r"ninguna instancia respondió", m, re.I):
+        return "ninguna instancia respondió" + (f" (reintenta a las {h.group(1)})" if h else "")
+    if re.search(r"cerró", m, re.I):
         return "servicio cerrado"
     if re.search(r"no está suscrita", m, re.I):
         return "sin suscripción"
@@ -2388,20 +2390,28 @@ _X_ULTIMO = {}  # consulta -> fecha del tuit más nuevo visto en la pasada anter
 
 
 _NITTER_SIN_INSTANCIAS = {"hasta": 0}
-NITTER_INACTIVO = "Sin instancias públicas de Nitter que sirvan búsquedas (el proyecto cerró); X sigue por RSSHub"
+NITTER_REINTENTO_MIN = 30
+
+
+def _nitter_inactivo():
+    """Las instancias públicas son intermitentes: si ninguna respondió, se espera y se reintenta (no es un cierre)."""
+    return (f"Ninguna instancia respondió en esta pasada: en pausa hasta las "
+            f"{datetime.fromtimestamp(_NITTER_SIN_INSTANCIAS['hasta'], LIMA):%H:%M}; X sigue por RSSHub")
 
 
 def x_nitter(rango=None):
     """X sin clave: búsqueda vía RSS de Nitter. Las consultas se reparten en paralelo entre las instancias sanas
     y cada una salta a otra instancia si la suya falla. Histórico: pagina hacia atrás hasta `desde`.
-    Si ninguna instancia responde, queda inactiva (no es una falla del monitor) y se vuelve a probar cada 6 h."""
+    Si ninguna instancia responde, queda en pausa (las instancias son intermitentes) y se reintenta a los 30 min."""
     if not _NITTER_SIN_INSTANCIAS["hasta"]:  # tras reiniciar: lo anotado en la base
         with _db_lock, db() as con:
             con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
             r = con.execute("SELECT valor FROM marcas WHERE clave = 'nitter_sin_instancias'").fetchone()
         _NITTER_SIN_INSTANCIAS["hasta"] = float(r[0]) if r else 1
-    if time.time() < _NITTER_SIN_INSTANCIAS["hasta"] or not _instancias_nitter():
-        raise RutaInactiva(NITTER_INACTIVO)
+    if not _instancias_nitter():
+        raise RutaInactiva("Sin instancias de Nitter configuradas")
+    if time.time() < _NITTER_SIN_INSTANCIAS["hasta"]:
+        raise RutaInactiva(_nitter_inactivo())
     cfg = CONFIG.get("nitter", {})
     handles = cuentas("x")
     oficiales = {h.lower(): b for h, b in handles.items()}
@@ -2499,9 +2509,9 @@ def x_nitter(rango=None):
             except Exception as e:
                 errores.append(e)
     if consultas and len(errores) == len(consultas):
-        _NITTER_SIN_INSTANCIAS["hasta"] = time.time() + 6 * 3600
+        _NITTER_SIN_INSTANCIAS["hasta"] = time.time() + NITTER_REINTENTO_MIN * 60
         _guardar_marca("nitter_sin_instancias", str(_NITTER_SIN_INSTANCIAS["hasta"]))
-        raise RutaInactiva(NITTER_INACTIVO)
+        raise RutaInactiva(_nitter_inactivo())
     if errores:
         print(f"  nitter: {len(errores)} de {len(consultas)} consultas fallaron en todas las instancias", flush=True)
     if not rango and time.time() - _X_RESP["ultima"] >= CONFIG.get("nitter", {}).get("respuestas_cada_min", 10) * 60:
