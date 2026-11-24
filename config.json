@@ -542,6 +542,7 @@
       }
     },
     "presupuesto_usd_mes": 4.75,
+    "max_usd_por_corrida": 0.25,
     "x_via_apify": false,
     "comentarios_max_por_post": 20,
     "dia_renovacion": 10

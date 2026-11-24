@@ -1083,6 +1083,59 @@ def _pausa_trends_429(ruta):
     return espera
 
 
+def fraccion_ciclo(prov):
+    """Parte transcurrida del ciclo de créditos del proveedor (0 a 1): del inicio informado (o un mes antes de la
+    renovación) a la fecha de renovación."""
+    est = ESTADO.get(_CFG_PROV.get(prov, ""), {})
+    try:
+        fin = datetime.fromisoformat(str(est["renovacion"]).replace("Z", "+00:00")) if est.get("renovacion") else None
+    except ValueError:
+        fin = None
+    if fin is None:
+        fin = datetime.combine(fecha_renovacion(prov), datetime.min.time(), LIMA)
+    try:
+        ini = datetime.fromisoformat(str(est["inicio"]).replace("Z", "+00:00")) if est.get("inicio") else None
+    except ValueError:
+        ini = None
+    if ini is None or ini >= fin:
+        ini = fin - timedelta(days=30)
+    return max(0.0, min(1.0, (ahora() - ini) / (fin - ini)))
+
+
+def ritmo_proveedores():
+    """Para cada servicio con límite: usado frente a lo que correspondería a la fecha y proyección al fin del ciclo."""
+    claves = {"Apify": "APIFY_TOKEN", "Scrape.do": "SCRAPEDO_TOKEN", "SerpApi": "SERPAPI_KEY", "twitterapi.io": "TWITTERAPI_IO_KEY"}
+    out = []
+    for prov, ck in _CFG_PROV.items():
+        if not os.environ.get(claves.get(prov, "RAPIDAPI_KEY")) or retirado("proveedor", prov):
+            continue
+        cfg = CONFIG.get(ck, {})
+        if prov == "Apify":
+            est = ESTADO.get("apify", {})
+            usado, tope, unidad = est.get("usado"), est.get("tope") or cfg.get("presupuesto_usd_mes"), "US$"
+        else:
+            usado, tope, unidad = _creditos_mes(prov), cfg.get("max_creditos_mes") or cfg.get("max_llamadas_mes"), "consultas"
+        if not tope or usado is None or (prov in _X_SIN_SUSCRIPCION if "_X_SIN_SUSCRIPCION" in globals() else False):
+            continue
+        frac = fraccion_ciclo(prov)
+        ideal = tope * frac
+        proy = usado / frac if frac >= 0.05 else None
+        hasta = agotado(prov)
+        if hasta:
+            est_txt = f"sin créditos hasta el {hasta:%d/%m}"
+        elif usado > ideal * 1.15 + (0.1 if unidad == "US$" else 2):
+            est_txt = "adelantado · se frena solo hasta volver al ritmo"
+        elif proy is not None and proy < tope * 0.6:
+            est_txt = "holgado · sobra cupo"
+        else:
+            est_txt = "al ritmo"
+        out.append({"proveedor": prov, "unidad": unidad, "usado": round(usado, 2), "tope": tope,
+                    "ideal": round(ideal, 2), "proyeccion": round(proy, 2) if proy is not None else None,
+                    "ciclo_pct": round(frac * 100), "estado": est_txt,
+                    "renovacion": fecha_renovacion(prov).isoformat()})
+    return out
+
+
 def motivo_corto(m):
     """Motivo técnico → texto corto estándar (mismo vocabulario que el panel)."""
     m = m or ""
@@ -1528,9 +1581,11 @@ def apify_consumo():
     req = urllib.request.Request("https://api.apify.com/v2/users/me/limits",
                                  headers={"Authorization": f"Bearer {os.environ['APIFY_TOKEN']}"})
     d = json.load(urllib.request.urlopen(req, timeout=20))["data"]
-    fin = (d.get("monthlyUsageCycle") or {}).get("endAt")
-    if fin:
-        ESTADO.setdefault("apify", {})["renovacion"] = fin
+    ciclo = d.get("monthlyUsageCycle") or {}
+    if ciclo.get("endAt"):
+        ESTADO.setdefault("apify", {})["renovacion"] = ciclo["endAt"]
+    if ciclo.get("startAt"):
+        ESTADO.setdefault("apify", {})["inicio"] = ciclo["startAt"]
     return d.get("current", {}).get("monthlyUsageUsd", 0) or 0, d.get("limits", {}).get("maxMonthlyUsageUsd", 0) or 0
 
 
@@ -1557,6 +1612,12 @@ def _apify(nombre, rango=None, **valores):
     ESTADO.setdefault("apify", {}).update(usado=round(usado, 3), tope=tope, limite_plan=limite)
     if usado >= tope:
         agotar("Apify", f"Presupuesto alcanzado (US${usado:.2f} de US${tope:.2f} este mes)")
+    # ritmo parejo: a la fecha solo se puede gastar la parte del ciclo transcurrida (+10 %), para que dure todo el mes
+    permitido = tope * min(1.0, fraccion_ciclo("Apify") + 0.10)
+    if usado >= permitido:
+        raise RutaInactiva(f"Cupo de hoy usado (se reparte el presupuesto en el mes): US${usado:.2f} de "
+                           f"US${permitido:.2f} permitidos a la fecha; sigue mañana")
+    por_corrida = min(cfg.get("max_usd_por_corrida", 0.25), permitido - usado)
     valores.setdefault("n_posts", cfg.get("posts_por_cuenta_historico" if rango else "posts_por_cuenta", 5))
     valores.setdefault("n_coment", cfg.get("comentarios_por_post", 80))
     valores.setdefault("n_max", 1000 if rango else 150)
@@ -1565,7 +1626,9 @@ def _apify(nombre, rango=None, **valores):
         valores.setdefault("hasta", rango[1])
     entrada = _rellenar(spec["input"], valores)
     actor = spec["actor"].replace("/", "~")
-    url = f"https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items?timeout=290&clean=true"
+    # tope de gasto por corrida: Apify corta el actor al llegar (una pasada de Instagram llegó a costar ~US$4)
+    url = (f"https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items?timeout=290&clean=true"
+           f"&maxTotalChargeUsd={max(0.01, round(por_corrida, 2))}")
     res = http_get(url, {"Authorization": f"Bearer {os.environ['APIFY_TOKEN']}", "Content-Type": "application/json"},
                    data=json.dumps(entrada).encode(), timeout=310)
     return [i for i in json.loads(res) if isinstance(i, dict) and not i.get("error")]
@@ -7612,7 +7675,8 @@ def resumen_proveedores():
         return {"nombre": nombre, "clave": bool(os.environ.get(clave)) if isinstance(clave, str) else clave,
                 "apagado_hasta": hasta.isoformat() if hasta else None,
                 "apagado_motivo": AGOTADOS.get(nombre, {}).get("motivo") if hasta else None,
-                "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas}
+                "pausa": nombre in PAUSA["fuentes"], "redes": redes, "saldo": saldo, "uso": uso, "rutas": estado_rutas,
+                "renovacion": fecha_renovacion(nombre).isoformat() if nombre in _CFG_PROV else None}
     ap, ra, li, tt = (ESTADO.get(k, {}) for k in ("apify", "rapidapi", "linkedin_api", "tiktok_rapid"))
     return [
         ficha("Apify", "APIFY_TOKEN", "Facebook, Instagram, TikTok · X (respaldo)", None,
@@ -9604,7 +9668,7 @@ class Handler(BaseHTTPRequestHandler):
                                "canales_telegram": _cfg_ciber().get("canales_telegram", []),
                                "infostealers": resumen_infostealers()})
         if u.path == "/api/mantenimiento":  # candidatos a retirar y lo ya retirado
-            return self._send({"dias": DIAS_RETIRO, "candidatos": candidatos_retiro(),
+            return self._send({"dias": DIAS_RETIRO, "candidatos": candidatos_retiro(), "ritmo": ritmo_proveedores(),
                                "retirados": [{"clave": k, **dict(zip(("tipo", "nombre"), _nombre_disponibilidad(k))), **v}
                                              for k, v in sorted(RETIRADOS.items())]})
         if u.path == "/api/estado":
