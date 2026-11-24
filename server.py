@@ -748,36 +748,39 @@ def init_db():
                     "OR proveedor LIKE 'ScrapeCreators%' OR proveedor LIKE 'ScrapingBee%' OR proveedor LIKE 'Instaloader%'")
 
 
-ARCHIVO_HUELLA_REGLAS = os.path.join(DATOS, "huella_reglas.txt")
-CLAVES_REGLAS = ("idioma", "bancos", "contexto_peru", "contexto_excluir", "cuentas_oficiales", "ciber", "notificaciones")
-
-
-def _huella_reglas():
-    """Huella de lo que decide la clasificación: el código del monitor y las secciones de reglas de la configuración.
-    Si no cambió desde la última reclasificación completa, el histórico ya está al día y no hace falta repasarlo."""
-    h = hashlib.sha256()
-    with open(os.path.abspath(__file__), "rb") as f:
-        h.update(f.read())
-    h.update(json.dumps({k: CONFIG.get(k) for k in CLAVES_REGLAS}, sort_keys=True, ensure_ascii=False).encode())
-    return h.hexdigest()
+_RECLASIF = {"proceso": None, "inicio": None, "por": None}
 
 
 def _reclasificar_aparte():
+    """Proceso aparte, con la prioridad más baja de CPU y de disco: el panel y el monitoreo no se frenan."""
     try:
-        os.nice(15)
+        os.nice(19)
     except (AttributeError, OSError):
         pass
-    huella = _huella_reglas()
     try:
-        with open(ARCHIVO_HUELLA_REGLAS) as f:
-            if f.read().strip() == huella:
-                print(f"[{datetime.now():%H:%M:%S}] Histórico al día: las reglas no cambiaron, no se reclasifica", flush=True)
-                return
-    except OSError:
+        subprocess.run(["ionice", "-c", "3", "-p", str(os.getpid())], check=False, capture_output=True, timeout=5)
+    except Exception:
         pass
     reclasificar_historico()
-    with open(ARCHIVO_HUELLA_REGLAS, "w") as f:  # solo tras terminar: si se corta a medias, se repite al arrancar
-        f.write(huella)
+
+
+def reclasificar_historico_manual(usuario):
+    """Solo a pedido de un administrador: el histórico conserva su clasificación hasta que se pida rehacerla (ni al
+    arrancar ni al actualizar el código se repasa)."""
+    p = _RECLASIF["proceso"]
+    if p is not None and p.is_alive():
+        raise ValueError(f"Ya se está reclasificando (desde {_RECLASIF['inicio']:%H:%M}, pedido por {_RECLASIF['por']})")
+    # 'spawn': un proceso nuevo, sin copiar los candados que tengan tomados los hilos del servidor
+    p = multiprocessing.get_context("spawn").Process(target=_reclasificar_aparte, daemon=True)
+    p.start()
+    _RECLASIF.update(proceso=p, inicio=ahora().astimezone(LIMA), por=usuario)
+    registrar(usuario, "pidió reclasificar el histórico con las reglas vigentes", "")
+
+
+def estado_reclasificacion():
+    p = _RECLASIF["proceso"]
+    return {"en_curso": bool(p is not None and p.is_alive()),
+            "inicio": iso(_RECLASIF["inicio"]) if _RECLASIF["inicio"] else None, "por": _RECLASIF["por"]}
 
 
 def reclasificar_historico(lote=400):
@@ -9279,7 +9282,7 @@ class Handler(BaseHTTPRequestHandler):
                 r = con.execute("SELECT COUNT(*), MIN(fecha), MAX(fecha) FROM items WHERE oculto = 0").fetchone()
             return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
-                               "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(),
+                               "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(), "reclasificacion": estado_reclasificacion(),
                                "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "notificaciones": {**ESTADO.get("notificaciones", {}),
@@ -9497,6 +9500,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True})
             except Exception as e:
                 return self._send({"error": str(e)[:200]}, code=400)
+        if u.path == "/api/historico/reclasificar":  # administradores: reglas vigentes sobre todo el histórico
+            try:
+                reclasificar_historico_manual(self.yo["usuario"])
+                return self._send({"ok": True, **estado_reclasificacion()})
+            except ValueError as e:
+                return self._send({"error": str(e)[:200]}, code=400)
         if u.path == "/api/ia/reclasificar":
             # vuelve a poner en la cola de la IA lo visible de los últimos N días (p. ej. tras cambiar criterios)
             try:
@@ -9628,9 +9637,7 @@ def main():
                 ESTADO["trends"].setdefault("actualizado", ultima)
     if HOST not in ("127.0.0.1", "localhost", "::1") and not hay_usuarios():
         sys.exit("Por seguridad, para publicar el monitor define ADMIN_USUARIO y ADMIN_CLAVE (primer administrador)")
-    # En un proceso aparte y con prioridad baja: en un hilo competía con el panel por el intérprete (el panel tardaba
-    # hasta 55 s en responder mientras corría). Se lanza antes que cualquier hilo, para no copiar candados tomados
-    multiprocessing.Process(target=_reclasificar_aparte, daemon=True).start()
+    # el histórico no se reclasifica solo: lo pide un administrador desde ⚙ Configuración (reclasificar_historico_manual)
     threading.Thread(target=planificador, daemon=True).start()
     threading.Thread(target=trabajador_trends, daemon=True).start()
     threading.Thread(target=trabajador_archivo, daemon=True).start()

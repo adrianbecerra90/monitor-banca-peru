@@ -1089,6 +1089,13 @@ function pintarConfig(){
       <div class="frow" style="margin-top:8px;align-items:center;gap:8px">Últimos <input type="number" id="rc-dias" min="1" max="365" value="30" style="width:70px"> días
       <button id="rc-ir">Volver a clasificar</button><span class="sub" id="rc-msg"></span></div>
       <div class="sub" style="margin-top:4px">La IA revisa de nuevo todo lo visible de ese periodo (unos 12 mensajes por minuto). Mientras tanto se mantiene la clasificación anterior.</div></div>`);
+    const RH=(ESTADO||{}).reclasificacion||{};
+    c.insertAdjacentHTML('beforeend',`<div class="bloque solo-admin"><b>Reclasificar el histórico con las reglas</b> <span class="sub">(no se hace solo: el histórico conserva su clasificación hasta que lo pidas)</span>
+      <div class="frow" style="margin-top:8px;align-items:center;gap:8px"><button id="rh-ir" ${RH.en_curso?'disabled':''}>Reclasificar todo el histórico</button><span class="sub" id="rh-msg">${RH.en_curso?'En curso desde '+new Date(RH.inicio).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'})+(RH.por?' · pedido por '+esc(RH.por):''):''}</span></div>
+      <div class="sub" style="margin-top:4px">Aplica las reglas vigentes (léxico, entidades, exclusiones) a todas las publicaciones guardadas. Toma unos 12 minutos con prioridad baja; el panel y el monitoreo siguen mientras tanto. Lo clasificado por la IA se mantiene.</div></div>`);
+    $('#rh-ir').onclick=async()=>{if(!confirm('¿Reclasificar todo el histórico con las reglas vigentes? Toma unos 12 minutos.'))return;
+      const r=await post('/api/historico/reclasificar').then(r=>r.json());
+      $('#rh-msg').textContent=r.error?'⚠ '+r.error:'✓ En curso: toma unos 12 minutos.';if(!r.error)$('#rh-ir').disabled=true};
     $('#rc-ir').onclick=async()=>{const dias=+$('#rc-dias').value||30;
       if(!confirm(`¿Volver a clasificar con IA los mensajes de los últimos ${dias} días?`))return;
       const r=await post('/api/ia/reclasificar?dias='+dias).then(r=>r.json());
