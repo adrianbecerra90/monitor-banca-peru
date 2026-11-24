@@ -1127,6 +1127,18 @@ function pintarConfig(){
       if(!confirm(`¿Volver a clasificar con IA los mensajes de los últimos ${dias} días?`))return;
       const r=await post('/api/ia/reclasificar?dias='+dias).then(r=>r.json());
       $('#rc-msg').textContent=r.error||`${fmt(r.en_cola)} mensajes en cola; el avance se ve en la tarjeta «Clasificación IA».`}}
+  if(cfgTab==='general'&&YO?.rol==='admin'){ // mantenimiento: retirar lo que no funciona hace más de 40 días
+    c.insertAdjacentHTML('beforeend',`<div class="bloque" id="mant"><b>Mantenimiento de fuentes y proveedores</b> <span class="sub">(cargando…)</span></div>`);
+    const pintarMant=async()=>{const m=await fetch('/api/mantenimiento').then(r=>r.json()).catch(()=>null);const el=$('#mant');if(!m||!el)return;
+      const fila=x=>`<div style="display:flex;gap:8px;align-items:center;padding:3px 0;border-top:1px solid var(--line)"><span style="flex:1"><b>${esc(x.nombre)}</b> <span class="sub">${esc(x.tipo)}</span></span>`;
+      el.innerHTML=`<b>Mantenimiento de fuentes y proveedores</b> <span class="sub">(retira lo que lleva más de ${m.dias} días seguidos sin funcionar: deja de consultarse y de verse en el panel)</span>
+        <div style="margin-top:8px">${m.candidatos.length?m.candidatos.map(x=>fila(x)+`<span class="sub">sin funcionar hace ${x.dias} días</span></div>`).join(''):'<span class="sub">Nada que limpiar: todo funcionó en los últimos '+m.dias+' días.</span>'}</div>
+        <div class="frow" style="margin-top:8px;align-items:center;gap:8px"><button id="mant-ir" ${m.candidatos.length?'':'disabled'}>🧹 Limpiar${m.candidatos.length?' ('+m.candidatos.length+')':''}</button><span class="sub" id="mant-msg"></span></div>
+        ${m.retirados.length?`<div style="margin-top:10px"><b style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Retirados</b>${m.retirados.map(x=>fila(x)+`<span class="sub">desde ${new Date(x.desde).toLocaleDateString('es-PE')}${x.por?' · '+esc(x.por):''}</span><button data-rest="${esc(x.clave)}">Restaurar</button></div>`).join('')}</div>`:''}`;
+      const ir=$('#mant-ir');if(ir)ir.onclick=async()=>{if(!confirm(`¿Retirar ${m.candidatos.length} elemento(s) que no funcionan hace más de ${m.dias} días? Se pueden restaurar después.`))return;
+        const r=await post('/api/mantenimiento/limpiar').then(r=>r.json());$('#mant-msg').textContent=r.error?'⚠ '+r.error:`✓ ${r.retirados.length} retirado(s)`;pintarMant();cargarEstado()};
+      el.querySelectorAll('button[data-rest]').forEach(b=>b.onclick=async()=>{await post('/api/mantenimiento/restaurar?clave='+encodeURIComponent(b.dataset.rest));pintarMant();cargarEstado()})};
+    pintarMant()}
   if(cfgTab==='entidades'){
     c.innerHTML=`<p class="ayuda"><b>Términos de búsqueda</b>: lo que se busca en X, noticias, YouTube y Bluesky. <b>Alias</b>: formas en que la gente nombra a la entidad (separados por comas). <b>Ambiguos</b>: alias que solo cuentan si el texto habla de Perú (p. ej. "BBVA" a secas).</p>
     <div class="bloque"><b style="font-size:13px">Reglas de país (para todos los alias ambiguos)</b>

@@ -1143,6 +1143,7 @@ def ejecutar_rutas(fuente, rutas, rango=None):
             ruta_fallo(fuente, nombre, e)
             return "error", None
 
+    rutas = [r for r in rutas if not retirado("ruta", fuente, r[0])]
     activas = [(n, f) for n, f, m in rutas if m == "activo"]
     respaldo = [(n, f) for n, f, m in rutas if m == "respaldo"]
     with ThreadPoolExecutor(max_workers=max(1, len(activas))) as ex:
@@ -2266,7 +2267,10 @@ NITTER_EXTRA = ["https://nitter.click"]  # instancias sanas añadidas también a
 
 def _instancias_nitter(inicio=0):
     """Instancias disponibles, rotadas para repartir la carga (activo-activo)."""
-    todas = list(dict.fromkeys(CONFIG.get("nitter", {}).get("instancias", []) + NITTER_EXTRA))
+    todas = [i for i in dict.fromkeys(CONFIG.get("nitter", {}).get("instancias", []) + NITTER_EXTRA)
+             if not retirado("ruta", "X·Nitter", i)]
+    if not todas:
+        return []
     sanas = [i for i in todas if ruta_disponible("X·Nitter", i)] or todas  # si todas están en pausa, se prueban igual
     k = inicio % len(sanas)
     return sanas[k:] + sanas[:k]
@@ -2304,7 +2308,7 @@ def x_nitter(rango=None):
     """X sin clave: búsqueda vía RSS de Nitter. Las consultas se reparten en paralelo entre las instancias sanas
     y cada una salta a otra instancia si la suya falla. Histórico: pagina hacia atrás hasta `desde`.
     Si ninguna instancia responde, queda inactiva (no es una falla del monitor) y se vuelve a probar cada 6 h."""
-    if time.time() < _NITTER_SIN_INSTANCIAS["hasta"]:
+    if time.time() < _NITTER_SIN_INSTANCIAS["hasta"] or not _instancias_nitter():
         raise RutaInactiva(NITTER_INACTIVO)
     cfg = CONFIG.get("nitter", {})
     handles = cuentas("x")
@@ -3296,6 +3300,96 @@ except OSError:
 
 # Servicios de pago agotados: se apagan solos hasta su fecha de renovación y mientras tanto no se consultan
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
+# Mantenimiento: lo que lleva más de DIAS_RETIRO días seguidos sin funcionar se puede retirar con un botón (deja de
+# consultarse y de verse en el panel). Se guarda en retirados.json; se puede restaurar desde ⚙ Configuración.
+RUTA_RETIRADOS = os.path.join(DATOS, "retirados.json")
+DIAS_RETIRO = 40
+try:
+    with open(RUTA_RETIRADOS, encoding="utf-8") as _f:
+        RETIRADOS = json.load(_f)
+except (OSError, ValueError):
+    RETIRADOS = {}
+
+
+def retirado(*partes):
+    return "|".join(partes) in RETIRADOS
+
+
+def _guardar_retirados():
+    tmp = RUTA_RETIRADOS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(RETIRADOS, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, RUTA_RETIRADOS)
+
+
+def _nombre_disponibilidad(clave):
+    t, *r = clave.split("|")
+    if t == "fuente":
+        return "Fuente", r[0]
+    if t == "proveedor":
+        return "Proveedor de pago", r[0]
+    if r[0] == "X·Nitter":
+        return "Instancia de Nitter", r[1].replace("https://", "")
+    return "Ruta", f"{r[0]} · {r[1]}"
+
+
+def registrar_disponibilidad():
+    """Cada 30 min: qué fuentes, rutas y proveedores funcionan. Lo nuevo se anota desde hoy; una fuente toma como último
+    dato bueno su publicación más reciente guardada."""
+    filas = [(f"fuente|{n}", f.get("ok") is True) for n, f in ESTADO["fuentes"].items()]
+    for fu, rs in list(SALUD.items()):
+        filas += [(f"ruta|{fu}|{r}", st.get("ok") is True) for r, st in list(rs.items())]
+    filas += [(f"proveedor|{p['nombre']}", bool(p["clave"]) and not p["apagado_hasta"] and
+               any(x.get("ok") is True for x in p["rutas"].values())) for p in resumen_proveedores()]
+    ahora_ = iso(ahora())
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS disponibilidad (clave TEXT PRIMARY KEY, ultimo_ok TEXT, visto_desde TEXT)")
+        for clave, ok in filas:
+            if con.execute("SELECT 1 FROM disponibilidad WHERE clave = ?", (clave,)).fetchone() is None:
+                previo = None
+                if clave.startswith("fuente|"):
+                    previo = con.execute("SELECT MAX(capturado) FROM items WHERE fuente = ?", (clave[7:],)).fetchone()[0]
+                con.execute("INSERT INTO disponibilidad VALUES (?, ?, ?)", (clave, previo, ahora_))
+            if ok:
+                con.execute("UPDATE disponibilidad SET ultimo_ok = ? WHERE clave = ?", (ahora_, clave))
+
+
+def candidatos_retiro():
+    """Lo que no funciona hace más de DIAS_RETIRO días seguidos (o nunca funcionó en ese plazo) y sigue sin funcionar."""
+    limite = iso(ahora() - timedelta(days=DIAS_RETIRO))
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS disponibilidad (clave TEXT PRIMARY KEY, ultimo_ok TEXT, visto_desde TEXT)")
+        filas = con.execute("SELECT clave, ultimo_ok, visto_desde FROM disponibilidad "
+                            "WHERE COALESCE(ultimo_ok, visto_desde) < ?", (limite,)).fetchall()
+    out = []
+    for clave, ult, visto in filas:
+        if clave in RETIRADOS:
+            continue
+        tipo, nombre = _nombre_disponibilidad(clave)
+        desde = datetime.fromisoformat(ult or visto)
+        out.append({"clave": clave, "tipo": tipo, "nombre": nombre, "dias": (ahora() - desde).days,
+                    "ultimo_ok": ult})
+    return sorted(out, key=lambda x: (x["tipo"], x["nombre"]))
+
+
+def retirar_indisponibles(usuario):
+    cands = candidatos_retiro()
+    for c in cands:
+        RETIRADOS[c["clave"]] = {"desde": iso(ahora()), "por": usuario, "dias": c["dias"]}
+    if cands:
+        _guardar_retirados()
+        registrar(usuario, f"retiró {len(cands)} fuentes, rutas o proveedores sin funcionar hace más de {DIAS_RETIRO} días: "
+                  + ", ".join(c["nombre"] for c in cands)[:400], "")
+    return cands
+
+
+def restaurar_retirado(clave, usuario):
+    if RETIRADOS.pop(clave, None) is None:
+        raise ValueError("No está retirado")
+    _guardar_retirados()
+    registrar(usuario, f"restauró {clave}", "")
+
+
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify", "TikTok Scraper": "tiktok_rapid",
              "Scrape.do": "scrapedo", "SerpApi": "serpapi", "Twttr API": "x_twttr", "The Old Bird": "x_oldbird", "twitterapi.io": "twitterapi", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
@@ -3516,6 +3610,8 @@ FUENTES_BLOQUEADAS = {f.strip() for f in os.environ.get("FUENTES_BLOQUEADAS", ""
 
 
 def escanear_fuente(nombre):
+    if retirado("fuente", nombre):
+        return
     if nombre in FUENTES_BLOQUEADAS:
         ESTADO["fuentes"][nombre].update(ok=None, msg="⛔ Bloqueada temporalmente")
         return
@@ -8299,7 +8395,14 @@ def datos_trends():
 
 def planificador():
     intervalos = CONFIG.get("intervalos_minutos", {})
+    proximo_registro = time.time() + 300
     while True:
+        if time.time() >= proximo_registro:
+            proximo_registro = time.time() + 1800
+            try:
+                registrar_disponibilidad()
+            except Exception as e:
+                print(f"  disponibilidad: {type(e).__name__}: {e}", flush=True)
         for f_ in list(PAUSA["fuentes"]):
             en_pausa(f_)  # reanuda las pausas por fuente que vencieron
         en_pausa()  # reanuda la pausa general si venció
@@ -9500,13 +9603,17 @@ class Handler(BaseHTTPRequestHandler):
                                "estado": ESTADO.get("referentes_x", {}), "fuentes": ESTADO.get("ciber_fuentes", {}),
                                "canales_telegram": _cfg_ciber().get("canales_telegram", []),
                                "infostealers": resumen_infostealers()})
+        if u.path == "/api/mantenimiento":  # candidatos a retirar y lo ya retirado
+            return self._send({"dias": DIAS_RETIRO, "candidatos": candidatos_retiro(),
+                               "retirados": [{"clave": k, **dict(zip(("tipo", "nombre"), _nombre_disponibilidad(k))), **v}
+                                             for k, v in sorted(RETIRADOS.items())]})
         if u.path == "/api/estado":
             with _db_lock, db() as con:
                 r = con.execute("SELECT COUNT(*), MIN(fecha), MAX(fecha) FROM items WHERE oculto = 0").fetchone()
-            return self._send({**ESTADO, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
+            return self._send({**ESTADO, "fuentes": {n: f for n, f in ESTADO["fuentes"].items() if not retirado("fuente", n)}, "rutas": {fu: {r: st for r, st in rs.items() if not retirado("ruta", fu, r)} for fu, rs in SALUD.items()}, "bancos": list(BANCOS), "categorias": list(CATEGORIAS) + ["Otras"],
                                "fuentes_lista": [f for f in FUENTES if f != "Búsqueda Google"] + ["Reddit", "Web", "Google Trends"], "intervalos": CONFIG.get("intervalos_minutos", {}),
                                "base": {"total": r[0], "primera": r[1], "ultima": r[2]}, "ia_estado": _resumen_ia(), "reclasificacion": estado_reclasificacion(),
-                               "trends_estado": ESTADO.get("trends", {}), "proveedores": resumen_proveedores(), "apagados": lista_apagados(), "version": VERSION_PANEL,
+                               "trends_estado": ESTADO.get("trends", {}), "proveedores": [p for p in resumen_proveedores() if not retirado("proveedor", p["nombre"])], "apagados": lista_apagados(), "version": VERSION_PANEL,
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "notificaciones": {**ESTADO.get("notificaciones", {}),
                                                   "configuradas": _hay_canal_aviso(),
@@ -9723,6 +9830,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True})
             except Exception as e:
                 return self._send({"error": str(e)[:200]}, code=400)
+        if u.path == "/api/mantenimiento/limpiar":  # administradores: retira lo que no funciona hace más de 40 días
+            return self._send({"ok": True, "retirados": retirar_indisponibles(self.yo["usuario"])})
+        if u.path == "/api/mantenimiento/restaurar":
+            try:
+                restaurar_retirado(qs.get("clave", [""])[0][:300], self.yo["usuario"])
+                return self._send({"ok": True})
+            except ValueError as e:
+                return self._send({"error": str(e)}, code=400)
         if u.path == "/api/historico/reclasificar":  # administradores: reglas vigentes sobre todo el histórico
             try:
                 reclasificar_historico_manual(self.yo["usuario"])
