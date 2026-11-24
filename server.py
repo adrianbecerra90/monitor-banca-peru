@@ -161,7 +161,7 @@ MIGRACIONES_REGLAS = {
     # 120); el enlace de los avisos apunta al servidor nuevo (Railway y Northflank se dieron de baja)
     "picos-30min-2026-10-31": {"notificaciones": {"pico_ventana_min": 30, "enfriamiento_minutos": 30,
                                                   "enlace": "https://136-114-162-86.sslip.io"}},
-    # 31/10/2026: cada pico o caída es un evento por entidad: apertura, escalamiento, recordatorio (solo Teams) y cierre
+    # 31/10/2026: cada pico o caída es un evento por entidad: apertura, escalamiento, recordatorio y cierre
     "eventos-2026-10-31": {"notificaciones": {"recordatorio_min": 60, "cierre_min": 30, "escalar_minimo": 3}},
     # 02/11/2026 (auditoría de avisos): el evento se cierra tras 45 min sin quejas (antes 30, sin pico) y el pico de
     # "todas las entidades" exige 8 usuarios (3 repartidos entre entidades distintas eran ruido)
@@ -3352,37 +3352,9 @@ def _incidente_pendiente(red):
 _NOTIF = {"ultima": {}}
 
 
-TEAMS_URL_OK = re.compile(r"^https://[\w.-]+\.(logic\.azure\.com|powerplatform\.com|webhook\.office\.com|powerautomate\.com|"
-                          r"azure-apihub\.net|flow\.microsoft\.com|logic\.azure\.us)(:443)?/")
-
-
-def _urls_teams():
-    """TEAMS_WEBHOOK_URL admite varias URLs separadas por coma (p. ej. un chat y un canal)."""
-    return [u for u in re.split(r"[\s,]+", os.environ.get("TEAMS_WEBHOOK_URL", "").strip()) if TEAMS_URL_OK.match(u)]
-
-
 def _hay_canal_aviso():
-    """Hay a dónde avisar: ntfy (celular) y/o un canal de Microsoft Teams (Workflows)."""
-    return bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip())
-                or _urls_teams())
-
-
-def _enviar_teams(destino, titulo, mensaje, prioridad, url, tipo=None, nivel=None):
-    """Tarjeta en Teams vía Workflows: plantillas "Publicar en un chat / en un canal cuando se recibe una solicitud de
-    webhook"."""
-    color = NIVELES[nivel][2] if nivel in NIVELES else ("Attention" if prioridad in ("urgent", "max", "high") else "Default")
-    chips = [x for x in (f"🏷️ **{tipo}**" if tipo else "", f"{NIVELES[nivel][0]} **{nivel}**" if nivel in NIVELES else "") if x]
-    tarjeta = {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
-               "body": ([{"type": "TextBlock", "text": "  ·  ".join(chips), "wrap": True, "size": "Small", "color": color}] if chips else []) +
-                       [{"type": "TextBlock", "text": titulo, "weight": "Bolder", "size": "Medium", "wrap": True, "color": color},
-                        {"type": "TextBlock", "text": mensaje, "wrap": True},
-                        {"type": "TextBlock", "text": f"Monitor de banca · {ahora().astimezone(LIMA):%d/%m %H:%M} (Lima)",
-                         "isSubtle": True, "size": "Small", "wrap": True}]}
-    if url:
-        tarjeta["actions"] = [{"type": "Action.OpenUrl", "title": "Abrir", "url": url}]
-    cuerpo = {"type": "message", "attachments": [{"contentType": "application/vnd.microsoft.card.adaptive",
-                                                   "contentUrl": None, "content": tarjeta}]}
-    http_get(destino, {"Content-Type": "application/json"}, data=json.dumps(cuerpo, ensure_ascii=False).encode(), timeout=30)
+    """Hay a dónde avisar: ntfy (celular)."""
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()))
 
 
 _AVISOS_LOG = []  # últimos intentos de aviso (canal, resultado, error), sin datos secretos
@@ -3403,10 +3375,8 @@ def _error_http(e):
 
 
 def diagnostico_avisos():
-    tema, teams = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip(), os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
+    tema = os.environ.get("NOTIFY_NTFY_TOPIC", "").strip()
     return {"ntfy": {"definido": bool(tema), "valido": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", tema))},
-            "teams": {"definido": bool(teams), "valido": bool(_urls_teams()), "destinos": len(_urls_teams()),
-                      "dominio": urllib.parse.urlparse(teams.split(",")[0].strip()).hostname if teams else None},
             "intentos": list(reversed(_AVISOS_LOG)),
             "conexiones_en_vivo": len(_suscriptores),
             "ia": {"proveedores": [{"nombre": p.get("nombre"), "modelo": p.get("modelo"), "sin_clave": _ia_falta_clave(p),
@@ -3430,7 +3400,7 @@ def utilidad_referentes(dias=30):
             for h in _cfg_referentes().get("cuentas", [])}
 
 
-# Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en Teams y en el celular)
+# Etiquetas de cada aviso: tipo y nivel de gravedad (se ven en el celular)
 # Colores (definidos por el analista): 🔵 informativo y reportes programados · 🟢 leve · 🟡 medio · 🟠 grave · 🔴 crítico
 NIVELES = {"Crítico": ("🔴", "urgent", "Attention"), "Grave": ("🟠", "high", "Warning"),
            "Medio": ("🟡", "default", "Warning"), "Leve": ("🟢", "low", "Good"), "Informativo": ("🔵", "low", "Accent")}
@@ -3448,7 +3418,7 @@ def _url_panel():
 
 # Control previo de valor: antes de enviar un aviso de un caso se compara su "huella" (nivel, estado, certeza,
 # usuarios, fuentes, prensa, comunicado) con la del último aviso enviado del mismo caso. Si no trae nada nuevo, se
-# retiene: queda en la campana y en el caso como «Retenido», sin sonar en el celular ni en Teams.
+# retiene: queda en la campana y en el caso como «Retenido», sin sonar en el celular.
 def _tabla_huellas(con):
     con.execute("CREATE TABLE IF NOT EXISTS huellas_avisos (caso TEXT PRIMARY KEY, huella TEXT, fecha TEXT)")
 
@@ -3513,9 +3483,9 @@ def _guardar_huella(caso, h):
 
 def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_light", url=None, tipo=None, nivel=None,
                         caso=None, huella=None):
-    """Envía el aviso a todos los canales configurados (ntfy y/o Teams); falla solo si no llegó a ninguno.
-    tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»). Celular y Teams reciben lo mismo
-    (espejo, a pedido del analista); al celular sin los asteriscos del Markdown, que ntfy no interpreta."""
+    """Envía el aviso al celular (ntfy); falla si no llegó.
+    tipo y nivel se muestran como etiquetas (p. ej. «Ciberseguridad · 🔴 Crítico»), sin los asteriscos del Markdown,
+    que ntfy no interpreta."""
     enviados, errores = 0, []
     if caso and huella is not None:
         ok, por_que = _aporta(caso, {**huella, "nivel": nivel})
@@ -3558,25 +3528,11 @@ def enviar_notificacion(titulo, mensaje, prioridad="high", etiquetas="rotating_l
             _log_aviso("ntfy", titulo, False, _error_http(e))
     elif tema:
         _log_aviso("ntfy", titulo, False, "NOTIFY_NTFY_TOPIC no válido (12 a 64 letras, números, - o _)")
-    teams = os.environ.get("TEAMS_WEBHOOK_URL", "").strip()
-    destinos = _urls_teams()
-    for i, destino in enumerate(destinos, 1):
-        canal = "Teams" if len(destinos) == 1 else f"Teams {i}"
-        try:
-            _enviar_teams(destino, titulo, mensaje, prioridad, url, tipo, nivel)
-            enviados += 1
-            _log_aviso(canal, titulo, True)
-        except Exception as e:
-            errores.append(f"{canal}: {_error_http(e)}")
-            _log_aviso(canal, titulo, False, _error_http(e))
-    if teams and not destinos:
-        errores.append("Teams: la URL no parece de Workflows de Teams")
-        _log_aviso("Teams", titulo, False, f"URL no reconocida (dominio {urllib.parse.urlparse(teams).hostname})")
     _registrar_notificacion(titulo, mensaje, tipo, nivel, enviados, errores, caso)
     if enviados and caso and huella is not None:
         _guardar_huella(caso, {**huella, "nivel": nivel})
     if not enviados:
-        raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC y/o TEAMS_WEBHOOK_URL")
+        raise RuntimeError("; ".join(errores) or "Sin canal de aviso: define NOTIFY_NTFY_TOPIC")
     if tipo not in (None, "Reporte", "Prueba", "Pausa", "Resumen de avisos"):  # el reporte siguiente menciona los avisos inmediatos enviados
         try:
             with _db_lock, db() as con:
@@ -3974,8 +3930,8 @@ def _valorar_evento(b, clase, ventana):
 
 # ---------------- Eventos por entidad ----------------
 # Un pico o una caída de una entidad es un evento abierto; se avisa solo cuando algo cambia:
-#   apertura (Teams y celular) → escalamiento (al instante si sube de nivel o se duplican los usuarios)
-#   → recordatorio (cada 'recordatorio_min' si siguen llegando quejas) → cierre (Teams y celular, tras 'cierre_min'
+#   apertura (celular) → escalamiento (al instante si sube de nivel o se duplican los usuarios)
+#   → recordatorio (cada 'recordatorio_min' si siguen llegando quejas) → cierre (celular, tras 'cierre_min'
 #   sin pico), con la duración y lo acumulado. Se guardan en el disco para que un reinicio no repita la apertura.
 _EVENTOS = {"abiertos": {}, "cerrados": {}, "lock": threading.RLock()}  # cerrados: por si luego llega el restablecimiento
 RANGO_NIVEL = {"Leve": 0.5, "Medio": 1, "Grave": 2, "Crítico": 3}
@@ -4991,7 +4947,7 @@ def _revisar_pico(cfg, medida):
 
 # ---------------- Reportes programados (lunes a viernes 10:30 y 15:30, hora de Lima) ----------------
 # Resumen de lo ocurrido desde el reporte anterior: síntesis de la conversación, cifras, entidades más afectadas,
-# quejas graves y alertas de ciberseguridad nuevas. Se envía por los mismos canales (Teams y/o celular).
+# quejas graves y alertas de ciberseguridad nuevas. Se envía por los mismos canales (celular).
 REPORTES = {"activos": True, "horas": ["10:30", "15:30"], "dias": [0, 1, 2, 3, 4]}  # 0 = lunes
 
 
@@ -9270,7 +9226,7 @@ class Handler(BaseHTTPRequestHandler):
             cuerpo, ctype = caso_exportar(id_, formato)
             return self._send(cuerpo.encode("utf-8"), ctype,
                               extra={"Content-Disposition": f"attachment; filename={re.sub(r'[^A-Za-z0-9-]', '', id_)}.{formato}"})
-        if u.path == "/api/notificaciones":  # campana del panel: lo enviado a Teams y al celular
+        if u.path == "/api/notificaciones":  # campana del panel: lo enviado al celular
             return self._send(notificaciones_enviadas(max(1, min(int(qs.get("dias", ["7"])[0]), 90))))
         if u.path == "/api/archivo/exportar":
             mes, formato = qs.get("mes", ["todo"])[0], qs.get("formato", ["csv"])[0]
@@ -9328,7 +9284,6 @@ class Handler(BaseHTTPRequestHandler):
                                "alerta_x": ESTADO.get("alerta_x", []), "sync": ESTADO.get("sync", {}),
                                "notificaciones": {**ESTADO.get("notificaciones", {}),
                                                   "configuradas": _hay_canal_aviso(),
-                                                  "teams": bool(_urls_teams()),
                                                   "ntfy": bool(re.fullmatch(r"[A-Za-z0-9_-]{12,64}", os.environ.get("NOTIFY_NTFY_TOPIC", "").strip())),
                                                   "intentos": list(reversed(_AVISOS_LOG))[:10]},
                                "claves": {k: bool(os.environ.get(k)) for k in
@@ -9399,7 +9354,7 @@ class Handler(BaseHTTPRequestHandler):
             if not _sync_token_ok(self.headers.get("X-Sync-Token")):
                 return self._send({"error": "No autorizado"}, code=401)
             try:
-                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular y/o Teams).",
+                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular).",
                                     prioridad="default", etiquetas="white_check_mark", tipo="Prueba", nivel="Informativo")
             except Exception as e:
                 print(f"  Prueba de avisos: {e}", flush=True)
@@ -9481,7 +9436,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True})
             if u.path == "/api/notificaciones/propuesta":  # administradores: aprueban un ajuste propuesto
                 return self._send({"ok": True, "aplicada": aplicar_propuesta(str(self._json_cuerpo().get("id", "")), self.yo["usuario"])})
-            if u.path == "/api/reporte/enviar":  # administradores: lo envía a Teams y al celular
+            if u.path == "/api/reporte/enviar":  # administradores: lo envía al celular
                 try:
                     r = reporte_a_pedido(self._json_cuerpo(5_000), enviar=True)
                 except RuntimeError as e:  # ningún canal lo recibió: se muestra el motivo en el panel
@@ -9537,7 +9492,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"error": str(e)[:200]}, code=400)
         if u.path == "/api/notificaciones/prueba":
             try:
-                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular y/o Teams).",
+                enviar_notificacion("Prueba del monitor de banca", "Si ves esto, las alertas llegarán aquí (celular).",
                                     prioridad="default", etiquetas="white_check_mark", tipo="Prueba", nivel="Informativo")
                 return self._send({"ok": True})
             except Exception as e:

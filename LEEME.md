@@ -93,16 +93,14 @@ todo el histórico se reclasifica con las reglas nuevas.
 - Filtros por banco, red, categoría, gravedad y texto. Exportación a CSV (Excel).
 - Alerta de **pico** en el panel: 4 o más quejas en 30 min y al menos 3 veces el promedio de 30 min
   de las 48 h previas (posible caída o incidente).
-- Aviso de **pico** a Teams y celular: usuarios distintos con quejas (o críticas) en los últimos 30 min por encima de
+- Aviso de **pico** al celular: usuarios distintos con quejas (o críticas) en los últimos 30 min por encima de
   promedio + 2σ de los tramos de 30 min de los últimos 7 días (día y noche por separado). Se revisa cada 5 min.
 - **Cada pico o caída es un evento por entidad**, con avisos solo cuando algo cambia:
-  - *apertura* (Teams y celular) al detectarse el pico o la caída;
-  - *escalamiento* (Teams y celular, al instante) si sube de nivel o se duplican los usuarios (y son 3+ más);
-  - *recordatorio* (Teams y celular) cada 60 min si siguen llegando quejas, con la duración y lo acumulado;
-  - *cierre* (Teams y celular) tras 45 min sin quejas nuevas, o con el comunicado de restablecimiento de la entidad:
+  - *apertura* al detectarse el pico o la caída;
+  - *escalamiento* (al instante) si sube de nivel o se duplican los usuarios (y son 3+ más);
+  - *recordatorio* cada 60 min si siguen llegando quejas, con la duración y lo acumulado;
+  - *cierre* tras 45 min sin quejas nuevas, o con el comunicado de restablecimiento de la entidad:
     duración (de la primera a la última queja), total de quejas y usuarios, máximo y nivel alcanzado.
-
-  Celular y Teams reciben el mismo texto (espejo), avisos y reportes.
 - **Interrupciones · matriz impacto × certeza** (se evalúa cada 5 min; detección con 30 min, duración con 60 min,
   porque X llega con ~11 min de retraso en la mediana): impacto alto, medio-alto, medio o bajo según el servicio (crítico:
   app, transferencias, pagos, Yape/Plin; secundario: cajeros, agencias, web), el alcance (umbral de quejas de caída
@@ -204,7 +202,7 @@ bloquear más que desde una conexión doméstica; el monitor usa rutas de respal
   imitan van aparte: son exposiciones, no incidentes.
 - **Nivel:** un solo color, el del hallazgo más grave, y nunca menor que un aviso inmediato enviado en el periodo.
   Las recomendaciones salen para lo grave o crítico; si ya se emitió en las últimas 12 h, se indica "sigue vigente".
-- El celular recibe la cabecera, la primera línea y la de quejas; Teams, el reporte completo.
+- El celular recibe la cabecera, la primera línea y la de quejas.
 
 ## Ciberseguridad (CSIRT)
 

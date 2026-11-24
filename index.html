@@ -189,7 +189,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
     <a id="csv" href="#"><button>Exportar CSV</button></a>
     <span class="sub" id="yo"></span>
     <button id="pausa-global" class="solo-admin" title="Pausar o reanudar todo el monitoreo">⏸ Pausar</button>
-    <button id="camp-abrir" title="Notificaciones enviadas a Teams y al celular" aria-label="Notificaciones enviadas">🔔<span class="camp-n" id="camp-n" hidden></span></button>
+    <button id="camp-abrir" title="Notificaciones enviadas al celular" aria-label="Notificaciones enviadas">🔔<span class="camp-n" id="camp-n" hidden></span></button>
     <button id="rep-abrir" title="Generar un reporte a pedido">📝 Reporte</button>
     <button id="cfg-abrir" title="Configuración">⚙ Configuración</button>
     <button class="pri solo-admin" id="refresh">Consultar ahora</button>
@@ -360,7 +360,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
       </div>
       <div id="camp-lista" class="sub">Cargando…</div>
     </div>
-    <div class="pie"><span class="sub" id="camp-msg">Lo mismo que llegó a Teams y al celular. Pulsa una notificación para ver el texto completo.</span><button id="camp-cancelar">Cerrar</button></div>
+    <div class="pie"><span class="sub" id="camp-msg">Lo mismo que llegó al celular. Pulsa una notificación para ver el texto completo.</span><button id="camp-cancelar">Cerrar</button></div>
   </div>
 </div>
 
@@ -381,7 +381,7 @@ body.lector .solo-admin,body.lector #fuentes button,body.lector .hist-card{displ
       <div id="rep-txt" class="sub">Elige el periodo y pulsa «Ver reporte». Se muestra aquí sin enviarse.</div>
       <div id="rep-corto-box" style="display:none"><div class="sub" style="margin-top:12px"><b>Lo que llega al celular:</b></div><div id="rep-corto"></div></div>
     </div>
-    <div class="pie"><span id="rep-msg"></span><button id="rep-cancelar">Cerrar</button><button class="pri solo-admin" id="rep-enviar" disabled>Enviar a Teams y celular</button></div>
+    <div class="pie"><span id="rep-msg"></span><button id="rep-cancelar">Cerrar</button><button class="pri solo-admin" id="rep-enviar" disabled>Enviar al celular</button></div>
   </div>
 </div>
 
@@ -1041,7 +1041,7 @@ function pintarConfig(){
       ${CFG._ents.map(e=>`<tr style="border-top:1px solid var(--line);vertical-align:top"><td><b>${esc(e.nombre)}</b></td><td>${esc(e.buscar)}</td><td>${Object.entries(e.cuentas||{}).map(([r,v])=>`${esc(r)}: ${esc(String(v).replace(/^https:\/\/(www\.)?/,''))}`).join('<br>')||'<span class="sub">—</span>'}</td><td>${esc(lst((cb.dominios||{})[e.nombre]))||'<span class="sub">—</span>'}</td></tr>`).join('')}</tbody></table></div>
     <div class="bloque"><b>Disponibilidad, fallas y quejas</b> · ${ir('general')}
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tbody>${(m.disponibilidad||[]).map(f=>`<tr style="border-top:1px solid var(--line)"><td style="white-space:nowrap"><b>${esc(f.fuente)}</b></td><td style="white-space:nowrap">cada ${cada(f.minutos)}</td><td class="sub">${esc(f.desc||'')}</td></tr>`).join('')}</tbody></table>
-      <div class="sub" style="margin-top:6px">Pico: usuarios distintos de los últimos ${m.notificaciones?.pico_ventana_min||30} min sobre promedio + 2σ (base ${m.notificaciones?.dias_base||7} días). Cada pico o caída es un evento: aviso al abrirse y al escalar; recordatorio cada ${m.notificaciones?.recordatorio_min||60} min si siguen llegando quejas; aviso de cierre tras ${m.notificaciones?.cierre_min||45} min sin quejas nuevas o con el comunicado de restablecimiento. Celular y Teams reciben lo mismo.</div></div>
+      <div class="sub" style="margin-top:6px">Pico: usuarios distintos de los últimos ${m.notificaciones?.pico_ventana_min||30} min sobre promedio + 2σ (base ${m.notificaciones?.dias_base||7} días). Cada pico o caída es un evento: aviso al abrirse y al escalar; recordatorio cada ${m.notificaciones?.recordatorio_min||60} min si siguen llegando quejas; aviso de cierre tras ${m.notificaciones?.cierre_min||45} min sin quejas nuevas o con el comunicado de restablecimiento.</div></div>
     <div class="bloque"><b>Ciberseguridad</b> · ${ir('ciber')}
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tbody>${(m.ciber||[]).map(f=>`<tr style="border-top:1px solid var(--line)"><td><b>${esc(f.fuente)}</b></td><td style="white-space:nowrap">cada ${cada(f.minutos)}</td></tr>`).join('')}</tbody></table>
       <div class="sub" style="margin-top:6px">X: ${esc(lst((cb.referentes_x||[]).map(h=>'@'+h)))} · Telegram público: ${esc(lst(cb.canales_telegram))} · Actores vigilados: ${esc(lst(cb.actores))}</div></div>`;
@@ -1077,14 +1077,14 @@ function pintarConfig(){
     c.querySelectorAll('[data-int]').forEach(i=>i.oninput=()=>CFG.intervalos_minutos[i.dataset.int]=i.value);
     pintarApagados(ESTADO.apagados||[]);
     const NT=ESTADO.notificaciones||{},ints=NT.intentos||[];
-    c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Notificaciones (celular y Teams)</b> <span class="sub">(graves y críticos al instante; picos cada 30 min sobre promedio + 2σ; ciberseguridad)</span>
-      <div class="sub" style="margin-top:6px">${NT.configuradas?'✅ Activas en este monitor: '+[NT.ntfy?'ntfy (celular)':'',NT.teams?'Teams':''].filter(Boolean).join(' · ')+(NT.ultima_revision?' · última revisión hace '+hace(NT.ultima_revision):''):'⚪ No configuradas en este monitor: falta NOTIFY_NTFY_TOPIC o TEAMS_WEBHOOK_URL.'}</div>
+    c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Notificaciones (celular)</b> <span class="sub">(graves y críticos al instante; picos cada 30 min sobre promedio + 2σ; ciberseguridad)</span>
+      <div class="sub" style="margin-top:6px">${NT.configuradas?'✅ Activas en este monitor: '+(NT.ntfy?'ntfy (celular)':'')+(NT.ultima_revision?' · última revisión hace '+hace(NT.ultima_revision):''):'⚪ No configuradas en este monitor: falta NOTIFY_NTFY_TOPIC.'}</div>
       <div class="frow" style="margin-top:8px;gap:8px"><button id="nt-prueba">Enviar notificación de prueba</button><span class="sub" id="nt-msg"></span></div>
       <div id="nt-log" style="margin-top:8px"></div></div>`);
     const pintarLog=l=>{$('#nt-log').innerHTML=l.length?`<div class="sub"><b>Últimos intentos de aviso</b></div><table style="width:100%;font-size:12px;border-collapse:collapse">${l.map(x=>`<tr style="border-top:1px solid var(--line)"><td style="white-space:nowrap">hace ${esc(hace(x.t))}</td><td>${esc(x.canal)}</td><td>${x.ok?'✅ enviado':'❌ '+esc(x.error)}</td><td class="sub">${esc(x.titulo)}</td></tr>`).join('')}</table>`:'<div class="sub">Aún no hubo intentos de aviso desde que el monitor arrancó.</div>'};
     pintarLog(ints);
     $('#nt-prueba').onclick=async()=>{$('#nt-msg').textContent='Enviando…';const r=await post('/api/notificaciones/prueba').then(r=>r.json());
-      $('#nt-msg').textContent=r.error?'❌ '+r.error:'✅ Enviada: revisa el celular y/o Teams.';await cargarEstado();pintarLog(ESTADO.notificaciones?.intentos||[])};
+      $('#nt-msg').textContent=r.error?'❌ '+r.error:'✅ Enviada: revisa el celular.';await cargarEstado();pintarLog(ESTADO.notificaciones?.intentos||[])};
     c.insertAdjacentHTML('beforeend',`<div class="bloque"><b>Volver a clasificar con IA</b> <span class="sub">(tras cambiar criterios: lo ya clasificado no se corrige solo)</span>
       <div class="frow" style="margin-top:8px;align-items:center;gap:8px">Últimos <input type="number" id="rc-dias" min="1" max="365" value="30" style="width:70px"> días
       <button id="rc-ir">Volver a clasificar</button><span class="sub" id="rc-msg"></span></div>
@@ -1278,10 +1278,10 @@ async function repVer(){const c=repCuerpo();if(!c){$('#rep-msg').textContent='El
 $('#rep-abrir').onclick=()=>{const s=$('#rep-ent');if(s.options.length<2)(ESTADO?.bancos||[]).forEach(b=>s.add(new Option(b,b)));$('#rep').classList.add('on')};
 $('#rep-per').onchange=e=>{$('#rep-desde').style.display=e.target.value==='desde'?'':'none'};
 $('#rep-ver').onclick=repVer;
-$('#rep-enviar').onclick=async()=>{if(!REP||!confirm('¿Enviar este reporte a Teams y al celular?'))return;
+$('#rep-enviar').onclick=async()=>{if(!REP||!confirm('¿Enviar este reporte al celular?'))return;
   $('#rep-enviar').disabled=true;$('#rep-msg').textContent='Enviando…';
   const r=await fetch('/api/reporte/enviar',{method:'POST',headers:{'X-Monitor':'1','Content-Type':'application/json'},body:JSON.stringify(REP)}).then(r=>r.json()).catch(e=>({error:String(e)}));
-  $('#rep-msg').textContent=r.error?'⚠ '+r.error:'✓ Enviado a Teams y al celular.'};
+  $('#rep-msg').textContent=r.error?'⚠ '+r.error:'✓ Enviado al celular.'};
 $('#rep-cerrar').onclick=$('#rep-cancelar').onclick=()=>$('#rep').classList.remove('on');
 // Casos: cada evento con número; sus avisos quedan vinculados (trazabilidad). Ficha con línea de tiempo y gestión.
 let CASOS_E='abierto',CASOS_G={};
@@ -1340,7 +1340,7 @@ $('#caso-cerrar').onclick=$('#caso-cancelar').onclick=()=>$('#caso').classList.r
 $('#caso').onclick=e=>{if(e.target.id==='caso')$('#caso').classList.remove('on')};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#caso').classList.remove('on')});
 cargarCasos();setInterval(cargarCasos,60000);
-// Campana: historial de lo enviado a Teams y al celular (mismo texto, en espejo). Las no vistas se cuentan en el globo.
+// Campana: historial de lo enviado al celular. Las no vistas se cuentan en el globo.
 const NIV_COLOR={'Crítico':'🔴','Grave':'🟠','Medio':'🟡','Leve':'🟢','Informativo':'🔵'};
 let CAMP=[],CAMP_F='',CAMP_VAL=null,CAMP_MOT={},CAMP_PROP=[],CAMP_SIL=[],CAMP_ALC={};
 function campVisto(){try{return localStorage.getItem('monitor.campana.visto')||''}catch(e){return ''}}
@@ -1363,7 +1363,7 @@ function campPintar(){const visto=$('#camp').dataset.visto||'';
       <div class="com"><textarea data-com="${x.id}" placeholder="Comentario: qué estuvo bien o mal (la IA lo usará como criterio)">${esc(x.comentario||'')}</textarea><button data-gcom="${x.id}">Guardar comentario</button>${x.comentado_por?`<span class="sub"> · ${esc(x.comentado_por)}</span>`:''}</div>
       ${x.util===0&&YO?.rol==='admin'&&x.nivel!=='Crítico'?`<div class="sil">🔕 No volver a avisar casos así: <select data-alc="${x.id}">${Object.entries(CAMP_ALC).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join('')}</select>
         <input data-frase="${x.id}" placeholder="frase (si eliges frase)" style="width:150px"> por <select data-dias="${x.id}"><option value="7">7 días</option><option value="30" selected>30 días</option><option value="90">90 días</option></select> <button data-sil="${x.id}">Silenciar</button></div>`:''}`:''}</div></details>`}
-  const v=CAMP_VAL;$('#camp-msg').textContent=v&&v.valoradas?`Valoradas en el periodo: ${v.utiles} de ${v.valoradas} útiles (${Math.round(100*v.utiles/v.valoradas)}%).`:'Lo mismo que llegó a Teams y al celular. Pulsa una notificación para ver el texto y valorarla.';
+  const v=CAMP_VAL;$('#camp-msg').textContent=v&&v.valoradas?`Valoradas en el periodo: ${v.utiles} de ${v.valoradas} útiles (${Math.round(100*v.utiles/v.valoradas)}%).`:'Lo mismo que llegó al celular. Pulsa una notificación para ver el texto y valorarla.';
   $('#camp-lista').innerHTML=h}
 $('#camp-abrir').onclick=async()=>{$('#camp').dataset.visto=campVisto()||new Date(Date.now()-864e5).toISOString();$('#camp').classList.add('on');await campCargar();campPintar();
   try{localStorage.setItem('monitor.campana.visto',new Date().toISOString())}catch(e){}$('#camp-n').hidden=true};
