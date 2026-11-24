@@ -1815,6 +1815,45 @@ def _consultas_x_rsshub():
     return consultas
 
 
+def _rsshub_buscar(base, q, oficiales):
+    """Una búsqueda en RSSHub (/twitter/keyword) → tuits en el formato del monitor. Falla con RutaInactiva si X
+    rechaza la sesión y con la excepción original ante otros errores."""
+    url = f"{base}/twitter/keyword/{urllib.parse.quote(q, safe='')}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            cuerpo = resp.read(5 * 1024 * 1024)
+        raiz = ET.fromstring(cuerpo)
+    except urllib.error.HTTPError as e:
+        texto = e.read(300).decode("utf-8", "ignore").lower()
+        if "token" in texto or "cookie" in texto or "auth" in texto or e.code in (401, 403):
+            raise RutaInactiva("RSSHub sin una sesión válida de X (falta o venció TWITTER_AUTH_TOKEN)")
+        raise
+    out = []
+    for i in raiz.iter("item"):
+        link = (i.findtext("link") or "").split("#")[0].split("?")[0]
+        m_ = re.search(r"https?://(?:x|twitter)\.com/(\w+)/status/(\d+)", link)
+        if not m_:
+            continue
+        usuario, tid = m_.group(1), m_.group(2)
+        desc = i.findtext("description") or i.findtext("title") or ""
+        texto = re.sub(r"\n\s*\n+", "\n", limpiar_html(re.split(r"<blockquote|<hr", desc)[0] or desc)).strip()
+        fecha = parse_fecha(i.findtext("pubDate"))
+        if not texto or not fecha:
+            continue
+        it = {"id": "x:" + tid, "fuente": "X", "autor": "@" + usuario, "texto": texto, "fecha": fecha,
+              "url": f"https://x.com/{usuario}/status/{tid}"}
+        a = usuario.lower()
+        if a in oficiales:
+            it.update(tipo="oficial", bancos_fijos=[oficiales[a]], peru=True, cuenta=oficiales[a])
+        else:
+            destino = [b for h, b in oficiales.items() if "@" + h in normalizar(texto)]
+            if destino:
+                it.update(tipo="comentario", bancos_fijos=destino, peru=True, cuenta=destino[0])
+        out.append(it)
+    return out
+
+
 def x_rsshub(rango=None):
     """X vía un RSSHub propio (ruta /twitter/keyword). Cada pasada lee todas las consultas agrupadas, como mínimo cada
     'intervalo_min'. Si RSSHub no tiene la sesión de X o X la rechaza, queda inactiva y entran las demás rutas."""
@@ -1832,48 +1871,64 @@ def x_rsshub(rango=None):
     out, errores = [], []
     consultas = _consultas_x_rsshub()
     for q in consultas:
-        url = f"{base}/twitter/keyword/{urllib.parse.quote(q, safe='')}"
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                cuerpo = resp.read(5 * 1024 * 1024)
-            raiz = ET.fromstring(cuerpo)
+            out += _rsshub_buscar(base, q, oficiales)
+        except RutaInactiva:
+            raise
         except urllib.error.HTTPError as e:
-            texto = e.read(300).decode("utf-8", "ignore").lower()
-            if "token" in texto or "cookie" in texto or "auth" in texto or e.code in (401, 403):
-                raise RutaInactiva("RSSHub sin una sesión válida de X (falta o venció TWITTER_AUTH_TOKEN)")
             errores.append(f"HTTP {e.code}")
-            continue
         except Exception as e:
             errores.append(type(e).__name__)
-            continue
-        for i in raiz.iter("item"):
-            link = (i.findtext("link") or "").split("#")[0].split("?")[0]
-            m_ = re.search(r"https?://(?:x|twitter)\.com/(\w+)/status/(\d+)", link)
-            if not m_:
-                continue
-            usuario, tid = m_.group(1), m_.group(2)
-            desc = i.findtext("description") or i.findtext("title") or ""
-            texto = re.sub(r"\n\s*\n+", "\n", limpiar_html(re.split(r"<blockquote|<hr", desc)[0] or desc)).strip()
-            fecha = parse_fecha(i.findtext("pubDate"))
-            if not texto or not fecha:
-                continue
-            it = {"id": "x:" + tid, "fuente": "X", "autor": "@" + usuario, "texto": texto, "fecha": fecha,
-                  "url": f"https://x.com/{usuario}/status/{tid}"}
-            a = usuario.lower()
-            if a in oficiales:
-                it.update(tipo="oficial", bancos_fijos=[oficiales[a]], peru=True, cuenta=oficiales[a])
-            else:
-                destino = [b for h, b in oficiales.items() if "@" + h in normalizar(texto)]
-                if destino:
-                    it.update(tipo="comentario", bancos_fijos=destino, peru=True, cuenta=destino[0])
-            out.append(it)
         time.sleep(cfg.get("pausa_seg", 5))
     if errores and len(errores) == len(consultas):
         raise RuntimeError(f"RSSHub no respondió ({errores[0]})")
     out = list({o["id"]: o for o in out}.values())  # un tuit puede salir en dos consultas
     print(f"  X · RSSHub: {len(out)} tuits en {len(consultas)} consultas", flush=True)
     return out
+
+
+def recuperar_x(desde, hasta, pausa=25, minimo_min=10):
+    """Recupera X de un periodo pasado por RSSHub (gratis, con la sesión de la cuenta secundaria): cada consulta
+    agrupada por tramos de 1 h; si un tramo viene lleno (20 tuits, el máximo por página) se parte en dos hasta
+    'minimo_min'. Guarda sin avisar (en_vivo=False). Pausa entre búsquedas para no exceder el límite de X."""
+    base = os.environ.get("RSSHUB_URL", "").rstrip("/")
+    oficiales = {h.lower(): b for h, b in cuentas("x").items()}
+    desde, hasta = datetime.fromisoformat(desde), datetime.fromisoformat(hasta)
+    leidos = nuevos = fallos = llamadas = 0
+    for k, q in enumerate(_consultas_x_rsshub(), 1):
+        pila = []
+        t = hasta
+        while t > desde:
+            pila.append((max(desde, t - timedelta(hours=1)), t))
+            t -= timedelta(hours=1)
+        while pila:
+            a, b = pila.pop(0)
+            qq = f"{q} since_time:{int(a.timestamp())} until_time:{int(b.timestamp())}"
+            items = None
+            for intento in range(3):
+                try:
+                    items = _rsshub_buscar(base, qq, oficiales)
+                    break
+                except RutaInactiva:
+                    raise
+                except Exception as e:
+                    print(f"  recuperar X · {a:%d/%m %H:%M}: {type(e).__name__}, reintento {intento + 1}", flush=True)
+                    time.sleep(pausa * (intento + 2))
+            llamadas += 1
+            time.sleep(pausa)
+            if items is None:
+                fallos += 1
+                continue
+            if len(items) >= 20 and (b - a) > timedelta(minutes=minimo_min):
+                m = a + (b - a) / 2
+                pila[:0] = [(a, m), (m, b)]
+            leidos += len(items)
+            nuevos += guardar(items, en_vivo=False)
+            print(f"  recuperar X · consulta {k} · {a.astimezone(LIMA):%d/%m %H:%M}–{b.astimezone(LIMA):%H:%M}: "
+                  f"{len(items)} leídos · total {nuevos} nuevos ({llamadas} búsquedas)", flush=True)
+    print(f"[{datetime.now():%H:%M:%S}] Recuperación de X {desde:%d/%m %H:%M} → {hasta:%d/%m %H:%M}: {leidos} leídos, "
+          f"{nuevos} nuevos, {fallos} tramos sin respuesta, {llamadas} búsquedas", flush=True)
+    return nuevos
 
 
 # ---------------- X por twitterapi.io: respaldo de pago por uso (~US$0.15 por mil tuits), solo si fallan las rutas
