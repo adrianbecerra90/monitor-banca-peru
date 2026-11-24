@@ -1895,10 +1895,11 @@ def x_respuestas_oficiales():
 
 
 def fuente_x(rango=None):
-    # Nitter es la primera opción; RSSHub (cuenta secundaria de X) solo si Nitter falla o no trae nada
+    # activo-activo: Nitter (primera opción) y RSSHub se reparten el trabajo; RSSHub consulta menos seguido mientras
+    # Nitter funciona y más seguido si Nitter falla. Los de pago solo si fallan los dos.
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
+                                ("RSSHub (propio)", x_rsshub, "activo"),
                                 ("RapidAPI (Twttr API · The Old Bird)", x_rapid, "activo"),
-                                ("RSSHub (propio)", x_rsshub, "respaldo"),
                                 ("twitterapi.io (respaldo de pago)", x_twitterapi, "respaldo"),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
 
@@ -2011,7 +2012,10 @@ def x_rsshub(rango=None):
     if pausa and pausa > ahora():
         raise RutaInactiva(f"X limitó la búsqueda de la cuenta: en pausa hasta las {pausa.astimezone(LIMA):%H:%M} "
                            f"(mientras tanto, respaldo)")
-    if r and ahora() - datetime.fromisoformat(r[0]) < timedelta(minutes=cfg.get("intervalo_min", 10)):
+    # reparto con Nitter: si Nitter trajo tuits en su última pasada, RSSHub complementa cada 20 min; si no, cada 10
+    nitter_ok = SALUD.get("X", {}).get("Nitter (varias instancias)", {}).get("ok") is True
+    cada = cfg.get("intervalo_con_nitter_min", 20) if nitter_ok else cfg.get("intervalo_min", 10)
+    if r and ahora() - datetime.fromisoformat(r[0]) < timedelta(minutes=cada):
         return []
     _guardar_marca("x_rsshub_ultima", iso(ahora()))
     oficiales = {h.lower(): b for h, b in cuentas("x").items()}
