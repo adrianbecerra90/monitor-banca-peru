@@ -763,10 +763,11 @@ function ultimaAct(f){ // "Última actualización: 15:42 (hace 3 min)" en hora d
   return `<span class="sub">Última actualización: <b>${esc(t)}</b> (hace ${hace(f)})</span>`}
 // Estados estándar de rutas, fuentes y proveedores (mismo vocabulario en todo el panel):
 //   🟢 Activo · 🟡 Con fallas (reintenta solo) · ⏸ En pausa (límite o cupo del proveedor; vuelve sola) · ⚪ Inactivo (sin clave, cerrado…)
-const ESTADOS={activo:['var(--good)','Activo'],fallas:['var(--warn)','Con fallas'],pausa:['var(--acc)','En pausa'],inactivo:['var(--line)','Inactivo'],espera:['var(--warn)','Consultando…']};
+const ESTADOS={activo:['var(--good)','Activo'],fallas:['var(--warn)','Con fallas'],pausa:['var(--acc)','En pausa'],inactivo:['var(--line)','Inactivo'],reserva:['var(--line)','En reserva'],espera:['var(--warn)','Consultando…']};
 function horaDe(ts){return new Date(ts).toLocaleTimeString('es-PE',{timeZone:'America/Lima',hour:'2-digit',minute:'2-digit'})}
 function motivoStd(m){ // mensaje técnico → [tipo, detalle corto en lenguaje simple]
   m=String(m||'');const fecha=(m.match(/hasta (?:el )?(\d{1,2}\/\d{2})/)||[])[1],hora=(m.match(/hasta las (\d{1,2}:\d{2})/)||[])[1];
+  if(/^en reserva/i.test(m))return['reserva','entra si fallan las principales'];
   if(/cupo de hoy/i.test(m))return['pausa','cupo del día usado · sigue mañana'];
   if(/sin créditos|presupuesto|apagado hasta|cuota (mensual )?agotada|tope mensual|sin saldo/i.test(m))return['pausa','sin créditos'+(fecha?' hasta el '+fecha:' este mes')];
   if(/429|límite de consultas|rate.?limit|too many|limitó/i.test(m))return['pausa','límite de consultas del proveedor'+(hora?' · vuelve a las '+hora:' · reintenta sola')];

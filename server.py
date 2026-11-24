@@ -1224,6 +1224,11 @@ def ejecutar_rutas(fuente, rutas, rango=None):
 
     t0 = time.time()
     resultados = con_limite(activas)
+    if any(st == "ok" for st, _ in resultados):  # los respaldos no se usaron: que se vean «en reserva»
+        for n, _ in respaldo:
+            st_ = _salud(fuente, n)
+            if not st_.get("pausa_hasta") or st_["pausa_hasta"] < time.time():
+                st_.update(ok=None, msg="En reserva: entra si fallan las principales", inactiva=False, reserva=True)
     if not any(st == "ok" for st, _ in resultados):
         for n, f in respaldo:
             t0 = time.time()
