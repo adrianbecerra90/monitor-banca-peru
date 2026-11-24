@@ -4135,13 +4135,18 @@ def caso_ciber_relacionado(a, clase):
     with _db_lock, db() as con:
         _tabla_casos(con)
         _tabla_notificaciones(con)
+        _tabla_ciber(con)
         casos = [dict(r) for r in con.execute("SELECT id, entidad, clave FROM casos WHERE estado = 'abierto' AND clave LIKE ?",
                                               (f"ciber|%|{clase}",))]
         for c in casos:
             textos = normalizar(" ".join(r[0] or "" for r in con.execute(
                 "SELECT texto FROM notificaciones WHERE caso = ?", (c["id"],))))
-            del_caso = {n for n in (normalizar(x).strip() for x in c["entidad"].split(",")) if len(n) >= 4 and n not in NO_IDENTIFICAN}
-            if any(re.search(r"(?<![a-z0-9])" + re.escape(n) + r"(?![a-z0-9])", textos) for n in nuevos) or \
+            # "Pichincha Bank Perú (no confirmado) (Banco Pichincha)": cada nombre por separado, sin la marca
+            partes = re.split(r"[,()]", re.sub(r"\(no confirmad[oa]\)", ",", c["entidad"], flags=re.I))
+            for r in con.execute("SELECT entidades, organizacion FROM alertas_ciber WHERE caso = ?", (c["id"],)):
+                partes += list(json.loads(r[0] or "[]")) + [r[1] or ""]
+            del_caso = {n for n in (normalizar(x).strip() for x in partes) if len(n) >= 4 and n not in NO_IDENTIFICAN}
+            if nuevos & del_caso or any(re.search(r"(?<![a-z0-9])" + re.escape(n) + r"(?![a-z0-9])", textos) for n in nuevos) or \
                     any(re.search(r"(?<![a-z0-9])" + re.escape(n) + r"(?![a-z0-9])", t_nueva) for n in del_caso):
                 return c["id"]
     return None
