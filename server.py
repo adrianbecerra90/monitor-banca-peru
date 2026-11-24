@@ -1781,6 +1781,7 @@ def fuente_x(rango=None):
     return ejecutar_rutas("X", [("Nitter (varias instancias)", x_nitter, "activo"),
                                 ("RSSHub (propio)", x_rsshub, "activo"),
                                 ("RapidAPI (Twttr API · The Old Bird)", x_rapid, "activo"),
+                                ("twitterapi.io (respaldo de pago)", x_twitterapi, "respaldo"),
                                 ("Apify (respaldo de pago)", x_apify, "respaldo")], rango)
 
 
@@ -1872,6 +1873,76 @@ def x_rsshub(rango=None):
         raise RuntimeError(f"RSSHub no respondió ({errores[0]})")
     out = list({o["id"]: o for o in out}.values())  # un tuit puede salir en dos consultas
     print(f"  X · RSSHub: {len(out)} tuits en {len(consultas)} consultas", flush=True)
+    return out
+
+
+# ---------------- X por twitterapi.io: respaldo de pago por uso (~US$0.15 por mil tuits), solo si fallan las rutas
+# activas; las mismas consultas agrupadas que RSSHub, con tope mensual de llamadas y ritmo parejo hasta fin de mes.
+def x_twitterapi(rango=None):
+    clave = os.environ.get("TWITTERAPI_IO_KEY", "").strip()
+    if not clave or rango:
+        return None if not clave else []
+    prov, cfg = "twitterapi.io", CONFIG.get("twitterapi", {})
+    exigir_disponible(prov)
+    tope = cfg.get("max_llamadas_mes", 600)
+    usados = _creditos_mes(prov)
+    if usados >= tope:
+        agotar(prov, f"Tope mensual alcanzado ({usados} de {tope} llamadas)")
+    consultas = _consultas_x_rsshub()
+    minimo = cfg.get("intervalo_min", 20)
+    with _db_lock, db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS marcas (clave TEXT PRIMARY KEY, valor TEXT)")
+        r = con.execute("SELECT valor FROM marcas WHERE clave = 'x_twitterapi_ultima'").fetchone()
+    quedan_pasadas = max(1, (tope - usados) // max(1, len(consultas)))
+    fin = datetime.combine(fecha_renovacion(prov), datetime.min.time(), LIMA)
+    cada = max(minimo, (fin - ahora()).total_seconds() / 60 / quedan_pasadas)
+    if r and ahora() - datetime.fromisoformat(r[0]) < timedelta(minutes=cada):
+        return []
+    _guardar_marca("x_twitterapi_ultima", iso(ahora()))
+    oficiales = {h.lower(): b for h, b in cuentas("x").items()}
+    out, errores = [], []
+    for q in consultas[:max(0, tope - usados)]:
+        url = "https://api.twitterapi.io/twitter/tweet/advanced_search?" + urllib.parse.urlencode({"query": q, "queryType": "Latest"})
+        try:
+            req = urllib.request.Request(url, headers={"X-API-Key": clave, "User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                d = json.loads(resp.read(MAX_RESPUESTA))
+        except urllib.error.HTTPError as e:
+            cuerpo = e.read(300).decode("utf-8", "ignore").lower()
+            if e.code in (401, 403):
+                raise RutaInactiva("Clave de twitterapi.io no válida: pega una nueva en ⚙ Configuración")
+            if e.code == 402 or "credit" in cuerpo or "balance" in cuerpo:
+                agotar(prov, "Sin saldo en la cuenta de twitterapi.io")
+            errores.append(f"HTTP {e.code}")
+            continue
+        except Exception as e:
+            errores.append(type(e).__name__)
+            continue
+        finally:
+            with _db_lock, db() as con:
+                con.execute("CREATE TABLE IF NOT EXISTS uso_proveedores (mes TEXT, proveedor TEXT, creditos INTEGER, PRIMARY KEY (mes, proveedor))")
+                con.execute("INSERT INTO uso_proveedores VALUES (?, ?, 1) ON CONFLICT(mes, proveedor) "
+                            "DO UPDATE SET creditos = creditos + 1", (ahora().strftime("%Y-%m"), prov))
+        for t in d.get("tweets") or []:
+            usuario = (t.get("author") or {}).get("userName") or ""
+            tid, texto, fecha = str(t.get("id") or ""), (t.get("text") or "").strip(), parse_fecha(t.get("createdAt"))
+            if not (usuario and tid.isdigit() and texto and fecha):
+                continue
+            it = {"id": "x:" + tid, "fuente": "X", "autor": "@" + usuario, "texto": texto, "fecha": fecha,
+                  "url": f"https://x.com/{usuario}/status/{tid}"}
+            a = usuario.lower()
+            if a in oficiales:
+                it.update(tipo="oficial", bancos_fijos=[oficiales[a]], peru=True, cuenta=oficiales[a])
+            else:
+                destino = [b for h, b in oficiales.items() if "@" + h in normalizar(texto)]
+                if destino:
+                    it.update(tipo="comentario", bancos_fijos=destino, peru=True, cuenta=destino[0])
+            out.append(it)
+    ESTADO.setdefault("twitterapi", {}).update(usados_mes=_creditos_mes(prov), tope=tope)
+    if errores and len(errores) == len(consultas):
+        raise RuntimeError(f"twitterapi.io no respondió ({errores[0]})")
+    out = list({o["id"]: o for o in out}.values())
+    print(f"  X · twitterapi.io: {len(out)} tuits en {len(consultas)} consultas ({_creditos_mes(prov)} de {tope} este mes)", flush=True)
     return out
 
 
@@ -3053,7 +3124,7 @@ _proxima = {n: 0.0 for n in FUENTES}
 
 # Pausa del monitoreo (global o por fuente); se guarda en pausa.json y se respeta tras reiniciar
 RUTA_PAUSA = os.path.join(DATOS, "pausa.json")
-PROVEEDORES_PAGO = ["Apify", "Scrape.do", "SerpApi", "RapidAPI", "Twttr API", "The Old Bird"]
+PROVEEDORES_PAGO = ["Apify", "Scrape.do", "SerpApi", "RapidAPI", "Twttr API", "The Old Bird", "twitterapi.io"]
 PAUSABLES = list(FUENTES) + ["Google Trends", "IA", "Ciberseguridad"] + PROVEEDORES_PAGO
 SIEMPRE_MANUAL = []  # (retirado) ya no hay servicios que solo se reanuden a mano; los de pago se protegen con su tope mensual
 try:
@@ -3085,7 +3156,7 @@ except OSError:
 # (ni siquiera para ver el saldo). Se guarda en agotados.json y se respeta tras reiniciar.
 RUTA_AGOTADOS = os.path.join(DATOS, "agotados.json")
 _CFG_PROV = {"Apify": "apify", "TikTok Scraper": "tiktok_rapid",
-             "Scrape.do": "scrapedo", "SerpApi": "serpapi", "Twttr API": "x_twttr", "The Old Bird": "x_oldbird", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
+             "Scrape.do": "scrapedo", "SerpApi": "serpapi", "Twttr API": "x_twttr", "The Old Bird": "x_oldbird", "twitterapi.io": "twitterapi", "RapidAPI": "rapidapi", "Professional Network Data": "linkedin_api"}
 try:
     with open(RUTA_AGOTADOS, encoding="utf-8") as _f:
         AGOTADOS = {k: v for k, v in json.load(_f).items() if k in _CFG_PROV and isinstance(v, dict)}
@@ -7313,6 +7384,8 @@ def resumen_proveedores():
               f"{_creditos_mes('Scrape.do')} de {CONFIG.get('scrapedo', {}).get('max_creditos_mes', 900)} créditos este mes", []),
         ficha("SerpApi", "SERPAPI_KEY", "Búsqueda Google (respaldo de Scrape.do)", None,
               f"{_creditos_mes('SerpApi')} de {CONFIG.get('serpapi', {}).get('max_creditos_mes', 237)} búsquedas este mes", []),
+        ficha("twitterapi.io", "TWITTERAPI_IO_KEY", "X (respaldo de pago si fallan RSSHub y RapidAPI)", None,
+              f"{_creditos_mes('twitterapi.io')} de {CONFIG.get('twitterapi', {}).get('max_llamadas_mes', 600)} llamadas este mes", []),
         ficha("RapidAPI", "RAPIDAPI_KEY", "Facebook (Facebook Scraper)",
               f"{ra['restantes']} de {ra.get('limite_plan', '?')} llamadas del plan" if ra.get("restantes") is not None else None,
               f"{ra.get('usados_mes', 0)} de {ra.get('tope', CONFIG.get('rapidapi', {}).get('max_llamadas_mes', 0))} llamadas este mes",
@@ -7465,7 +7538,7 @@ def config_editable():
         "monitoreo": resumen_monitoreo(),
         "ia": [{"nombre": p["nombre"], "activo": p.get("activo", True), "modelo": p.get("modelo", "")}
                for p in c.get("ia", {}).get("proveedores", [])],
-        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPEDO_TOKEN", "SERPAPI_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
+        "claves": {k: bool(os.environ.get(k)) for k in ("APIFY_TOKEN", "SCRAPEDO_TOKEN", "SERPAPI_KEY", "TWITTERAPI_IO_KEY", "RAPIDAPI_KEY", "NVIDIA_API_KEY",
                                                          "OPENROUTER_API_KEY", "YOUTUBE_API_KEY")},
     }
 

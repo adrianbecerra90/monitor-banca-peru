@@ -847,6 +847,12 @@
     "videos": 20,
     "min_comentarios": 5
   },
+  "twitterapi": {
+    "_nota": "Respaldo de X por twitterapi.io (pago por uso, ~US$0.003 por llamada de 20 tuits): solo si fallan RSSHub y RapidAPI. Tope de llamadas al mes, repartidas parejo hasta la renovación y nunca más seguido que 'intervalo_min'. 600 llamadas ≈ US$1.8 al mes como máximo.",
+    "max_llamadas_mes": 600,
+    "intervalo_min": 20,
+    "dia_renovacion": 1
+  },
   "serpapi": {
     "_nota": "Respaldo de la búsqueda en Google cuando Scrape.do está sin créditos o ya usó su cuota del día. Plan gratuito: 250 búsquedas al mes (1 crédito cada una); se usa el 95 % a ritmo parejo.",
     "max_creditos_mes": 237,
